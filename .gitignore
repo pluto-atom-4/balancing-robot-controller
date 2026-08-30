@@ -1,0 +1,38 @@
+# PlatformIO
+.pio/
+.vscode/
+.vscode/.ipynb_checkpoints
+CMakeListsPrivate.txt
+cmake_install.cmake
+**/.clang_complete
+**/.gcc-flags.json
+
+# Build artifacts
+build/
+dist/
+*.o
+*.elf
+*.bin
+*.hex
+
+# IDE
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+
+# Dependencies
+.pioenvs
+.piolibdeps
+
+# Test coverage
+.coverage
+htmlcov/
