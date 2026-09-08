@@ -36,6 +36,9 @@ env/
 # Test coverage
 .coverage
 htmlcov/
+
+# Scratch issue dumps
+issue-content*.json
 # Added by code-review-graph
 .code-review-graph/
 
