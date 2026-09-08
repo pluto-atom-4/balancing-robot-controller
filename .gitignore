@@ -36,3 +36,10 @@ env/
 # Test coverage
 .coverage
 htmlcov/
+# Added by code-review-graph
+.code-review-graph/
+
+# Graphify knowledge graph output
+graphify-out/
+.graphify_cache/
+.claude/settings.json.graphify-bak

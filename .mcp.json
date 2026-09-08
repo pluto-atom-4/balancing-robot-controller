@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "code-review-graph": {
+      "command": "code-review-graph",
+      "args": [
+        "serve"
+      ],
+      "cwd": "/home/pluto-atom-4/Documents/platform-io-workspace/balancing-robot-controller",
+      "type": "stdio"
+    },
+    "graphify": {
+      "command": "graphify-mcp",
+      "args": [
+        "graphify-out/graph.json"
+      ],
+      "cwd": "/home/pluto-atom-4/Documents/platform-io-workspace/balancing-robot-controller",
+      "type": "stdio"
+    }
+  }
+}
