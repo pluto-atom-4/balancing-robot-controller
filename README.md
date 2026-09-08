@@ -40,3 +40,27 @@ pio test
 - PlatformIO frameworks and built-in esp32 support
 - Custom servo control library for STS3032 bus protocol
 - IMU sensor driver integration
+
+## Code Knowledge Graph
+
+This repo indexes its own code with [code-review-graph](https://github.com/tirth8205/code-review-graph) (structural AST/call graph) and [graphify](https://pypi.org/project/graphifyy/) (macro architecture map), both wired into Claude Code via MCP and git hooks — see `CLAUDE.md` for the routing rules.
+
+```bash
+# Rebuild both graphs on a fresh clone
+code-review-graph build
+graphify update .
+
+# Keep the code-review-graph graph live while you work
+code-review-graph watch
+
+# Query the structural graph directly
+code-review-graph query callers_of <symbol>
+code-review-graph impact --files <path>
+code-review-graph detect-changes --brief
+
+# Query the macro graph directly
+graphify query "<question>"
+graphify explain "<concept>"
+```
+
+Both graphs are gitignored (`.code-review-graph/`, `graphify-out/`) and rebuild locally per clone — the `pre-commit` and `PostToolUse`/`PreToolUse` hooks in `.claude/settings.json` keep them incrementally fresh while editing.
