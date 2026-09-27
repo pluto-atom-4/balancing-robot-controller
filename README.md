@@ -14,7 +14,7 @@ Multi-program PlatformIO project for several dev boards (Arduino Uno R3, Arduino
 - Seeed XIAO ESP32S3 (`xiao_s3`, balance + blink)
 - Generic ESP32 dev board (`esp32dev`, balance + blink)
 - Arduino Uno R3 ATmega328P (`uno`, blink only)
-- Arduino UNO R4 WiFi (`uno_r4_wifi`, blink only)
+- Arduino UNO R4 WiFi (`uno_r4_wifi`, blink only) — uses the `renesas-ra` platform, maintained separately from PlatformIO's core `atmelavr`/`espressif32` platforms; PlatformIO auto-installs it on first build of a `uno_r4_wifi` env (needs network), or pre-install with `pio pkg install --platform renesas-ra`.
 - ATtiny85 (`attiny85`, blink only; ISP programmer, no serial)
 
 ## Python environment (PlatformIO)
@@ -58,6 +58,7 @@ When active, your prompt shows `(.venv)`; exit with `deactivate`. `make` picks u
 - Platforms, toolchains, and libraries always download into `~/.platformio` (PlatformIO core dir), shared by both options, so only the `pio` CLI itself is isolated by a venv. First build of each board downloads its toolchain (needs network).
 - Use one `pio` at a time; do not activate the venv while another `pio` is first on PATH. Check with `which pio`.
 - Recommendation: use Option A if PlatformIO is already installed; use Option B for a clean setup or to pin a version.
+- The `renesas-ra` platform (used by `uno_r4_wifi`, i.e. the Arduino UNO R4 WiFi board) is a separate community platform, not bundled with PlatformIO Core like `atmelavr` or `espressif32`. It installs automatically on first build of that env; to install ahead of time run `pio pkg install --platform renesas-ra`.
 
 ## Development
 
