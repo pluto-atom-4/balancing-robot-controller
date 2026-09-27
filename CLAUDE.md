@@ -4,23 +4,40 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Self-balancing robot firmware using PlatformIO + ESP32-S3. Hardware: Seeed Studio XIAO S3 Sense MCU, built-in 6-axis IMU, two Feetech STS3032 bus servos controlled via serial protocol.
+Multi-program, multi-board PlatformIO project. Main program: self-balancing robot firmware (`balance`) on ESP32-S3. Balance hardware: Seeed Studio XIAO S3 Sense MCU, built-in 6-axis IMU, two Feetech STS3032 bus servos controlled via serial protocol.
+
+Supported boards: Arduino Uno R3 ATmega328P (`uno`, atmelavr), Arduino UNO R4 WiFi (`uno_r4_wifi`, renesas-ra), Seeed XIAO ESP32S3 (`xiao_s3`), generic ESP32 dev (`esp32dev`), ATtiny85 (`attiny85`, atmelavr). More boards can be added.
+
+Programs: `balance` (XIAO S3 / ESP32 only, not built for Uno R3, Uno R4 WiFi, or ATtiny85), `blink` (portable example, all boards).
+
+Envs are named `<program>-<board>`: `balance-xiao_s3` (default), `balance-esp32dev`, `blink-uno`, `blink-uno_r4_wifi`, `blink-xiao_s3`, `blink-esp32dev`, `blink-attiny85`. Native test env: `test`.
 
 ## Development Commands
 
-**Build firmware**
+Use `-e <program>-<board>` to pick an env. Default env: `balance-xiao_s3`.
+
+**Build default env** (balance-xiao_s3)
 ```bash
 pio run
 ```
 
-**Upload to XIAO S3**
+**Build one env**
 ```bash
-pio run -t upload
+pio run -e balance-xiao_s3
+pio run -e blink-uno
+pio run -e blink-attiny85
+```
+
+**Upload one env**
+```bash
+pio run -e blink-uno -t upload
+pio run -e blink-attiny85 -t upload
+pio run -e balance-xiao_s3 -t upload
 ```
 
 **Monitor serial output** (115200 baud)
 ```bash
-pio device monitor
+pio device monitor -e blink-uno
 ```
 
 **Run unit tests**
@@ -35,7 +52,7 @@ pio run -t clean
 
 ## Architecture
 
-### Core Layers
+### Core Layers (planned shared libs; balance is first consumer)
 
 1. **Servo Control Layer** (`lib/servo/`)
    - STS3032 bus servo protocol implementation
@@ -47,24 +64,26 @@ pio run -t clean
    - Real-time pitch/roll angle estimation
    - Sensor fusion if needed
 
-3. **Control Algorithm** (`src/controller/`)
+3. **Control Algorithm** (`lib/controller/`)
    - PID loops for balance (tilt stabilization)
    - Motor speed regulation
    - Feedback integration
 
-4. **Main Loop** (`src/main.cpp`)
+4. **Main Loop** (`programs/balance/main.cpp`)
    - Read IMU → compute error → send servo commands
    - Runs at ~100Hz (typical for balance control)
 
 ### File Structure
 
-- `src/main.cpp` – Entry point, main control loop
+- `programs/<name>/main.cpp` – One entry point per program (`src_dir = programs`)
+  - `programs/balance/main.cpp` – Balance robot control loop (XIAO S3 only)
+  - `programs/blink/main.cpp` – Portable blink example
 - `include/` – Public headers
-- `lib/` – Reusable libraries (servo driver, sensor wrappers)
+- `lib/` – Shared libraries, usable by every program in `programs/` (not tied to one). Each lib is its own folder `lib/<name>/` with `<name>.h` + `<name>.cpp` (optional `library.json`). Currently planned: `servo`, `imu`, `controller` (first user: balance).
 - `test/` – Unit tests
-- `platformio.ini` – Build config, board: `seeed_xiao_esp32s3`, framework: Arduino
+- `platformio.ini` – Abstract board sections `[board_uno]`, `[board_uno_r4_wifi]`, `[board_xiao_s3]`, `[board_esp32dev]`, `[board_attiny85]` (board, platform, flags); envs `[env:<program>-<board>]` combine a board section with a program via `build_src_filter = -<*> +<program/>`
 
-## Key Constants/Configs
+## Key Constants/Configs (balance program, XIAO S3)
 
 - **Serial Baud**: 115200 (monitoring & servo communication)
 - **Target Loop Freq**: ~100Hz (10ms per cycle)
@@ -73,25 +92,51 @@ pio run -t clean
 
 ## Build Notes
 
-- Board: `seeed_xiao_esp32s3` (espressif32 platform)
-- Upload speed: 921600 baud (high-speed upload)
-- C++17 enabled
+- `src_dir = programs`; each env selects its program via `build_src_filter`
+- `xiao_s3`: board `seeed_xiao_esp32s3` (espressif32), upload speed 921600 baud
+- `esp32dev`: generic ESP32 dev board (espressif32)
+- ESP32 boards: C++17 (`gnu++17`)
+- `uno`: Arduino Uno R3 ATmega328P (atmelavr), no C++17 flag; 16MHz AVR, 2KB RAM, keep sketches small
+- `uno_r4_wifi`: Arduino UNO R4 WiFi (renesas-ra, Renesas RA4M1, 32-bit ARM, native USB serial); different chip and uploader than Uno R3 — `blink-uno` on an R4 fails with `stk500_getsync ... not in sync`
+- `attiny85`: ATtiny85 (atmelavr), 8MHz internal, 8KB flash, 512B RAM, no hardware UART so no Serial/monitor (blink guards Serial with `__AVR_ATtiny85__`), uploads via ISP programmer (`upload_protocol = usbasp` default in platformio.ini, change to match hardware)
+- `balance` not built for `uno`, `uno_r4_wifi`, or `attiny85`
 - No external dependencies yet (add as needed)
 
 ## Common Edits
 
-- **Tune PID gains**: Look for `Kp`, `Ki`, `Kd` constants in controller code
-- **Change balance setpoint**: Modify target angle in main loop
-- **Add sensor filtering**: IMU data is noisy; consider complementary/Kalman filter
+- **Tune PID gains**: Look for `Kp`, `Ki`, `Kd` constants in `lib/controller/`
+- **Change balance setpoint**: Modify target angle in `programs/balance/main.cpp`
+- **Add sensor filtering**: IMU data is noisy; consider complementary/Kalman filter (`lib/imu/`)
 - **Servo command mapping**: Servo protocol commands in `lib/servo/STS3032.cpp`
+- **Shared lib change**: Edits in `lib/` affect all programs; rebuild each env
+
+## Shared libraries (lib/)
+
+- Any program uses a lib by `#include <name.h>` (or `"name.h"`); PlatformIO finds it automatically (LDF), and only libs actually included are linked, so unused libs cost nothing.
+- Keep libs hardware-neutral (no board-specific pins/APIs), or guard with `#if defined(ARDUINO_ARCH_AVR)` / `ARDUINO_ARCH_ESP32` / `ARDUINO_ARCH_RENESAS_UNO` / `__AVR_ATtiny85__`.
+- Board-limited lib (e.g. `imu` needs XIAO S3): exclude from other envs with `lib_ignore = imu` in that env or board section.
+- Libs are compiled per env, so a lib must compile for every board whose program includes it; Uno/ATtiny85 have tiny RAM.
+- Third-party deps: add to `lib_deps` in the board section or env.
+- Editing a lib affects all programs using it; rebuild each affected env.
+
+## Adding a program
+
+1. `mkdir programs/<name>`
+2. Add `programs/<name>/main.cpp`
+3. In `platformio.ini`, add `[env:<name>-<board>]` for each supported board: extend `[board_<board>]`, set `build_src_filter = -<*> +<name/>`
+
+## Adding a board
+
+1. Add `[board_x]` section in `platformio.ini` (board, platform, framework, flags)
+2. Add envs `<program>-<x>` for each program that supports it
 
 ## Testing
 
-Unit tests in `test/`. Run with `pio test`. Native platform used for desktop testing of control algorithms.
+Unit tests in `test/`. Run with `pio test -e test`. Native platform used for desktop testing of control algorithms.
 
 ## Serial Debugging
 
-Servo commands and IMU readings logged to Serial. Use `pio device monitor` to inspect. Format: `[tag] message` for structured output.
+Balance program: servo commands and IMU readings logged to Serial. Use `pio device monitor -e balance-xiao_s3` to inspect. Format: `[tag] message` for structured output.
 
 <!-- code-review-graph MCP tools -->
 ## MCP Tools: code-review-graph
