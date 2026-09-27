@@ -1,7 +1,5 @@
 # PlatformIO
 .pio/
-.vscode/
-.vscode/.ipynb_checkpoints
 CMakeListsPrivate.txt
 cmake_install.cmake
 **/.clang_complete
@@ -16,7 +14,9 @@ dist/
 *.hex
 
 # IDE
+.idea/
 .vscode/
+.vscode/.ipynb_checkpoints
 *.swp
 *.swo
 *~
@@ -28,6 +28,10 @@ __pycache__/
 *$py.class
 venv/
 env/
+.venv/
+
+# uv
+.uv/
 
 # Dependencies
 .pioenvs
@@ -36,6 +40,7 @@ env/
 # Test coverage
 .coverage
 htmlcov/
+
 
 # Scratch issue dumps
 issue-content*.json
