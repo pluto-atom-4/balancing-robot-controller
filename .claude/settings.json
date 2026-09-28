@@ -10,6 +10,17 @@
       "Bash(code-review-graph impact *)",
       "Bash(code-review-graph detect-changes *)",
       "Bash(code-review-graph update *)"
+    ],
+    "ask": [
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(pio run * -t upload*)",
+      "Bash(pio run * --target upload*)"
+    ],
+    "deny": [
+      "Bash(rm *)",
+      "Bash(git reset --hard*)",
+      "Bash(git clean *)"
     ]
   },
   "hooks": {
