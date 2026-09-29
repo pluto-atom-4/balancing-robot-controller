@@ -45,6 +45,12 @@ pio device monitor -e blink-uno
 pio test
 ```
 
+**Simulate tilt_servo in Wokwi** (no hardware; servo absent so firmware runs read-only)
+```bash
+make sim          # build tilt_servo-xiao_c3 + wokwi-cli
+```
+Config lives in `programs/tilt_servo/` (`wokwi.toml`, `diagram.json`), not the repo root. In CLion set Settings > Wokwi Simulator > config path to `programs/tilt_servo/wokwi.toml`. Run `pio run -e tilt_servo-xiao_c3` first so `.pio/build/tilt_servo-xiao_c3/firmware.{bin,elf}` exist.
+
 **Clean build**
 ```bash
 pio run -t clean

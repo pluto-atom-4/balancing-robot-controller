@@ -17,7 +17,7 @@ MONITOR_PORT := $(if $(PORT),--port $(PORT))
 ENVS := balance-xiao_s3 balance-esp32dev blink-uno blink-uno_r4_wifi blink-attiny85 blink-xiao_s3 blink-esp32dev tilt_servo-xiao_c3
 
 .DEFAULT_GOAL := help
-.PHONY: help build upload monitor clean test build-all clean-all envs graph ports port check build-% upload-% monitor-% clean-%
+.PHONY: help build upload monitor clean test build-all clean-all envs graph ports port check sim build-% upload-% monitor-% clean-%
 
 # Build the default (or specified) environment.
 build: ## Build ENV (default: balance-xiao_s3)
@@ -85,6 +85,16 @@ check: ## Check board connectivity for ENV (optional: PORT=/dev/ttyUSBX)
 	{ [ -r "$$p" ] && [ -w "$$p" ]; } || { echo "FAIL: no read/write access to $$p. Fix: sudo usermod -aG dialout $$USER, then re-login." >&2; exit 1; }; \
 	echo "OK: $$p present and accessible (ENV=$(ENV))"
 
+# Wokwi simulator for tilt_servo (wokwi-cli + token; or run from the CLion Wokwi plugin, config: programs/tilt_servo/wokwi.toml).
+WOKWI ?= wokwi-cli
+SIM_ENV := tilt_servo-xiao_c3
+SIM_DIR := programs/tilt_servo
+
+# Build tilt_servo and run it in Wokwi.
+sim: ## Build tilt_servo-xiao_c3 and run in Wokwi (needs wokwi-cli)
+	$(PIO) run -e $(SIM_ENV)
+	$(WOKWI) $(SIM_DIR)
+
 # Pattern rules: build-<env>, upload-<env>, monitor-<env>, clean-<env>
 # Example: make build-blink-uno, make upload-balance-xiao_s3 PORT=/dev/ttyUSB0
 build-%: ## Build specific env (e.g., build-blink-uno)
@@ -131,5 +141,6 @@ help: ## Display this help message
 	@echo "  - ATtiny85 has no hardware serial; monitor is unavailable."
 	@echo "  - ATtiny85 requires ISP programmer for upload."
 	@echo "  - tilt_servo supports only XIAO ESP32-C3 (tilt_servo-xiao_c3)."
+	@echo "  - 'make sim' builds tilt_servo and runs it in Wokwi (wokwi-cli, config in programs/tilt_servo)."
 	@echo "  - 'make ports'/'port'/'check' find USB serial boards; with several attached, pass PORT=..."
 	@echo "  - Use PORT=/dev/ttyUSBX to specify a custom serial port."
