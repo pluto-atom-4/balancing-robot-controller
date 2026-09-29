@@ -218,10 +218,10 @@ void loop() {
   if (torqueActive) {
     const float pitch = tilt::clampf(fused, -PITCH_LIMIT_DEG, PITCH_LIMIT_DEG);
     int32_t target = tilt::degToTicks(pitch, SERVO_MIN_TICKS, SERVO_MAX_TICKS);
-    // Deadband in ticks derived from DEADBAND_DEG (11.38 ticks/deg).
-    const int32_t deadTicks = static_cast<int32_t>(DEADBAND_DEG * (4096.0f / 360.0f));
+    // Deadband in ticks derived from DEADBAND_DEG (11.38 ticks/deg, rounded, not truncated).
+    const int32_t deadTicks = static_cast<int32_t>(lroundf(DEADBAND_DEG * (4096.0f / 360.0f)));
     int32_t diff = target - goalTicks;
-    if (diff > -deadTicks && diff < deadTicks) diff = 0;
+    if (diff <= deadTicks && diff >= -deadTicks) diff = 0;
     if (diff > MAX_TICKS_PER_LOOP) diff = MAX_TICKS_PER_LOOP;
     if (diff < -MAX_TICKS_PER_LOOP) diff = -MAX_TICKS_PER_LOOP;
     const int32_t next = goalTicks + diff;
