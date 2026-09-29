@@ -98,7 +98,9 @@ sim: ## Build SIM_ENV and run in Wokwi (default: tilt_servo-xiao_c3)
 
 # Build a specific env and run it in Wokwi, e.g. sim-blink-xiao_c3.
 sim-%: ## Build env and run in Wokwi (e.g., sim-blink-xiao_c3)
-	@test -f programs/$(firstword $(subst -, ,$*))/wokwi.toml || { echo "No Wokwi config: programs/$(firstword $(subst -, ,$*))/wokwi.toml" >&2; exit 1; }
+	@toml=programs/$(firstword $(subst -, ,$*))/wokwi.toml; \
+	test -f $$toml || { echo "No Wokwi config: $$toml" >&2; exit 1; }; \
+	grep -Fq "build/$*/" $$toml || { echo "$$toml is not configured for env $* (its firmware paths point at a different env)" >&2; exit 1; }
 	$(PIO) run -e $*
 	$(WOKWI) $(WOKWI_ARGS) programs/$(firstword $(subst -, ,$*))
 
