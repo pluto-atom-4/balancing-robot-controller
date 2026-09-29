@@ -6,11 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Multi-program, multi-board PlatformIO project. Main program: self-balancing robot firmware (`balance`) on ESP32-S3. Balance hardware: Seeed Studio XIAO S3 Sense MCU, built-in 6-axis IMU, two Feetech STS3032 bus servos controlled via serial protocol.
 
-Supported boards: Arduino Uno R3 ATmega328P (`uno`, atmelavr), Arduino UNO R4 WiFi (`uno_r4_wifi`, renesas-ra), Seeed XIAO ESP32S3 (`xiao_s3`), generic ESP32 dev (`esp32dev`), ATtiny85 (`attiny85`, atmelavr). More boards can be added.
+Supported boards: Arduino Uno R3 ATmega328P (`uno`, atmelavr), Arduino UNO R4 WiFi (`uno_r4_wifi`, renesas-ra), Seeed XIAO ESP32S3 (`xiao_s3`), generic ESP32 dev (`esp32dev`), ATtiny85 (`attiny85`, atmelavr), Seeed XIAO ESP32C3 (`xiao_c3`, espressif32). More boards can be added.
 
-Programs: `balance` (XIAO S3 / ESP32 only, not built for Uno R3, Uno R4 WiFi, or ATtiny85), `blink` (portable example, all boards).
+Programs: `balance` (XIAO S3 / ESP32 only, not built for Uno R3, Uno R4 WiFi, or ATtiny85), `blink` (portable example, all boards), `tilt_servo` (XIAO C3 only: MPU6050 tilt drives Dynamixel XL330 via FE-URT-1).
 
-Envs are named `<program>-<board>`: `balance-xiao_s3` (default), `balance-esp32dev`, `blink-uno`, `blink-uno_r4_wifi`, `blink-xiao_s3`, `blink-esp32dev`, `blink-attiny85`. Native test env: `test`.
+Envs are named `<program>-<board>`: `balance-xiao_s3` (default), `balance-esp32dev`, `blink-uno`, `blink-uno_r4_wifi`, `blink-xiao_s3`, `blink-esp32dev`, `blink-attiny85`, `tilt_servo-xiao_c3`. Native test env: `test`.
 
 ## Development Commands
 
