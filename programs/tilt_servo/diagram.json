@@ -10,11 +10,11 @@
   "connections": [
     [ "esp:6", "imu:SDA", "green", [] ],
     [ "esp:7", "imu:SCL", "purple", [] ],
-    [ "esp:3V3", "imu:VCC", "red", [] ],
+    [ "esp:3V3.1", "imu:VCC", "red", [] ],
     [ "esp:GND.1", "imu:GND", "black", [] ],
     [ "esp:6", "oled:SDA", "green", [] ],
     [ "esp:7", "oled:SCL", "purple", [] ],
-    [ "esp:3V3", "oled:VIN", "red", [] ],
+    [ "esp:3V3.1", "oled:VCC", "red", [] ],
     [ "esp:GND.1", "oled:GND", "black", [] ]
   ],
   "dependencies": {}
