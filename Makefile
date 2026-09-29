@@ -14,10 +14,10 @@ PORT ?=
 UPLOAD_PORT := $(if $(PORT),--upload-port $(PORT))
 MONITOR_PORT := $(if $(PORT),--port $(PORT))
 
-ENVS := balance-xiao_s3 balance-esp32dev blink-uno blink-uno_r4_wifi blink-attiny85 blink-xiao_s3 blink-esp32dev tilt_servo-xiao_c3
+ENVS := balance-xiao_s3 balance-esp32dev blink-uno blink-uno_r4_wifi blink-attiny85 blink-xiao_s3 blink-esp32dev blink-xiao_c3 tilt_servo-xiao_c3
 
 .DEFAULT_GOAL := help
-.PHONY: help build upload monitor clean test build-all clean-all envs graph ports port check build-% upload-% monitor-% clean-%
+.PHONY: help build upload monitor clean test build-all clean-all envs graph ports port check sim sim-% build-% upload-% monitor-% clean-%
 
 # Build the default (or specified) environment.
 build: ## Build ENV (default: balance-xiao_s3)
@@ -85,6 +85,25 @@ check: ## Check board connectivity for ENV (optional: PORT=/dev/ttyUSBX)
 	{ [ -r "$$p" ] && [ -w "$$p" ]; } || { echo "FAIL: no read/write access to $$p. Fix: sudo usermod -aG dialout $$USER, then re-login." >&2; exit 1; }; \
 	echo "OK: $$p present and accessible (ENV=$(ENV))"
 
+# Wokwi simulator (wokwi-cli + token; or run from the CLion Wokwi plugin).
+# Each program keeps its config in programs/<program>/ (wokwi.toml + diagram.json).
+# sim-<env> builds <env>, then runs wokwi-cli on programs/<program> (program = env name before the first '-').
+WOKWI ?= wokwi-cli
+WOKWI_ARGS ?=
+SIM_ENV ?= tilt_servo-xiao_c3
+
+# Build SIM_ENV (default: tilt_servo-xiao_c3) and run it in Wokwi.
+sim: ## Build SIM_ENV and run in Wokwi (default: tilt_servo-xiao_c3)
+	@$(MAKE) --no-print-directory sim-$(SIM_ENV)
+
+# Build a specific env and run it in Wokwi, e.g. sim-blink-xiao_c3.
+sim-%: ## Build env and run in Wokwi (e.g., sim-blink-xiao_c3)
+	@toml=programs/$(firstword $(subst -, ,$*))/wokwi.toml; \
+	test -f $$toml || { echo "No Wokwi config: $$toml" >&2; exit 1; }; \
+	grep -Fq "build/$*/" $$toml || { echo "$$toml is not configured for env $* (its firmware paths point at a different env)" >&2; exit 1; }
+	$(PIO) run -e $*
+	$(WOKWI) $(WOKWI_ARGS) programs/$(firstword $(subst -, ,$*))
+
 # Pattern rules: build-<env>, upload-<env>, monitor-<env>, clean-<env>
 # Example: make build-blink-uno, make upload-balance-xiao_s3 PORT=/dev/ttyUSB0
 build-%: ## Build specific env (e.g., build-blink-uno)
@@ -113,6 +132,7 @@ help: ## Display this help message
 	@echo "  make ports                              # List detected USB serial ports"
 	@echo "  make port                               # Print port to use for upload"
 	@echo "  make check ENV=tilt_servo-xiao_c3       # Check board connectivity"
+	@echo "  make sim-blink-xiao_c3                  # Build and run in Wokwi"
 	@echo "  make upload PORT=\$$(make -s port)       # Upload using detected port"
 	@echo ""
 	@echo "Targets:"
@@ -131,5 +151,6 @@ help: ## Display this help message
 	@echo "  - ATtiny85 has no hardware serial; monitor is unavailable."
 	@echo "  - ATtiny85 requires ISP programmer for upload."
 	@echo "  - tilt_servo supports only XIAO ESP32-C3 (tilt_servo-xiao_c3)."
+	@echo "  - 'make sim' / 'sim-<env>' build and run in Wokwi (wokwi-cli; config in programs/<program>/wokwi.toml; extra flags: WOKWI_ARGS=...)."
 	@echo "  - 'make ports'/'port'/'check' find USB serial boards; with several attached, pass PORT=..."
 	@echo "  - Use PORT=/dev/ttyUSBX to specify a custom serial port."

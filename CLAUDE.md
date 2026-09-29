@@ -10,7 +10,7 @@ Supported boards: Arduino Uno R3 ATmega328P (`uno`, atmelavr), Arduino UNO R4 Wi
 
 Programs: `balance` (XIAO S3 / ESP32 only, not built for Uno R3, Uno R4 WiFi, or ATtiny85), `blink` (portable example, all boards), `tilt_servo` (XIAO C3 only: MPU6050 tilt drives Dynamixel XL330 via FE-URT-1).
 
-Envs are named `<program>-<board>`: `balance-xiao_s3` (default), `balance-esp32dev`, `blink-uno`, `blink-uno_r4_wifi`, `blink-xiao_s3`, `blink-esp32dev`, `blink-attiny85`, `tilt_servo-xiao_c3`. Native test env: `test`.
+Envs are named `<program>-<board>`: `balance-xiao_s3` (default), `balance-esp32dev`, `blink-uno`, `blink-uno_r4_wifi`, `blink-xiao_s3`, `blink-esp32dev`, `blink-xiao_c3`, `blink-attiny85`, `tilt_servo-xiao_c3`. Native test env: `test`.
 
 ## Development Commands
 
@@ -44,6 +44,14 @@ pio device monitor -e blink-uno
 ```bash
 pio test
 ```
+
+**Simulate in Wokwi** (no hardware; needs `wokwi-cli` or the CLion Wokwi plugin)
+```bash
+make sim                       # tilt_servo-xiao_c3 (servo absent, firmware runs read-only)
+make sim-blink-xiao_c3         # blink control sketch, serial-only check of the sim setup
+make sim-<program>-<board>     # any env whose programs/<program>/ has wokwi.toml + diagram.json
+```
+Each program keeps its own config in `programs/<program>/` (`wokwi.toml`, `diagram.json`), paths relative to the toml. `make sim-<env>` builds the env, then runs `wokwi-cli programs/<program>`. In CLion set Settings > Wokwi Simulator > config path to that program's `wokwi.toml`. Pass extra CLI flags with `WOKWI_ARGS="--timeout 10000"`. The C3 firmware uses USB CDC serial, so each C3 `diagram.json` must set `"serialInterface": "USB_SERIAL_JTAG"` on the board part or no serial output shows. The CLI never exits on its own (firmware loops), so `sim` ends with the timeout exit code 42.
 
 **Clean build**
 ```bash
