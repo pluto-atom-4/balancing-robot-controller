@@ -51,7 +51,7 @@ make sim                       # tilt_servo-xiao_c3 (servo absent, firmware runs
 make sim-blink-xiao_c3         # blink control sketch, serial-only check of the sim setup
 make sim-<program>-<board>     # any env whose programs/<program>/ has wokwi.toml + diagram.json
 ```
-Each program keeps its own config in `programs/<program>/` (`wokwi.toml`, `diagram.json`), paths relative to the toml. `make sim-<env>` builds the env, then runs `wokwi-cli programs/<program>`. In CLion set Settings > Wokwi Simulator > config path to that program's `wokwi.toml`. Pass extra CLI flags with `WOKWI_ARGS="--timeout 10000"`.
+Each program keeps its own config in `programs/<program>/` (`wokwi.toml`, `diagram.json`), paths relative to the toml. `make sim-<env>` builds the env, then runs `wokwi-cli programs/<program>`. In CLion set Settings > Wokwi Simulator > config path to that program's `wokwi.toml`. Pass extra CLI flags with `WOKWI_ARGS="--timeout 10000"`. The C3 firmware uses USB CDC serial, so each C3 `diagram.json` must set `"serialInterface": "USB_SERIAL_JTAG"` on the board part or no serial output shows. The CLI never exits on its own (firmware loops), so `sim` ends with the timeout exit code 42.
 
 **Clean build**
 ```bash
