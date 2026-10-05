@@ -8,19 +8,19 @@
 # pio from PATH, else the user-level PlatformIO install, else plain `pio`.
 # Override with e.g. `make PIO=.venv/bin/pio build`.
 PIO ?= $(or $(shell command -v pio 2>/dev/null),$(wildcard $(HOME)/.platformio/penv/bin/pio),pio)
-ENV ?= balance-xiao_s3
+ENV ?= balance-xiao_c3
 PORT ?=
 
 UPLOAD_PORT := $(if $(PORT),--upload-port $(PORT))
 MONITOR_PORT := $(if $(PORT),--port $(PORT))
 
-ENVS := balance-xiao_s3 balance-esp32dev blink-uno blink-uno_r4_wifi blink-attiny85 blink-xiao_s3 blink-esp32dev blink-xiao_c3 tilt_servo-xiao_c3
+ENVS := balance-xiao_c3 balance-xiao_c3-pid balance-xiao_s3 balance-esp32dev blink-uno blink-uno_r4_wifi blink-attiny85 blink-xiao_s3 blink-esp32dev blink-xiao_c3 tilt_servo-xiao_c3
 
 .DEFAULT_GOAL := help
 .PHONY: help build upload monitor clean test build-all clean-all envs graph ports port check sim sim-% build-% upload-% monitor-% clean-%
 
 # Build the default (or specified) environment.
-build: ## Build ENV (default: balance-xiao_s3)
+build: ## Build ENV (default: balance-xiao_c3)
 	$(PIO) run -e $(ENV)
 
 # Upload firmware to device on default (or specified) environment.
