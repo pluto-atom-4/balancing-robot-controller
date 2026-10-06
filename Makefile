@@ -14,7 +14,7 @@ PORT ?=
 UPLOAD_PORT := $(if $(PORT),--upload-port $(PORT))
 MONITOR_PORT := $(if $(PORT),--port $(PORT))
 
-ENVS := balance-xiao_c3 balance-xiao_c3-pid balance-xiao_s3 balance-esp32dev blink-uno blink-uno_r4_wifi blink-attiny85 blink-xiao_s3 blink-esp32dev blink-xiao_c3 tilt_servo-xiao_c3
+ENVS := balance-xiao_c3 balance-xiao_c3-pid blink-uno blink-uno_r4_wifi blink-attiny85 blink-xiao_s3 blink-esp32dev blink-xiao_c3 tilt_servo-xiao_c3
 
 .DEFAULT_GOAL := help
 .PHONY: help build upload monitor clean test build-all clean-all envs graph ports port check sim sim-% build-% upload-% monitor-% clean-%
@@ -105,7 +105,7 @@ sim-%: ## Build env and run in Wokwi (e.g., sim-blink-xiao_c3)
 	$(WOKWI) $(WOKWI_ARGS) programs/$(firstword $(subst -, ,$*))
 
 # Pattern rules: build-<env>, upload-<env>, monitor-<env>, clean-<env>
-# Example: make build-blink-uno, make upload-balance-xiao_s3 PORT=/dev/ttyUSB0
+# Example: make build-blink-uno, make upload-balance-xiao_c3 PORT=/dev/ttyUSB0
 build-%: ## Build specific env (e.g., build-blink-uno)
 	$(PIO) run -e $*
 
