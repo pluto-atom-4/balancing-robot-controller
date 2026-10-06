@@ -1,10 +1,13 @@
 #include <Arduino.h>
 
 #if defined(BALANCE_CONTROLLER_LQR) || defined(BALANCE_CONTROLLER_PID)
-// Read-only IMU bring-up (#30). No motors, no control. Nothing here is validated on hardware.
+// IMU bring-up (#30) and wheel servo startup (#31). No control loop. Nothing here is validated on hardware.
 // The BALANCE_CONTROLLER_* #error guard belongs to #32 (legacy envs still build the stub below).
 
 #include "imu_mpu6050.h"
+#include "config.h"
+#include "dxl_wheels.h"
+#include <wheel_servo.h>
 
 // I2C SDA=D4 (GPIO6), SCL=D5 (GPIO7), as tilt_servo.
 static constexpr uint32_t kI2cHz = 400000;
@@ -19,6 +22,27 @@ static uint32_t lastPrintUs = 0;
 static uint32_t lastTryMs = 0;
 static hal::ImuSample sample = {};
 
+// Wheel servos (#31). Startup only: no control loop yet (#32). Servo family hidden behind IWheelServo.
+static DxlServo servoBus;
+static wheel_servo::WheelPair wheels(
+    servoBus,
+    wheel_servo::WheelPairConfig{kServoIdLeft, kServoIdRight, kLeftWheelSign, kRightWheelSign,
+                                 kMaxWheelRadS, kServoFailMax});
+
+// Torque-safe startup. On ANY failure WheelPair has already tried torque off on both ids and is latched;
+// the IMU bring-up keeps running read-only. Never retried in loop(): reset to retry.
+static void startWheels() {
+  if (wheels.begin(kServoBaud)) {
+    Serial.printf("[wheel] %s ready baud=%lu ids=%u/%u torque on, goal 0, NO control (UNVERIFIED on hardware)\n",
+                  servoBus.family(), static_cast<unsigned long>(kServoBaud),
+                  static_cast<unsigned>(kServoIdLeft), static_cast<unsigned>(kServoIdRight));
+  } else {
+    const bool unconfirmed = (wheels.fault() == wheel_servo::Fault::TorqueOffUnconfirmed);
+    Serial.printf("[wheel] startup FAILED fault=%d, torque off, read-only%s\n",
+                  static_cast<int>(wheels.fault()), unconfirmed ? " (TORQUE OFF NOT CONFIRMED)" : "");
+  }
+}
+
 static void tryCalibrate() {
   Serial.println("[imu] calibrating gyro bias, keep robot still");
   if (imu.calibrateGyroBias()) {
@@ -31,7 +55,8 @@ static void tryCalibrate() {
 void setup() {
   Serial.begin(115200);
   delay(500);
-  Serial.println("[bal] boot (read-only imu bring-up)");
+  Serial.println("[bal] boot (imu bring-up + wheel startup, no control)");
+  startWheels();  // servo torque-off is the first servo action, before IMU begin and the blocking calibration
   imuBegun = imu.begin(D4, D5, kI2cHz);
   Serial.println(imuBegun ? "[imu] ready" : "[imu] MPU6050 not found (check SDA=D4 SCL=D5, AD0)");
   if (imuBegun) tryCalibrate();
