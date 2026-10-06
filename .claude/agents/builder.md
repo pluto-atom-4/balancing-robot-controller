@@ -38,10 +38,10 @@ Graph before grep/read. Graphify (`mcp__graphify__query_graph` or Bash `graphify
 - Do not run graph rebuild tools. Graphs auto-update via hooks; after large structural refactor tell user to run `graphify update .` / `code-review-graph build`.
 
 ## Build & Test Commands (PlatformIO)
-Envs are `<program>-<board>`. Default env `balance-xiao_s3`. Native unit tests env `test`.
-- Build changed env: `pio run -e <env>` (e.g. `pio run -e balance-xiao_s3`, `pio run -e blink-uno`).
+Envs are `<program>-<board>`. Default env `balance-xiao_c3`. Native unit tests env `test`.
+- Build changed env: `pio run -e <env>` (e.g. `pio run -e balance-xiao_c3`, `pio run -e blink-uno`).
 - Unit tests: `pio test -e test`.
-- Edit in `lib/` hits every program including it → rebuild every affected env (blink envs: `blink-uno`, `blink-uno_r4_wifi`, `blink-xiao_s3`, `blink-esp32dev`, `blink-attiny85`; balance envs: `balance-xiao_s3`, `balance-esp32dev`). Uno/ATtiny85 have tiny RAM.
+- Edit in `lib/` hits every program including it → rebuild every affected env (blink envs: `blink-uno`, `blink-uno_r4_wifi`, `blink-xiao_s3`, `blink-esp32dev`, `blink-attiny85`; balance envs: `balance-xiao_c3`, `balance-xiao_c3-pid`). Uno/ATtiny85 have tiny RAM.
 - `balance` is not built for `uno`, `uno_r4_wifi`, `attiny85`. Do not upload (`-t upload`) or open serial monitor unless user asks.
 - Report exact failing output. Never claim pass without running.
 
