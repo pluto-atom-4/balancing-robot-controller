@@ -14,10 +14,13 @@
 #include <imu_math.h>
 #include <tilt.h>
 
-// Sign from tilt-frame pitch to HAL (Webots) pitch. Flips pitch_rad AND gyro_rad_s[1].
-// UNVERIFIED on hardware (HIL #34 / probe #44).
+// Sign from tilt-frame pitch to HAL (Webots) pitch. Applied to pitch_rad and,
+// together with kGyroPitchSign, to gyro_rad_s[1], so that gyro_rad_s[1] stays equal
+// to d(pitch_rad)/dt. UNVERIFIED on hardware (HIL #34 / probe #44).
 constexpr float kPitchSign = 1.0f;
-// Gyro Y sign inside the complementary filter (copy of tilt_servo GYRO_PITCH_SIGN).
+// Sign of the gyro Y rate relative to the accel-derived tilt pitch, used inside the
+// complementary filter (copy of tilt_servo GYRO_PITCH_SIGN). It is also part of the
+// gyro_rad_s[1] output sign: output = kPitchSign * kGyroPitchSign * (gyro_y - bias).
 // UNVERIFIED on hardware: if fused pitch moves opposite to accel pitch, flip.
 constexpr float kGyroPitchSign = 1.0f;
 // Calibration limits. UNVERIFIED guesses; refine from probe #44 data.
