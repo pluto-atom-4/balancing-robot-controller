@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Multi-program, multi-board PlatformIO project. Main program: self-balancing robot firmware (`balance`). This repo is the **C++ / PlatformIO firmware** side; the sibling Python repo [`pluto-atom-4/freecad-workspace`](https://github.com/pluto-atom-4/freecad-workspace) (project dir `inverted-pendulum-project`) holds the Webots simulation, the Python PID/LQR reference controllers and the Python HAL. Python there, C++ here.
 
-**Status: `programs/balance/main.cpp` is a balance control loop** (IMU -> PID/LQR -> wheel pair, with a latched safety supervisor), built from natively tested libs under umbrella issue [#22](https://github.com/pluto-atom-4/balancing-robot-controller/issues/22). **Nothing in it is validated on real hardware.** `balance`, `tilt_servo` and `blink` build in `platformio.ini`; `tilt_servo` and `blink` are not hardware-validated either. Still planned or open: `c3_probe` (#43) and `c3_facts` (#44) have no code, the hardware checklist (#34) is for a human, a BOOT-button kill is a TODO, the STS3032 driver is untested, and the ESP32-S3 is a future enhancement.
+**Status: `programs/balance/main.cpp` is a balance control loop** (IMU -> PID/LQR -> wheel pair, with a latched safety supervisor), built from natively tested libs under umbrella issue [#22](https://github.com/pluto-atom-4/balancing-robot-controller/issues/22). **Nothing in it is validated on real hardware.** `balance`, `tilt_servo` and `blink` build in `platformio.ini`; `tilt_servo` and `blink` are not hardware-validated either. Still planned or open: `c3_probe` (#43) builds but has never been run on hardware, `c3_facts` (#44) has no code, the hardware checklist (#34) is for a human, a BOOT-button kill is a TODO, the STS3032 driver is untested, and the ESP32-S3 is a future enhancement.
 
 ### Target hardware (balance)
 
@@ -19,9 +19,9 @@ The older text "balance on XIAO S3 Sense with built-in IMU and two STS3032 servo
 
 Supported boards: Arduino Uno R3 ATmega328P (`uno`, atmelavr), Arduino UNO R4 WiFi (`uno_r4_wifi`, renesas-ra), Seeed XIAO ESP32S3 (`xiao_s3`), generic ESP32 dev (`esp32dev`), ATtiny85 (`attiny85`, atmelavr), Seeed XIAO ESP32C3 (`xiao_c3`, espressif32). More boards can be added.
 
-Programs: `balance` (control loop; built only for the XIAO C3 envs, not for Uno R3, Uno R4 WiFi, ATtiny85, XIAO S3 or generic ESP32), `blink` (portable example, all boards), `tilt_servo` (XIAO C3 only: MPU6050 tilt drives Dynamixel XL330 via FE-URT-1).
+Programs: `balance` (control loop; built only for the XIAO C3 envs, not for Uno R3, Uno R4 WiFi, ATtiny85, XIAO S3 or generic ESP32), `blink` (portable example, all boards), `tilt_servo` (XIAO C3 only: MPU6050 tilt drives Dynamixel XL330 via FE-URT-1), `c3_probe` (diagnostic probe, XIAO C3 only).
 
-Envs, named `<program>-<board>`: `balance-xiao_c3` (default, LQR, `-D BALANCE_CONTROLLER_LQR`), `balance-xiao_c3-pid` (PID, `-D BALANCE_CONTROLLER_PID`), `blink-uno`, `blink-uno_r4_wifi`, `blink-xiao_s3`, `blink-esp32dev`, `blink-xiao_c3`, `blink-attiny85`, `tilt_servo-xiao_c3`. Native test env: `test` (`-std=gnu++17 -Wall -Wextra -ffp-contract=off`).
+Envs, named `<program>-<board>`: `balance-xiao_c3` (default, LQR, `-D BALANCE_CONTROLLER_LQR`), `balance-xiao_c3-pid` (PID, `-D BALANCE_CONTROLLER_PID`), `blink-uno`, `blink-uno_r4_wifi`, `blink-xiao_s3`, `blink-esp32dev`, `blink-xiao_c3`, `blink-attiny85`, `tilt_servo-xiao_c3`, `c3_probe-xiao_c3`. Native test env: `test` (`-std=gnu++17 -Wall -Wextra -ffp-contract=off`).
 
 `programs/balance/main.cpp` fails with `#error` if neither or both of the two controller flags are set. `make sim-balance-xiao_c3` works; `make sim-balance-xiao_c3-pid` is refused by design (see Wokwi).
 
@@ -108,15 +108,15 @@ Replaced the older `lib/servo`, `lib/imu`, `lib/controller` sketch. Headers use 
 - Every constant in `programs/balance/config.h` is a SIM-derived or guessed value marked UNVERIFIED / TODO(human) (servo ID 2 and wheel signs are unconfirmed; `kJitterBudgetUs` comes from freecad-workspace#345, not a C3 measurement). `kWheelWritesEnabled = false` is a compute-and-log dry run.
 - Do not weaken a kill path or the torque-off-first order without a design issue.
 
-### Diagnostic / probe programs (planned)
+### Diagnostic / probe programs
 
-Planned as permanent diagnostic tools, each with its own env (no code yet):
+Permanent diagnostic tools, each with its own env (`c3_probe` has code and builds, never run on hardware; `c3_facts` has no code yet):
 
-- `c3_probe` ([#43](https://github.com/pluto-atom-4/balancing-robot-controller/issues/43)) – times the pieces of a balance loop on the real C3 (IMU read, servo write, soft-float PID/LQR step cost, free heap, loop period).
+- `c3_probe` ([#43](https://github.com/pluto-atom-4/balancing-robot-controller/issues/43)) – times the pieces of a balance loop on the real C3 (IMU read, servo write, soft-float PID/LQR step cost, free heap, loop period). Code exists in `programs/c3_probe/main.cpp` (env `c3_probe-xiao_c3`, builds; never run on hardware, so no measurement exists). Servo torque stays OFF by default (confirmed by read-back) and only goal velocity 0 is ever written; `PLATFORMIO_BUILD_FLAGS="-D C3PROBE_TORQUE_ON"` is a human opt-in (wheels off the ground). Output: one `C3PROBE <metric> <value> <unit>` line per metric over USB CDC. Run: `pio run -e c3_probe-xiao_c3 -t upload`, `pio device monitor -e c3_probe-xiao_c3 | tee c3probe.log`, then post a RESULTS comment on #43. It prints `__riscv_flen` but does not settle the FPU claim.
 - `c3_facts` ([#44](https://github.com/pluto-atom-4/balancing-robot-controller/issues/44)) – static IMU facts (gyro bias in rad/s, resting pitch and its sign) and servo model, limits and a velocity-unit ramp. The ramp is capped around 20 % of the velocity limit, about 15 s, then torque off, with the servo off the robot and held down.
 - The native vector round-trip test ([#42](https://github.com/pluto-atom-4/balancing-robot-controller/issues/42)) exists: `test/test_vector_roundtrip` (`pio test -e test`, no hardware).
 
-`c3_probe` and `c3_facts` do not exist yet, so there is no run procedure to document.
+`c3_facts` does not exist yet, so there is no run procedure for it. The `c3_probe` run procedure is in its bullet above and has not been executed on hardware.
 
 ### File Structure (what exists today)
 
@@ -124,6 +124,7 @@ Planned as permanent diagnostic tools, each with its own env (no code yet):
   - `programs/balance/` – `main.cpp` (control loop), `config.h`, `imu_mpu6050.h`, `dxl_wheels.h`, `wokwi.toml` + `diagram.json`
   - `programs/blink/main.cpp` – Portable blink example
   - `programs/tilt_servo/main.cpp` – MPU6050 tilt drives Dynamixel XL330 (XIAO C3)
+  - `programs/c3_probe/main.cpp` – Diagnostic probe (#43), builds, never run on hardware
   - `programs/<name>/wokwi.toml` + `diagram.json` – Wokwi sim config (`blink`, `tilt_servo`, `balance`)
 - `include/` – Public headers
 - `lib/` – Shared libraries, usable by every program in `programs/` (not tied to one). Each lib is its own folder `lib/<name>/` with `<name>.h` (+ `<name>.cpp` if needed; optional `library.json`). Exist: `hal_iface`, `balance_core`, `loop_stats`, `dxl_units`, `imu_math`, `wheel_servo`, `balance_supervisor` (see Balance layout) and `lib/tilt/tilt.h` (header-only pitch math, used by `tilt_servo`).
@@ -139,7 +140,7 @@ Planned as permanent diagnostic tools, each with its own env (no code yet):
 - **I2C**: SDA=D4 (GPIO6), SCL=D5 (GPIO7), 400 kHz.
 - **Loop**: 50 Hz.
 
-`balance` (XIAO C3; all values in `programs/balance/config.h`, all UNVERIFIED on hardware): USB CDC 115200; servo bus `Serial1` GPIO20/21 at 57600 baud (a 2 Mbaud request is untested), servo IDs 1 and 2 (ID 2 unconfirmed), wheel signs +1 / -1 (unconfirmed), I2C 400 kHz, loop 50 Hz nominal (`kLoopUs` = 20000 us; the real C3 rate, jitter and soft-float cost are to be measured by the planned `c3_probe`), wheel speed cap 1.0 rad/s, tilt cutoff 0.5 rad, startup lean gate 0.1 rad held 25 ticks, stall threshold 100 ms. Do not assume the ~100 Hz mentioned in older notes.
+`balance` (XIAO C3; all values in `programs/balance/config.h`, all UNVERIFIED on hardware): USB CDC 115200; servo bus `Serial1` GPIO20/21 at 57600 baud (a 2 Mbaud request is untested), servo IDs 1 and 2 (ID 2 unconfirmed), wheel signs +1 / -1 (unconfirmed), I2C 400 kHz, loop 50 Hz nominal (`kLoopUs` = 20000 us; the real C3 rate, jitter and soft-float cost are to be measured by `c3_probe` (#43; built, not yet run)), wheel speed cap 1.0 rad/s, tilt cutoff 0.5 rad, startup lean gate 0.1 rad held 25 ticks, stall threshold 100 ms. Do not assume the ~100 Hz mentioned in older notes.
 
 The STS3032 is the planned servo for the final robot; its C3 driver does not exist and is untested. (The old S3-plan figures, position 0-4095, speed 1-2047, are unverified and not used.)
 
@@ -147,7 +148,7 @@ The STS3032 is the planned servo for the final robot; its C3 driver does not exi
 
 - `src_dir = programs`; each env selects its program via `build_src_filter`
 - `xiao_s3`: board `seeed_xiao_esp32s3` (espressif32), upload speed 921600 baud; blink only today, a future enhancement for `balance`
-- `xiao_c3`: board `seeed_xiao_esp32c3` (espressif32, RISC-V), upload speed 921600 baud, `ARDUINO_USB_MODE=1` + `ARDUINO_USB_CDC_ON_BOOT=1` (Serial over native USB). The target board for `balance`. The C3 reportedly has no hardware FPU, so float32 would be soft-float; this is **still not verified** and its cost is unmeasured (to be measured by the planned `c3_probe`, #43).
+- `xiao_c3`: board `seeed_xiao_esp32c3` (espressif32, RISC-V), upload speed 921600 baud, `ARDUINO_USB_MODE=1` + `ARDUINO_USB_CDC_ON_BOOT=1` (Serial over native USB). The target board for `balance`. The C3 reportedly has no hardware FPU, so float32 would be soft-float; this is **still not verified** and its cost is unmeasured (to be measured by `c3_probe`, #43 (built, not yet run)).
 - `esp32dev`: generic ESP32 dev board (espressif32)
 - ESP32 boards: `platformio.ini` passes `-std=gnu++17`, but the C3 firmware compile also carries `-std=gnu++11` from the platform, so firmware-included `lib/` headers must be valid C++11 (see the C++ standard rule under Balance layout). The native `test` env is `gnu++17`.
 - `uno`: Arduino Uno R3 ATmega328P (atmelavr), no C++17 flag; 16MHz AVR, 2KB RAM, keep sketches small
@@ -208,7 +209,7 @@ Unit tests in `test/`. Run with `pio test -e test` (native platform, no hardware
 
 - Stage F parent (Python repo): https://github.com/pluto-atom-4/freecad-workspace/issues/338
 - Parent of parent (Webots simulation): https://github.com/pluto-atom-4/freecad-workspace/issues/10
-- C++ umbrella (this repo): https://github.com/pluto-atom-4/balancing-robot-controller/issues/22, children #23–#35 (toolchain/envs, `hal_iface`, `balance_core`, `loop_stats`, `dxl_units`, gains import, parity test, MPU-6050 backend, Dynamixel wheel backend, control loop, Wokwi, hardware checklist, docs), #42 (vector round trip), #43 (`c3_probe`, no code yet), #44 (`c3_facts`, no code yet), #46 (retire legacy envs), #56 (C++11-valid `balance_stamp.h`)
+- C++ umbrella (this repo): https://github.com/pluto-atom-4/balancing-robot-controller/issues/22, children #23–#35 (toolchain/envs, `hal_iface`, `balance_core`, `loop_stats`, `dxl_units`, gains import, parity test, MPU-6050 backend, Dynamixel wheel backend, control loop, Wokwi, hardware checklist, docs), #42 (vector round trip), #43 (`c3_probe`, built, not yet run on hardware), #44 (`c3_facts`, no code yet), #46 (retire legacy envs), #56 (C++11-valid `balance_stamp.h`)
 - Python exporter: https://github.com/pluto-atom-4/freecad-workspace/issues/353
 
 **Verification status of these docs:** commands were checked statically against `platformio.ini` and `Makefile`. Commands actually run for the last docs update: `pio test -e test` (131 cases, all passed); `pio run -e balance-xiao_c3`, `pio run -e balance-xiao_c3-pid`, `pio run -e tilt_servo-xiao_c3` and `pio run -e blink-xiao_c3` (all succeeded); and a verbose build of `balance-xiao_c3` to confirm that both `-std=gnu++11` and `-std=gnu++17` appear in the C3 compile line. Not re-run for this update: `make sim-balance-xiao_c3` (last run for #33, PR #55) and the exporter `--check` (last run for #29, PR #51). Any command not listed was not run; nothing was run on real hardware.
