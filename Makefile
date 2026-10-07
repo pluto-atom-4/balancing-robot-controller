@@ -14,7 +14,7 @@ PORT ?=
 UPLOAD_PORT := $(if $(PORT),--upload-port $(PORT))
 MONITOR_PORT := $(if $(PORT),--port $(PORT))
 
-ENVS := balance-xiao_c3 balance-xiao_c3-pid blink-uno blink-uno_r4_wifi blink-attiny85 blink-xiao_s3 blink-esp32dev blink-xiao_c3 tilt_servo-xiao_c3 c3_probe-xiao_c3
+ENVS := balance-xiao_c3 balance-xiao_c3-pid blink-uno blink-uno_r4_wifi blink-attiny85 blink-xiao_s3 blink-esp32dev blink-xiao_c3 tilt_servo-xiao_c3 c3_probe-xiao_c3 c3_facts-xiao_c3
 
 .DEFAULT_GOAL := help
 .PHONY: help build upload monitor clean test build-all clean-all envs graph ports port check sim sim-% build-% upload-% monitor-% clean-%
