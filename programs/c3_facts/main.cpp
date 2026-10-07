@@ -373,6 +373,9 @@ static void offerRamp() {
     emitStr("ramp_skipped", "no_go_in_window", "-");
     return;
   }
+  // Terminals often send CRLF: the GO parser fires on the CR, so drop the leftover LF now, otherwise the
+  // countdown below would treat it as an abort key. Keys typed AFTER this point still abort.
+  facts_io::drainSerial();
   for (uint32_t s = kCountdownS; s > 0; --s) {
     char m[32];
     std::snprintf(m, sizeof(m), "ramp in %lu, any key aborts", static_cast<unsigned long>(s));
