@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "author": "Anonymous",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "board-esp32-c3-devkitm-1", "id": "esp32", "top": 0, "left": 0, "attrs": {} },
+    { "type": "wokwi-mpu6050", "id": "imu", "top": -120, "left": -150, "attrs": {} },
+    { "type": "wokwi-servo", "id": "servo1", "top": -130, "left": 120, "attrs": {} }
+  ],
+  "connections": [
+    [ "esp32:GND.1", "imu:GND", "black", [ "v0" ] ],
+    [ "esp32:3V3", "imu:VCC", "red", [ "v0" ] ],
+    [ "esp32:8", "imu:SDA", "blue", [ "v0" ] ],
+    [ "esp32:9", "imu:SCL", "yellow", [ "v0" ] ],
+
+    [ "esp32:GND.2", "servo1:GND", "black", [ "v0" ] ],
+    [ "esp32:5V", "servo1:V+", "red", [ "v0" ] ],
+    [ "esp32:10", "servo1:PWM", "orange", [ "v0" ] ]
+  ],
+  "dependencies": {}
+}
