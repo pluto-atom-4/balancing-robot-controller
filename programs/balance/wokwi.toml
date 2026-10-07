@@ -1,0 +1,4 @@
+[wokwi]
+version = 1
+firmware = '../../.pio/build/balance-xiao_c3/firmware.bin'
+elf = '../../.pio/build/balance-xiao_c3/firmware.elf'
