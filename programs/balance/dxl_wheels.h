@@ -1,8 +1,8 @@
 #pragma once
 
 // Dynamixel XL330 driver for wheel_servo::IWheelServo (#31). Arduino-bound.
-// Include ONLY from programs/balance/main.cpp inside the BALANCE_CONTROLLER_* branch
-// (legacy balance-xiao_s3 / balance-esp32dev have no Dynamixel2Arduino).
+// Include ONLY from programs/balance/main.cpp (built by the balance-xiao_c3* envs, which provide
+// Dynamixel2Arduino; no other env builds the balance program).
 // Proven on the C3 only: init order, protocol 2.0, DIR -1, raw dxl.write (tilt_servo).
 // Raw dxl.read and the register addresses below are UNVERIFIED on hardware.
 // Addresses: D2A actuator.cpp XL330 table; 44/104/128 also cited in lib/dxl_units/dxl_units.h
