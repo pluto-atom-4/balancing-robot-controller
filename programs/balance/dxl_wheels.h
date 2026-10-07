@@ -112,6 +112,10 @@ class DxlServo : public wheel_servo::IWheelServo {
   const char* family() const override { return "XL330"; }
   wheel_servo::Fault lastFault() const override { return fault_; }
 
+  // Read-only helpers for probe c3_facts (#44). NOT on IWheelServo (family-specific). false = comm failure.
+  bool readOperatingMode(uint8_t id, int32_t& mode) { return readReg(id, kDxlAddrOperatingMode, 1, mode); }
+  bool readTorqueEnable(uint8_t id, int32_t& on) { return readReg(id, kDxlAddrTorqueEnable, 1, on); }
+
  private:
   // Little-endian target (RISC-V C3, XL330): low bytes of the int32 hold 1/2/4 byte registers.
   bool readReg(uint8_t id, uint16_t addr, uint16_t len, int32_t& out) {

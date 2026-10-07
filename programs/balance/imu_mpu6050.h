@@ -100,6 +100,26 @@ class Mpu6050Imu {
   float biasRadS(int axis = 1) const { return (axis >= 0 && axis < 3) ? bias_[axis] : 0.0f; }
   float biasStdRadS(int axis = 1) const { return (axis >= 0 && axis < 3) ? std_[axis] : 0.0f; }
 
+  // Raw, un-biased sample for probes (c3_facts #44). accel m/s^2, gyro rad/s. false if not begun,
+  // I2C failure or non-finite data. Does not touch the filter or the calibration.
+  bool readRaw(float accel_ms2[3], float gyro_rad_s[3]) {
+    if (!began_) return false;
+    sensors_event_t a, g, t;
+    if (!mpu_.getEvent(&a, &g, &t)) return false;
+    if (!std::isfinite(a.acceleration.x) || !std::isfinite(a.acceleration.y) ||
+        !std::isfinite(a.acceleration.z) || !std::isfinite(g.gyro.x) ||
+        !std::isfinite(g.gyro.y) || !std::isfinite(g.gyro.z)) {
+      return false;
+    }
+    accel_ms2[0] = a.acceleration.x;
+    accel_ms2[1] = a.acceleration.y;
+    accel_ms2[2] = a.acceleration.z;
+    gyro_rad_s[0] = g.gyro.x;
+    gyro_rad_s[1] = g.gyro.y;
+    gyro_rad_s[2] = g.gyro.z;
+    return true;
+  }
+
  private:
   Adafruit_MPU6050 mpu_;
   tilt::ComplementaryFilter filt_;
