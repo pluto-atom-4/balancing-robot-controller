@@ -19,7 +19,7 @@ The older text "balance on XIAO S3 Sense with built-in IMU and two STS3032 servo
 
 Supported boards: Arduino Uno R3 ATmega328P (`uno`, atmelavr), Arduino UNO R4 WiFi (`uno_r4_wifi`, renesas-ra), Seeed XIAO ESP32S3 (`xiao_s3`), generic ESP32 dev (`esp32dev`), ATtiny85 (`attiny85`, atmelavr), Seeed XIAO ESP32C3 (`xiao_c3`, espressif32). More boards can be added.
 
-Programs: `balance` (control loop; built only for the XIAO C3 envs, not for Uno R3, Uno R4 WiFi, ATtiny85, XIAO S3 or generic ESP32), `blink` (portable example, all boards), `tilt_servo` (XIAO C3 only: MPU6050 tilt drives Dynamixel XL330 via FE-URT-1), `c3_probe` (diagnostic probe, XIAO C3 only), `c3_facts` (bench probe, XIAO C3 only).
+Programs: `balance` (control loop; built only for the XIAO C3 envs, not for Uno R3, Uno R4 WiFi, ATtiny85, XIAO S3 or generic ESP32), `blink` (portable example, all boards), `tilt_servo` (XIAO C3 only: MPU6050 tilt drives Dynamixel XL330 via FE-URT-1), `ttl_servo` (XIAO C3 only: MPU6050 gyro Z drives a hobby PWM servo; not hardware-validated), `c3_probe` (diagnostic probe, XIAO C3 only), `c3_facts` (bench probe, XIAO C3 only).
 
 Envs, named `<program>-<board>`: `balance-xiao_c3` (default, LQR, `-D BALANCE_CONTROLLER_LQR`), `balance-xiao_c3-pid` (PID, `-D BALANCE_CONTROLLER_PID`), `blink-uno`, `blink-uno_r4_wifi`, `blink-xiao_s3`, `blink-esp32dev`, `blink-xiao_c3`, `blink-attiny85`, `tilt_servo-xiao_c3`, `c3_probe-xiao_c3`, `c3_facts-xiao_c3`. Native test env: `test` (`-std=gnu++17 -Wall -Wextra -ffp-contract=off`).
 
