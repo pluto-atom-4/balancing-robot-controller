@@ -68,6 +68,15 @@ make sim-<program>-<board>     # any env whose programs/<program>/ has wokwi.tom
 ```
 Each program keeps its own config in `programs/<program>/` (`wokwi.toml`, `diagram.json`), paths relative to the toml. `make sim-<env>` builds the env, then runs `wokwi-cli programs/<program>`. In CLion set Settings > Wokwi Simulator > config path to that program's `wokwi.toml`. Pass extra CLI flags with `WOKWI_ARGS="--timeout 10000"`. The C3 firmware uses USB CDC serial, so each C3 `diagram.json` must set `"serialInterface": "USB_SERIAL_JTAG"` on the board part or no serial output shows. The CLI never exits on its own (firmware loops), so `sim` ends with the timeout exit code 42. `sim-<env>` refuses an env unless `build/<env>/` appears in that program's `wokwi.toml`, so `sim-balance-xiao_c3-pid` is refused (the balance `wokwi.toml` points only at `build/balance-xiao_c3/`). The balance diagram is an ESP32-C3 devkit plus a `wokwi-mpu6050`, no servo: expect `[bal] boot LQR ...`; the wheel startup fails and latches with no servo, which was observed in the simulator (`startup FAILED`, `LATCHED cause=startup`, `gave up: REMOVE SERVO POWER`), and the IMU is still read and printed with state Latched.
 
+**Per-program entries** (each `programs/<name>/main.cpp` has its own targets; `BOARD=xiao_c3` default, `CONTROLLER=pid` for balance PID)
+```bash
+make balance                 # also: tilt_servo, blink, c3_probe, ttl_servo
+make balance-upload PORT=/dev/ttyACM0
+make tilt_servo-monitor
+make balance-sim             # needs programs/<name>/wokwi.toml
+make programs                # list program -> env mapping
+```
+
 **Clean build**
 ```bash
 pio run -t clean
