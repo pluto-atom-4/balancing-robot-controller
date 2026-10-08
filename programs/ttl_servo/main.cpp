@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <Wire.h>
-#include "MPU6050.h"
+#include <Adafruit_MPU6050.h>
+#include <Adafruit_Sensor.h>
 #include <ESP32Servo.h>
 
 // Pin Definitions for ESP32-C3
@@ -8,21 +9,19 @@
 #define I2C_SCL 9
 #define SERVO_PIN 10
 
-MPU6050 mpu;
+Adafruit_MPU6050 mpu;
 Servo myServo;
 
 void setup() {
     Serial.begin(115200);
-    while (!Serial);
+    delay(1000); // no blocking wait: boots without a USB host
 
     // Initialize I2C with ESP32-C3 specific pins
     Wire.begin(I2C_SDA, I2C_SCL);
 
     // Initialize MPU6050
     Serial.println("Initializing MPU6050...");
-    mpu.initialize();
-
-    if (!mpu.testConnection()) {
+    if (!mpu.begin()) {
         Serial.println("MPU6050 connection failed!");
         while (1);
     }
@@ -38,13 +37,12 @@ void setup() {
 }
 
 void loop() {
-    // Read raw gyroscope values
-    int16_t gx, gy, gz;
-    mpu.getRotation(&gx, &gy, &gz);
+    // Read gyroscope
+    sensors_event_t accel, gyro, temp;
+    mpu.getEvent(&accel, &gyro, &temp);
 
-    // Convert raw Z-axis gyro data to degrees per second (°/s)
-    // MPU6050 default full-scale range is +/- 250 deg/s (sensitivity: 131 LSB per deg/s)
-    float rotSpeedZ = (float)gz / 131.0;
+    // Adafruit driver reports gyro in rad/s; convert Z axis to degrees per second
+    float rotSpeedZ = gyro.gyro.z * RAD_TO_DEG;
 
     Serial.print("Rotation Speed Z: ");
     Serial.print(rotSpeedZ);
