@@ -3,7 +3,7 @@
 #
 # NOTE: Arduino Uno (uno), Uno R4 WiFi (uno_r4_wifi) and ATtiny85 (attiny85) support only the 'blink' program.
 # ATtiny85 has no hardware serial, so monitor is unavailable; uses ISP programmer.
-# NOTE: tilt_servo supports only XIAO ESP32-C3 (xiao_c3); it is not built for other boards.
+# NOTE: tilt_servo and ttl_servo support only XIAO ESP32-C3 (xiao_c3); they are not built for other boards.
 
 # pio from PATH, else the user-level PlatformIO install, else plain `pio`.
 # Override with e.g. `make PIO=.venv/bin/pio build`.
@@ -14,10 +14,41 @@ PORT ?=
 UPLOAD_PORT := $(if $(PORT),--upload-port $(PORT))
 MONITOR_PORT := $(if $(PORT),--port $(PORT))
 
-ENVS := balance-xiao_c3 balance-xiao_c3-pid blink-uno blink-uno_r4_wifi blink-attiny85 blink-xiao_s3 blink-esp32dev blink-xiao_c3 tilt_servo-xiao_c3 c3_probe-xiao_c3 c3_facts-xiao_c3
+ENVS := balance-xiao_c3 balance-xiao_c3-pid blink-uno blink-uno_r4_wifi blink-attiny85 blink-xiao_s3 blink-esp32dev blink-xiao_c3 tilt_servo-xiao_c3 ttl_servo-xiao_c3 c3_probe-xiao_c3 c3_facts-xiao_c3
+
+# Per-program entries: each programs/<name>/main.cpp gets its own target set.
+# BOARD picks the board suffix; CONTROLLER=pid picks the PID balance env.
+PROGRAMS := balance tilt_servo blink c3_probe ttl_servo
+BOARD ?= xiao_c3
+CONTROLLER ?= lqr
+VALID_ENVS := $(ENVS)
+
+# prog_env(program): <program>-<BOARD>, or the PID env for balance.
+prog_env = $(if $(and $(filter balance,$(1)),$(filter pid,$(CONTROLLER))),balance-$(BOARD)-pid,$(1)-$(BOARD))
+
+define PROGRAM_RULES
+$(1)-upload: ## Upload $(1) (BOARD=xiao_c3, optional PORT=)
+$(1)-monitor: ## Monitor $(1) serial output
+$(1)-sim: ## Build $(1) and run in Wokwi
+$(1): ## Build $(1) (BOARD=xiao_c3, CONTROLLER=lqr|pid for balance)
+	@$$(call require_env,$(1))
+	$$(PIO) run -e $(call prog_env,$(1))
+$(1)-upload:
+	@$$(call require_env,$(1))
+	$$(PIO) run -e $(call prog_env,$(1)) -t upload $$(UPLOAD_PORT)
+$(1)-monitor:
+	@$$(call require_env,$(1))
+	$$(PIO) device monitor -e $(call prog_env,$(1)) $$(MONITOR_PORT)
+$(1)-sim:
+	@$$(call require_env,$(1))
+	@$$(MAKE) --no-print-directory sim-$(call prog_env,$(1))
+endef
+
+# Fail early when <program>/<BOARD> is not a defined env.
+require_env = $(if $(filter $(call prog_env,$(1)),$(VALID_ENVS)),true,echo "No env $(call prog_env,$(1)) for program $(1) on BOARD=$(BOARD). Run 'make envs'." >&2; exit 1)
 
 .DEFAULT_GOAL := help
-.PHONY: help build upload monitor clean test build-all clean-all envs graph ports port check sim sim-% build-% upload-% monitor-% clean-%
+.PHONY: help programs $(PROGRAMS) $(addsuffix -upload,$(PROGRAMS)) $(addsuffix -monitor,$(PROGRAMS)) $(addsuffix -sim,$(PROGRAMS)) build upload monitor clean test build-all clean-all envs graph ports port check sim sim-% build-% upload-% monitor-% clean-%
 
 # Build the default (or specified) environment.
 build: ## Build ENV (default: balance-xiao_c3)
@@ -85,6 +116,13 @@ check: ## Check board connectivity for ENV (optional: PORT=/dev/ttyUSBX)
 	{ [ -r "$$p" ] && [ -w "$$p" ]; } || { echo "FAIL: no read/write access to $$p. Fix: sudo usermod -aG dialout $$USER, then re-login." >&2; exit 1; }; \
 	echo "OK: $$p present and accessible (ENV=$(ENV))"
 
+$(foreach p,$(PROGRAMS),$(eval $(call PROGRAM_RULES,$(p))))
+
+# List programs.
+programs: ## List per-program make entries
+	@echo "Programs (make <program>[-upload|-monitor|-sim], BOARD=$(BOARD)):"; \
+	$(foreach p,$(PROGRAMS),echo "  $(p) -> $(call prog_env,$(p))";)
+
 # Wokwi simulator (wokwi-cli + token; or run from the CLion Wokwi plugin).
 # Each program keeps its config in programs/<program>/ (wokwi.toml + diagram.json).
 # sim-<env> builds <env>, then runs wokwi-cli on programs/<program> (program = env name before the first '-').
@@ -129,6 +167,8 @@ help: ## Display this help message
 	@echo "  make upload ENV=blink-uno PORT=/dev/ttyUSB0 # Upload to specific port"
 	@echo "  make upload-blink-uno                   # Upload via pattern rule"
 	@echo "  make monitor-blink-uno                  # Monitor via pattern rule"
+	@echo "  make balance                            # Build balance (BOARD=xiao_c3; CONTROLLER=pid for PID)"
+	@echo "  make tilt_servo-upload PORT=/dev/ttyACM0 # Per-program upload"
 	@echo "  make ports                              # List detected USB serial ports"
 	@echo "  make port                               # Print port to use for upload"
 	@echo "  make check ENV=tilt_servo-xiao_c3       # Check board connectivity"
