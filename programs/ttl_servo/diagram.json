@@ -11,7 +11,7 @@
       "attrs": { "serialInterface": "USB_SERIAL_JTAG" }
     },
     { "type": "wokwi-mpu6050", "id": "imu", "top": -120, "left": -150, "attrs": {} },
-    { "type": "wokwi-servo", "id": "servo1", "top": -130, "left": 120, "attrs": {} }
+    { "type": "wokwi-servo", "id": "servo1", "top": -130, "left": 120, "attrs": { "horn": "double" } }
   ],
   "connections": [
     [ "esp32:GND.1", "imu:GND", "black", [ "v0" ] ],

@@ -114,6 +114,56 @@ class SegwaySim {
   }
 };
 
+// ---- Horn driver (Wokwi visual mode) -------------------------------------
+// wokwi-servo is positional (0..180 deg); it cannot spin on pulse width. To
+// show wheel speed, the wheel velocity is integrated into a horn angle that
+// wraps at 180 deg. With horn="double" in diagram.json the horn looks the same
+// at 0 and 180, so the wrap is (assumed to be) visually seamless. This puts a
+// POSITION on the servo pin: never use it with a real continuous-rotation
+// servo (build with -D TTL_SERVO_SPEED_CMD for that).
+
+constexpr float kRadToDeg = 57.29578f;
+
+class HornDriver {
+ public:
+  float angle_deg;   // [0, 180)
+  float direction;   // +1: forward wheel = increasing angle, -1: reverse
+
+  explicit HornDriver(float dir = 1.0f) : angle_deg(0.0f), direction(dir) {}
+
+  void reset(float angle = 0.0f) { angle_deg = wrap(angle); }
+
+  // Physical 1:1: horn deg/s = wheel rad/s * 57.2958. NaN/inf wheel and
+  // dt <= 0 are no-ops; dt is clamped to 0.1 s like SegwaySim::step.
+  void advance(float wheel_vel_rad_s, float dt_s) {
+    if (!(dt_s > 0.0f)) return;
+    if (!(fabsf(wheel_vel_rad_s) <= 1.0e6f)) return;  // NaN or inf
+    if (dt_s > 0.1f) dt_s = 0.1f;
+    angle_deg = wrap(angle_deg + direction * wheel_vel_rad_s * kRadToDeg * dt_s);
+  }
+
+  static float wrap(float a) {
+    if (!(fabsf(a) <= 1.0e6f)) return 0.0f;
+    a = fmodf(a, 180.0f);
+    if (a < 0.0f) a += 180.0f;
+    if (a >= 180.0f) a = 0.0f;  // a + 180 can round up to exactly 180
+    return a;
+  }
+};
+
+// Horn angle (0..180) -> pulse width in microseconds, rounded and clamped.
+inline int angle_to_us(float angle_deg, int min_us, int max_us) {
+  float a = clampf(angle_deg, 0.0f, 180.0f);
+  float us = (float)min_us + (a / 180.0f) * (float)(max_us - min_us);
+  return (int)floorf(us + 0.5f);
+}
+
+inline float us_to_angle(int us, int min_us, int max_us) {
+  if (max_us <= min_us) return 0.0f;
+  return clampf(((float)(us - min_us) / (float)(max_us - min_us)) * 180.0f,
+                0.0f, 180.0f);
+}
+
 }  // namespace segway
 
 #endif  // SEGWAY_SIM_H
