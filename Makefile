@@ -3,7 +3,7 @@
 #
 # NOTE: Arduino Uno (uno), Uno R4 WiFi (uno_r4_wifi) and ATtiny85 (attiny85) support only the 'blink' program.
 # ATtiny85 has no hardware serial, so monitor is unavailable; uses ISP programmer.
-# NOTE: tilt_servo supports only XIAO ESP32-C3 (xiao_c3); it is not built for other boards.
+# NOTE: tilt_servo and ttl_servo support only XIAO ESP32-C3 (xiao_c3); they are not built for other boards.
 
 # pio from PATH, else the user-level PlatformIO install, else plain `pio`.
 # Override with e.g. `make PIO=.venv/bin/pio build`.
@@ -14,17 +14,17 @@ PORT ?=
 UPLOAD_PORT := $(if $(PORT),--upload-port $(PORT))
 MONITOR_PORT := $(if $(PORT),--port $(PORT))
 
-ENVS := balance-xiao_c3 balance-xiao_c3-pid blink-uno blink-uno_r4_wifi blink-attiny85 blink-xiao_s3 blink-esp32dev blink-xiao_c3 tilt_servo-xiao_c3 c3_probe-xiao_c3 c3_facts-xiao_c3
+ENVS := balance-xiao_c3 balance-xiao_c3-pid blink-uno blink-uno_r4_wifi blink-attiny85 blink-xiao_s3 blink-esp32dev blink-xiao_c3 tilt_servo-xiao_c3 ttl_servo-xiao_c3 c3_probe-xiao_c3 c3_facts-xiao_c3
 
 # Per-program entries: each programs/<name>/main.cpp gets its own target set.
 # BOARD picks the board suffix; CONTROLLER=pid picks the PID balance env.
 PROGRAMS := balance tilt_servo blink c3_probe ttl_servo
 BOARD ?= xiao_c3
 CONTROLLER ?= lqr
-VALID_ENVS := $(ENVS) ttl_servo_xiao_c3
+VALID_ENVS := $(ENVS)
 
-# prog_env(program): ttl_servo's env uses an underscore before the board.
-prog_env = $(if $(filter ttl_servo,$(1)),ttl_servo_$(BOARD),$(if $(and $(filter balance,$(1)),$(filter pid,$(CONTROLLER))),balance-$(BOARD)-pid,$(1)-$(BOARD)))
+# prog_env(program): <program>-<BOARD>, or the PID env for balance.
+prog_env = $(if $(and $(filter balance,$(1)),$(filter pid,$(CONTROLLER))),balance-$(BOARD)-pid,$(1)-$(BOARD))
 
 define PROGRAM_RULES
 $(1)-upload: ## Upload $(1) (BOARD=xiao_c3, optional PORT=)
