@@ -1,100 +1,119 @@
 #ifndef SEGWAY_SIM_H
 #define SEGWAY_SIM_H
 
-#include <cmath>
-
-// Segway-like inverted pendulum simulator (C++11-valid, no Arduino deps).
-// Pure physics: theta_ddot = a*sin(theta) - b*wheel_vel + disturbance
-// Integrated with semi-implicit Euler: first update velocity, then angle.
+// Segway-like inverted pendulum + PD loop, for the Wokwi ttl_servo program.
+// Pure C++11, no Arduino deps, natively tested. SIM-ONLY: every constant is
+// an UNVERIFIED guess, nothing here is validated on hardware.
 //
-// All units in SI: theta in rad, theta_dot in rad/s, wheel_vel in rad/s,
-// times in seconds (dt must be positive).
+// Plant (SI units, theta = 0 upright, positive theta = leaning forward):
+//   theta_ddot = a*sin(theta) - b*wheel_vel + d
+// The wheel velocity (after a first-order motor lag) drives the base toward
+// the lean, so positive wheel_vel reduces positive theta. Linearised, the PD
+// u = Kp*theta + Kd*theta_dot is stable iff (Routh, tau*s^3 + (1)*s^2 +
+// (b*Kd - a*tau)*s + (b*Kp - a)): b*Kp > a, b*Kd > a*tau and Kd > tau*Kp.
+// Saturation (wheel_max), servo quantisation and dt jitter are not covered.
+// Params must be positive; the helpers below guard the divisions anyway.
+// Servo: continuous rotation, 90 deg = stop, above = forward, below = reverse.
+
+#include <math.h>
+
+namespace segway {
+
+struct Params {
+  float gravity_a;          // 1/s^2, unstable pole strength
+  float drive_b;            // (rad/s^2) per (rad/s) of wheel velocity
+  float motor_tau_s;        // wheel velocity first-order lag
+  float fall_rad;           // |theta| above this = fallen
+  float wheel_max_rad_s;    // wheel speed at servo 0 / 180 deg
+  float kp;                 // wheel rad/s per rad of tilt
+  float kd;                 // wheel rad/s per rad/s of tilt rate
+  float dist_gain;          // rad/s^2 of disturbance per rad/s of gyro Z
+  float gyro_clamp_rad_s;   // |gyro Z| limit
+  float gyro_deadband_rad_s;
+
+  Params()
+      : gravity_a(5.0f), drive_b(2.0f), motor_tau_s(0.1f), fall_rad(0.785f),
+        wheel_max_rad_s(3.0f), kp(8.0f), kd(3.0f), dist_gain(1.5f),
+        gyro_clamp_rad_s(2.0f), gyro_deadband_rad_s(0.02f) {}
+};
+
+inline float clampf(float x, float lo, float hi) {
+  if (x != x) return 0.0f;  // NaN -> 0
+  return x < lo ? lo : (x > hi ? hi : x);
+}
+
+// Gyro Z (rad/s) -> disturbance torque (rad/s^2): deadband, clamp, gain.
+inline float disturbance_from_gyro(const Params& p, float gyro_z_rad_s) {
+  float g = clampf(gyro_z_rad_s, -p.gyro_clamp_rad_s, p.gyro_clamp_rad_s);
+  if (fabsf(g) < p.gyro_deadband_rad_s) g = 0.0f;
+  return g * p.dist_gain;
+}
+
+// PD wheel velocity command (rad/s); positive when leaning forward.
+inline float pd_wheel_cmd(const Params& p, float theta, float theta_dot) {
+  return clampf(p.kp * theta + p.kd * theta_dot, -p.wheel_max_rad_s,
+                p.wheel_max_rad_s);
+}
+
+// Wheel command (rad/s) -> whole-degree servo angle, 90 = stop.
+inline int wheel_to_servo_deg(const Params& p, float wheel_rad_s) {
+  if (!(p.wheel_max_rad_s > 0.0f)) return 90;
+  float w = clampf(wheel_rad_s, -p.wheel_max_rad_s, p.wheel_max_rad_s);
+  float deg = 90.0f + (w / p.wheel_max_rad_s) * 90.0f;
+  return (int)floorf(deg + 0.5f);
+}
+
+inline float servo_deg_to_wheel(const Params& p, int servo_deg) {
+  int d = servo_deg < 0 ? 0 : (servo_deg > 180 ? 180 : servo_deg);
+  return ((float)(d - 90) / 90.0f) * p.wheel_max_rad_s;
+}
 
 class SegwaySim {
  public:
-  // Configuration (sim-only, unvalidated guesses).
-  // Gravity moment coefficient: (m*g*L) / (I_frame + I_wheel*gear_ratio^2)
-  // Roughly: larger L (taller) or smaller I (lighter) -> more unstable.
-  static constexpr float kGravityCoeff = 5.0f;  // Restoring gravity torque coeff.
+  Params params;
+  float theta_rad;
+  float theta_dot_rad_s;
+  float wheel_vel_rad_s;
+  bool has_fallen;
 
-  // Motor coupling: how much wheel velocity pushes back on the frame.
-  // theta_ddot = a*sin(theta) - b*wheel_vel + disturbance
-  // Larger b = wheels dampen the frame more.
-  static constexpr float kWheelCoupling = 0.8f;
+  explicit SegwaySim(float init_theta_rad = 0.262f)
+      : params(), theta_rad(init_theta_rad), theta_dot_rad_s(0.0f),
+        wheel_vel_rad_s(0.0f), has_fallen(false) {}
 
-  // Motor first-order lag: wheel_vel' = (target_vel - wheel_vel) / tau_motor.
-  // tau_motor in seconds. Smaller tau -> snappier response.
-  static constexpr float kMotorTauSec = 0.1f;  // Motor time constant (100 ms)
-
-  // Fall detection: reset if |theta| > this limit (rad).
-  static constexpr float kFallThresholdRad = 0.785f;  // ~45 degrees
-
-  // Disturbance coupling: scales accel/gyro input to torque (rad/s^2).
-  static constexpr float kDisturbanceGain = 0.5f;  // Smaller = less sensitive to MPU noise.
-
-  // State
-  float theta_rad;       // Body angle (0 = upright, radians)
-  float theta_dot_rad_s; // Body angular velocity (rad/s)
-  float wheel_vel_rad_s; // Wheel velocity (rad/s, after motor lag)
-  bool has_fallen;       // True if |theta| exceeded kFallThresholdRad
-
-  // Constructor: start tilted.
-  SegwaySim(float init_theta_rad = 0.262f)
-      : theta_rad(init_theta_rad), theta_dot_rad_s(0.0f), wheel_vel_rad_s(0.0f),
-        has_fallen(false) {}
-
-  // Reset to initial state.
-  void reset(float init_theta_rad = 0.262f) {
+  void reset(float init_theta_rad) {
     theta_rad = init_theta_rad;
     theta_dot_rad_s = 0.0f;
     wheel_vel_rad_s = 0.0f;
     has_fallen = false;
   }
 
-  // Step the simulation.
-  // wheel_target_rad_s: target wheel velocity (rad/s), from servo command.
-  // disturbance_rad_s2: external torque disturbance from IMU (rad/s^2).
-  // dt_sec: time step (seconds). Must be > 0.
-  //
-  // Physics:
-  //   1. Motor lag: wheel_vel' = (target_vel - wheel_vel) / tau
-  //   2. Pendulum: theta_ddot = a*sin(theta) - b*wheel_vel + disturbance
-  //   3. Semi-implicit Euler:
-  //      theta_dot_new = theta_dot + theta_ddot * dt
-  //      theta_new = theta + theta_dot_new * dt
-  void step(float wheel_target_rad_s, float disturbance_rad_s2, float dt_sec) {
-    if (dt_sec <= 0.0f || has_fallen) return;
-
-    // Clamp dt to 1 second (sanity check for very large jitter).
-    if (dt_sec > 1.0f) dt_sec = 1.0f;
-
-    // Motor lag: wheel velocity approaches target.
-    // wheel_vel' = (target_vel - wheel_vel) / tau_motor
-    if (kMotorTauSec > 0.0f) {
-      float motor_rate = (wheel_target_rad_s - wheel_vel_rad_s) / kMotorTauSec;
-      wheel_vel_rad_s += motor_rate * dt_sec;
-    } else {
-      wheel_vel_rad_s = wheel_target_rad_s;  // Infinite response if tau = 0.
-    }
-
-    // Pendulum physics: theta_ddot = a*sin(theta) - b*wheel_vel + disturbance.
-    // Interpretation: gravity tries to tip over (positive feedback).
-    // Wheel velocity provides damping (negative feedback, proportional to speed).
-    // Disturbance adds external torque.
-    float sin_theta = std::sin(theta_rad);
-    float gravity_torque = kGravityCoeff * sin_theta;
-    float damping = -kWheelCoupling * wheel_vel_rad_s;
-    float theta_ddot = gravity_torque + damping + disturbance_rad_s2;
-
-    // Semi-implicit Euler integration.
-    theta_dot_rad_s += theta_ddot * dt_sec;
-    theta_rad += theta_dot_rad_s * dt_sec;
-
-    // Check fall condition.
-    if (std::fabs(theta_rad) > kFallThresholdRad) {
+  // Physics only. wheel_cmd_rad_s is what the servo was told to do.
+  // dt <= 0, NaN, or an already-fallen sim is a no-op; dt is clamped to 0.1 s.
+  void step(float wheel_cmd_rad_s, float disturbance_rad_s2, float dt_s) {
+    if (!(dt_s > 0.0f) || has_fallen) return;
+    if (dt_s > 0.1f) dt_s = 0.1f;
+    float alpha = params.motor_tau_s > 0.0f ? dt_s / params.motor_tau_s : 1.0f;
+    if (alpha > 1.0f) alpha = 1.0f;
+    wheel_vel_rad_s += (wheel_cmd_rad_s - wheel_vel_rad_s) * alpha;
+    float ddot = params.gravity_a * sinf(theta_rad) -
+                 params.drive_b * wheel_vel_rad_s + disturbance_rad_s2;
+    theta_dot_rad_s += ddot * dt_s;  // semi-implicit Euler
+    theta_rad += theta_dot_rad_s * dt_s;
+    if (fabsf(theta_rad) > params.fall_rad || theta_rad != theta_rad)
       has_fallen = true;
-    }
+  }
+
+  // One firmware tick: PD -> servo degrees -> (rounded) wheel command ->
+  // physics. Returns the servo angle to write. Shared by firmware and tests.
+  int tick(float gyro_z_rad_s, float dt_s) {
+    int servo = wheel_to_servo_deg(
+        params, pd_wheel_cmd(params, theta_rad, theta_dot_rad_s));
+    step(servo_deg_to_wheel(params, servo),
+         disturbance_from_gyro(params, gyro_z_rad_s), dt_s);
+    return servo;
   }
 };
+
+}  // namespace segway
 
 #endif  // SEGWAY_SIM_H
