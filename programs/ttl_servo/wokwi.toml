@@ -1,4 +1,4 @@
 [wokwi]
 version = 1
-firmware = '../../.pio/build/ttl_servo/firmware.bin'
-elf = '../../.pio/build/ttl_servo/firmware.elf'
+firmware = '../../.pio/build/ttl_servo-xiao_c3/firmware.bin'
+elf = '../../.pio/build/ttl_servo-xiao_c3/firmware.elf'
