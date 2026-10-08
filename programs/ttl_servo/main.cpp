@@ -4,6 +4,7 @@
 #include <Adafruit_Sensor.h>
 #include <ESP32Servo.h>
 #include <math.h>
+#include <segway_sim.h>
 
 // ===== Configuration =====
 static constexpr uint8_t  SERVO_PIN = 10;              // GPIO10, matches diagram.json wiring
@@ -15,51 +16,50 @@ static constexpr int16_t  SERVO_MAX_US = 2400;
 static constexpr uint16_t SERVO_FREQ_HZ = 50;
 static constexpr uint32_t LOOP_PERIOD_MS = 20;         // 50 Hz main loop
 static constexpr uint32_t PRINT_PERIOD_MS = 100;       // 10 Hz serial output
-static constexpr float    FILTER_TAU_MS = 100.0f;      // Low-pass filter time constant (ms)
-static constexpr float    DEADBAND_DPS = 2.0f;         // Deadband around 0 deg/s
-static constexpr float    MAX_SLEW_DEG_PER_TICK = 6.0f; // Max servo step per tick (deg)
-static constexpr float    GYRO_FULL_SCALE_DPS = 250.0f; // ±250 deg/s range
-static constexpr float    CENTER_ANGLE_DEG = 90.0f;    // Servo neutral (0 deg/s maps here)
+
+// Segway simulation configuration (sim-only, unvalidated guesses).
+static constexpr float    SIM_INIT_THETA_RAD = 0.262f; // Start at 15 degrees
+static constexpr float    SIM_Kp = 2.0f;               // PD proportional gain (rad -> rad/s)
+static constexpr float    SIM_Kd = 0.5f;               // PD derivative gain
+static constexpr float    SIM_SERVO_CENTER = 90.0f;    // Servo center (0 wheel velocity)
+static constexpr float    SIM_SERVO_RANGE = 90.0f;     // ±90 deg from center = ±wheel velocity max
+static constexpr float    SIM_WHEEL_VEL_MAX = 2.0f;    // rad/s max wheel command
+static constexpr float    SIM_IMU_DISTURBANCE_GAIN = 0.1f; // Scale IMU accel to disturbance (small)
 
 // ===== Globals =====
 Adafruit_MPU6050 mpu;
 Servo myservo;
+SegwaySim segway_sim(SIM_INIT_THETA_RAD);
 uint32_t lastLoopMs = 0;
 uint32_t lastPrintMs = 0;
-float gyroZ_filtered_dps = 0.0f;    // Filtered gyro Z in deg/s
-float lastServoAngle_deg = CENTER_ANGLE_DEG;  // Last written angle
+float lastServoAngle_deg = SIM_SERVO_CENTER;
 
 // ===== Helpers =====
-// Exponential moving average (EMA) filter
-float ema_update(float filtered_prev, float raw_new, uint32_t dt_ms) {
-  if (dt_ms == 0) return filtered_prev;
-  float alpha = (float)dt_ms / (FILTER_TAU_MS + dt_ms);
-  return filtered_prev * (1.0f - alpha) + raw_new * alpha;
+
+// Map servo angle (0..180 deg) to wheel velocity command (rad/s).
+// 90 deg = 0 rad/s (stopped)
+// 0 deg = -SIM_WHEEL_VEL_MAX (full reverse)
+// 180 deg = +SIM_WHEEL_VEL_MAX (full forward)
+float servo_angle_to_wheel_vel(float angle_deg) {
+  float normalized = (angle_deg - SIM_SERVO_CENTER) / SIM_SERVO_RANGE;
+  normalized = constrain(normalized, -1.0f, 1.0f);
+  return normalized * SIM_WHEEL_VEL_MAX;
 }
 
-// Apply deadband: small rates become exactly 0
-float apply_deadband(float rate_dps) {
-  if (fabsf(rate_dps) < DEADBAND_DPS) return 0.0f;
-  return rate_dps;
+// Clamp dt to reasonable range (handles jitter, prevents runaway).
+float clamp_dt(uint32_t dt_ms) {
+  float dt_sec = dt_ms / 1000.0f;
+  if (dt_sec <= 0.0f) dt_sec = 0.02f;
+  if (dt_sec > 0.1f) dt_sec = 0.1f;  // Cap at 100 ms
+  return dt_sec;
 }
 
-// Linear map: rate (dps) -> servo angle (0..180 deg)
-// 0 deg/s -> 90 deg (center)
-// -250 deg/s -> 0 deg (min)
-// +250 deg/s -> 180 deg (max)
-float rate_to_angle(float rate_dps) {
-  // Clamp to the full scale range
-  rate_dps = constrain(rate_dps, -GYRO_FULL_SCALE_DPS, GYRO_FULL_SCALE_DPS);
-  // Linear map: -250..+250 dps -> 0..180 deg
-  return CENTER_ANGLE_DEG + (rate_dps / GYRO_FULL_SCALE_DPS) * 90.0f;
-}
-
-// Slew limiter: limit step size to avoid servo jerk
-float apply_slew_limit(float target_angle, float last_angle, float max_step) {
-  float delta = target_angle - last_angle;
-  if (delta > max_step) return last_angle + max_step;
-  if (delta < -max_step) return last_angle - max_step;
-  return target_angle;
+// Convert accel magnitude to disturbance torque (rad/s^2).
+// Wokwi slider pushes the MPU; we feed back as a frame disturbance.
+float accel_to_disturbance(float accel_magnitude_g) {
+  // Small coupling: disturbance = gain * accel.
+  // (unvalidated, tuned for Wokwi visibility)
+  return accel_magnitude_g * SIM_IMU_DISTURBANCE_GAIN;
 }
 
 // ===== Arduino entry points =====
@@ -69,7 +69,7 @@ void setup() {
 
   Wire.begin(I2C_SDA, I2C_SCL);
 
-  Serial.println("\n[ttl_servo] Starting...");
+  Serial.println("\n[ttl_servo] Segway Physics Simulator (Wokwi only, SIM-ONLY, UNVALIDATED)");
   Serial.println("[ttl_servo] Initializing MPU6050...");
   
   if (!mpu.begin(MPU_ADDR, &Wire)) {
@@ -77,17 +77,22 @@ void setup() {
     while (1) { delay(10); }
   }
   
-  // Set gyro range explicitly to ±250 deg/s
+  // Set gyro/accel range
   mpu.setGyroRange(MPU6050_RANGE_250_DEG);
-  Serial.println("[ttl_servo] MPU6050 found, gyro range set to ±250 deg/s");
+  mpu.setAccelerometerRange(MPU6050_RANGE_16_G);
+  Serial.println("[ttl_servo] MPU6050 found");
 
   // Initialize servo
   ESP32PWM::allocateTimer(0);
   myservo.setPeriodHertz(SERVO_FREQ_HZ);
   myservo.attach(SERVO_PIN, SERVO_MIN_US, SERVO_MAX_US);
-  myservo.write(lroundf(CENTER_ANGLE_DEG)); // Start at center
-  Serial.println("[ttl_servo] Servo initialized at GPIO10");
-  Serial.println("[ttl_servo] Ready. Waiting for gyro input...\n");
+  myservo.write(lroundf(SIM_SERVO_CENTER)); // Start at center
+  Serial.println("[ttl_servo] Servo initialized");
+  
+  // Init segway sim
+  segway_sim.reset(SIM_INIT_THETA_RAD);
+  Serial.println("[ttl_servo] Segway sim initialized at 15 deg");
+  Serial.println("[ttl_servo] Ready. Use Wokwi slider to perturb.\n");
 
   lastLoopMs = millis();
   lastPrintMs = lastLoopMs;
@@ -97,44 +102,62 @@ void loop() {
   uint32_t now_ms = millis();
   uint32_t dt_ms = now_ms - lastLoopMs;
 
-  // Run every LOOP_PERIOD_MS (50 Hz nominal, but dt varies)
+  // Run every LOOP_PERIOD_MS (50 Hz nominal)
   if (dt_ms < LOOP_PERIOD_MS) {
-    delay(1); // Yield to avoid busy-wait
+    delay(1);
     return;
   }
   lastLoopMs = now_ms;
+  float dt_sec = clamp_dt(dt_ms);
 
-  // Read IMU
+  // ===== 1. READ SENSORS (MPU disturbance) =====
   sensors_event_t accel, gyro, temp;
   mpu.getEvent(&accel, &gyro, &temp);
+  
+  // Accel magnitude as disturbance (Wokwi slider effect).
+  // Ignore gyro for sim (the sim's own gyro is the state theta_dot).
+  float accel_mag = sqrtf(accel.acceleration.x * accel.acceleration.x +
+                          accel.acceleration.y * accel.acceleration.y +
+                          accel.acceleration.z * accel.acceleration.z);
+  float disturbance_rad_s2 = accel_to_disturbance(accel_mag);
 
-  // Extract Z-axis gyro (radians/sec) and convert to degrees/sec
-  float gyroZ_raw_dps = gyro.gyro.z * 57.2958f; // RAD_TO_DEG approximation
+  // ===== 2. RUN PD CONTROL =====
+  // Target: theta = 0 (upright)
+  float error_theta = 0.0f - segway_sim.theta_rad;      // rad
+  float error_rate = 0.0f - segway_sim.theta_dot_rad_s; // rad/s
+  float control_output = SIM_Kp * error_theta + SIM_Kd * error_rate;
+  
+  // Map control output to servo angle (0..180 deg).
+  // Assume control_output in units of rad/s command.
+  float servo_target_deg = SIM_SERVO_CENTER + (control_output / SIM_WHEEL_VEL_MAX) * SIM_SERVO_RANGE;
+  servo_target_deg = constrain(servo_target_deg, 0.0f, 180.0f);
 
-  // Apply EMA low-pass filter
-  gyroZ_filtered_dps = ema_update(gyroZ_filtered_dps, gyroZ_raw_dps, dt_ms);
+  // ===== 3. WRITE SERVO =====
+  int servo_cmd = lroundf(servo_target_deg);
+  myservo.write(servo_cmd);
+  lastServoAngle_deg = servo_target_deg;
 
-  // Apply deadband
-  float gyroZ_deadband_dps = apply_deadband(gyroZ_filtered_dps);
+  // ===== 4. MAP SERVO TO WHEEL VELOCITY =====
+  float wheel_target_rad_s = servo_angle_to_wheel_vel(servo_target_deg);
 
-  // Map to servo angle (0..180 deg)
-  float target_angle_deg = rate_to_angle(gyroZ_deadband_dps);
+  // ===== 5. STEP THE PHYSICS =====
+  // Motor lag + inverted pendulum dynamics.
+  segway_sim.step(wheel_target_rad_s, disturbance_rad_s2, dt_sec);
 
-  // Apply slew limiter
-  float final_angle_deg = apply_slew_limit(target_angle_deg, lastServoAngle_deg, MAX_SLEW_DEG_PER_TICK);
-
-  // Write to servo only if changed (to reduce jitter and wear)
-  int final_angle_int = lroundf(final_angle_deg);
-  int last_angle_int = lroundf(lastServoAngle_deg);
-  if (final_angle_int != last_angle_int) {
-    myservo.write(final_angle_int);
-    lastServoAngle_deg = final_angle_deg;
+  // ===== 6. FALL DETECTION + RESET =====
+  if (segway_sim.has_fallen) {
+    Serial.println("[ttl_servo] FELL! Resetting sim.");
+    segway_sim.reset(SIM_INIT_THETA_RAD);
   }
 
-  // Periodic diagnostic output (10 Hz)
+  // ===== 7. TELEMETRY (10 Hz) =====
   if (now_ms - lastPrintMs >= PRINT_PERIOD_MS) {
     lastPrintMs = now_ms;
-    Serial.printf("[ttl_servo] raw=%.1f deadband=%.1f filt=%.1f target=%.1f final=%d\n",
-                  gyroZ_raw_dps, gyroZ_deadband_dps, gyroZ_filtered_dps, target_angle_deg, final_angle_int);
+    Serial.printf("[ttl_servo] sim theta=%.3f rate=%.3f wheel=%.3f cmd=%d accel=%.2fg\n",
+                  segway_sim.theta_rad,
+                  segway_sim.theta_dot_rad_s,
+                  segway_sim.wheel_vel_rad_s,
+                  servo_cmd,
+                  accel_mag);
   }
 }
