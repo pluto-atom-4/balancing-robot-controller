@@ -19,7 +19,7 @@ The older text "balance on XIAO S3 Sense with built-in IMU and two STS3032 servo
 
 Supported boards: Arduino Uno R3 ATmega328P (`uno`, atmelavr), Arduino UNO R4 WiFi (`uno_r4_wifi`, renesas-ra), Seeed XIAO ESP32S3 (`xiao_s3`), generic ESP32 dev (`esp32dev`), ATtiny85 (`attiny85`, atmelavr), Seeed XIAO ESP32C3 (`xiao_c3`, espressif32). More boards can be added.
 
-Programs: `balance` (control loop; built only for the XIAO C3 envs, not for Uno R3, Uno R4 WiFi, ATtiny85, XIAO S3 or generic ESP32), `blink` (portable example, all boards), `tilt_servo` (XIAO C3 only: MPU6050 tilt drives Dynamixel XL330 via FE-URT-1), `ttl_servo` (XIAO C3 only: MPU6050 gyro Z drives a hobby PWM servo; not hardware-validated), `c3_probe` (diagnostic probe, XIAO C3 only), `c3_facts` (bench probe, XIAO C3 only).
+Programs: `balance` (control loop; built only for the XIAO C3 envs, not for Uno R3, Uno R4 WiFi, ATtiny85, XIAO S3 or generic ESP32), `blink` (portable example, all boards), `tilt_servo` (XIAO C3 only: MPU6050 tilt drives Dynamixel XL330 via FE-URT-1), `ttl_servo` (XIAO C3 only: closed-loop Segway physics simulator in Wokwi; PD controller stabilizes inverted pendulum with motor lag; **simulation-only, not hardware-validated**), `c3_probe` (diagnostic probe, XIAO C3 only), `c3_facts` (bench probe, XIAO C3 only).
 
 Envs, named `<program>-<board>`: `balance-xiao_c3` (default, LQR, `-D BALANCE_CONTROLLER_LQR`), `balance-xiao_c3-pid` (PID, `-D BALANCE_CONTROLLER_PID`), `blink-uno`, `blink-uno_r4_wifi`, `blink-xiao_s3`, `blink-esp32dev`, `blink-xiao_c3`, `blink-attiny85`, `tilt_servo-xiao_c3`, `c3_probe-xiao_c3`, `c3_facts-xiao_c3`. Native test env: `test` (`-std=gnu++17 -Wall -Wextra -ffp-contract=off`).
 
@@ -199,13 +199,15 @@ The STS3032 is the planned servo for the final robot; its C3 driver does not exi
 
 ## Testing
 
-Unit tests in `test/`. Run with `pio test -e test` (native platform, no hardware, no Python). Suites: `test_balance_core`, `test_balance_parity`, `test_balance_stamp`, `test_balance_supervisor`, `test_dxl_units`, `test_hal_iface`, `test_imu_math`, `test_loop_stats`, `test_ramp_guard`, `test_tilt`, `test_vector_roundtrip`, `test_wheel_pair` (12 suites, 199 `RUN_TEST` cases by count of the macro; a pass count must come from an actual run).
+Unit tests in `test/`. Run with `pio test -e test` (native platform, no hardware, no Python). Suites: `test_balance_core`, `test_balance_parity`, `test_balance_stamp`, `test_balance_supervisor`, `test_dxl_units`, `test_hal_iface`, `test_imu_math`, `test_loop_stats`, `test_ramp_guard`, `test_segway_sim`, `test_tilt`, `test_vector_roundtrip`, `test_wheel_pair` (13 suites, 210 `RUN_TEST` cases; 11 cases in test_segway_sim validate inverted pendulum physics: constructor, reset, motor lag, gravity sign, disturbance coupling, fall detection, free-fall divergence, convergence).
 
 `test/test_balance_parity` compares the C++ core against the committed golden vectors from Python (`test/test_balance_parity/vectors_generated.inc`); it is the parity gate. Native tests and Wokwi do **not** validate balance on hardware, and the native `test` env (gnu++17) does not catch C++11 violations in firmware headers; build a balance env too.
 
 ## Serial Debugging
 
 `tilt_servo` logs `[tag] message` lines (for example `[imu] accel=... fused=... goal=... torque=...`) over USB CDC. Use `pio device monitor -e tilt_servo-xiao_c3`. `balance` logs tagged lines over USB CDC: `[bal]` (boot, ARMED, 10 Hz status with pitch, command, state, cause), `[loop]` (1 Hz min/mean/max/over/n period in us), `[imu]`, `[wheel]`, `[safe]` (latch and torque-off status). Use `pio device monitor -e balance-xiao_c3`. Send `x` to latch the kill (no re-arm; reset the board).
+
+`ttl_servo` (sim-only): logs `[ttl_servo]` lines over USB CDC with simulated physics state: `sim theta=.. rate=.. wheel=.. cmd=.. accel=..`. Use `pio device monitor -e ttl_servo-xiao_c3` or `make ttl_servo-monitor`. In Wokwi, the MPU6050 slider injects a disturbance torque; the firmware runs a closed-loop PD controller that drives the servo to stabilize the simulated Segway frame. The sim includes motor lag (`tau=100ms`), gravity-driven instability (`a=5.0`), and wheel damping (`b=0.8`). Starting at 15 deg tilt, the controller should converge to 0 deg; moving the slider will perturb theta and demonstrate disturbance handling. Falls are detected at 45 deg and reset the sim. **This is a physics simulation only; not hardware-validated.**
 
 ## Risks (balance work)
 
