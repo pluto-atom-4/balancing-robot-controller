@@ -89,17 +89,28 @@ void setup() {
 
   // Ping the servo to make sure communication is established
   bool ping_ok = dxl.ping(DXL_ID);
-  Serial.printf("[ping] result=%d, err=%d\n", ping_ok, dxl.getLastLibErrCode());
+  uint16_t err_code = dxl.getLastLibErrCode();
+  Serial.printf("[ping] result=%d, error_code=%d", ping_ok, err_code);
+  
+  // Name the error code for debugging
+  if (err_code == 0) Serial.println(" (OK)");
+  else if (err_code == 1) Serial.println(" (PROCEEDING)");
+  else if (err_code == 2) Serial.println(" (NOT_SUPPORTED)");
+  else if (err_code == 3) Serial.println(" (TIMEOUT - no reply)");
+  else if (err_code == 4) Serial.println(" (INVALID_ID)");
+  else if (err_code == 5) Serial.println(" (NOT_SUPPORT_BROADCAST)");
+  else if (err_code == 6) Serial.println(" (NULLPTR)");
+  else Serial.printf(" (unknown #%d)\n", err_code);
   
   if (!ping_ok) {
-    Serial.println("[fallback] Setting model number explicitly...");
+    Serial.println("[info] Servo did not respond to PING; attempting to set model number...");
     dxl.setModelNumber(DXL_ID, DXL_MODEL_NUMBER);
   }
 
   if (ping_ok) {
     Serial.println("[SUCCESS] Servo found online!");
   } else {
-    Serial.println("[WARNING] Ping failed; proceeding with explicit model number.");
+    Serial.println("[WARNING] Servo offline; proceeding with manual register writes.");
   }
 
   // Set up velocity mode configurations

@@ -7,33 +7,45 @@ typedef struct {
   pin_t txd;      // From ESP TX
   pin_t rxd;      // To ESP RX
   pin_t data;     // Half-duplex shared bus
-  bool txd_drive; // True when we are driving TXD low (waiting for echo)
+  bool txd_drive; // True when we are driving DATA low (waiting for echo)
+  uint32_t txd_edge_count;
+  uint32_t data_edge_count;
+  uint32_t rxd_write_count;
 } adapter_state_t;
 
 static void on_txd_change(void *user_data, pin_t pin, uint32_t value) {
   adapter_state_t *state = (adapter_state_t *)user_data;
+  state->txd_edge_count++;
   
   // When TXD goes low, drive DATA low (ESP sending). When TXD goes high, release DATA (idle).
   if (value == 0) {
     pin_mode(state->data, OUTPUT_LOW);
     state->txd_drive = true;
+    printf("[adapter] TXD edge #%lu low -> DATA OUTPUT_LOW\n", state->txd_edge_count);
   } else {
     pin_mode(state->data, INPUT_PULLUP);
     state->txd_drive = false;
+    printf("[adapter] TXD edge #%lu high -> DATA INPUT_PULLUP\n", state->txd_edge_count);
   }
 }
 
 static void on_data_change(void *user_data, pin_t pin, uint32_t value) {
   adapter_state_t *state = (adapter_state_t *)user_data;
+  state->data_edge_count++;
   
   // Drive RXD to follow DATA, but not if we (the adapter) are currently driving DATA.
   // This suppresses echo: the host's own TX transmissions don't loop back to RX.
   if (!state->txd_drive) {
+    state->rxd_write_count++;
     if (value == 0) {
       pin_write(state->rxd, 0);
+      printf("[adapter] DATA edge #%lu low -> RXD write 0 (#%lu)\n", state->data_edge_count, state->rxd_write_count);
     } else {
       pin_write(state->rxd, 1);
+      printf("[adapter] DATA edge #%lu high -> RXD write 1 (#%lu)\n", state->data_edge_count, state->rxd_write_count);
     }
+  } else {
+    printf("[adapter] DATA edge #%lu (suppressed, txd_drive=true)\n", state->data_edge_count);
   }
 }
 
@@ -44,6 +56,11 @@ void chip_init(void) {
   state->rxd = pin_init("RXD", OUTPUT_HIGH);  // Idle high
   state->data = pin_init("DATA", INPUT_PULLUP);
   state->txd_drive = false;
+  state->txd_edge_count = 0;
+  state->data_edge_count = 0;
+  state->rxd_write_count = 0;
+  
+  printf("[adapter] Initialized: TXD, RXD, DATA pins\n");
   
   // Watch TXD: when ESP sends, drive DATA. When ESP idles, release DATA.
   pin_watch_config_t txd_watch = {
