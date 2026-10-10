@@ -9,8 +9,8 @@
   "connections": [
     [ "esp:GND.1", "servo1:GND", "black", [] ],
     [ "esp:5V", "servo1:VCC", "red", [] ],
-    [ "esp:4", "servo1:DATA", "green", [] ],
-    [ "esp:5", "servo1:DATA", "green", [] ]
+    [ "servo1:RX", "esp:4", "green", [] ],
+    [ "servo1:TX", "esp:5", "green", [] ]
   ],
   "dependencies": {}
 }

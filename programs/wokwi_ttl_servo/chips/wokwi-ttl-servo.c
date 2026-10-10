@@ -222,11 +222,12 @@ void chip_init() {
   chip->param_count = 0;
   chip->last_update_us = get_sim_nanos() / 1000;
 
-  // Half-duplex: one DATA wire carries both directions; the host filters its own echo.
-  pin_t data_pin = pin_init("DATA", INPUT_PULLUP);
+  // Full-duplex: separate RX and TX pins for clean bidirectional communication.
+  pin_t rx_pin = pin_init("RX", INPUT_PULLUP);
+  pin_t tx_pin = pin_init("TX", INPUT_PULLUP);
   const uart_config_t uart_config = {
-    .tx = data_pin,
-    .rx = data_pin,
+    .tx = tx_pin,
+    .rx = rx_pin,
     .baud_rate = 57600,
     .rx_data = chip_uart_byte_received,
     .user_data = chip,

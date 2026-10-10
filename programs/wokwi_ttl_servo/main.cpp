@@ -6,6 +6,7 @@
 
 const float DXL_PROTOCOL_VERSION = 2.0;
 const uint8_t DXL_ID = 1;
+const uint16_t DXL_MODEL_NUMBER = 1200; // XL330_M288
 
 const uint16_t ADDR_OPERATING_MODE = 11;
 const uint16_t ADDR_TORQUE_ENABLE  = 64;
@@ -15,15 +16,12 @@ const uint8_t OPERATING_MODE_VELOCITY = 1;
 
 HardwareSerial dxl_serial(1);
 
-// TX and RX share one wire in the sim (no direction pin), so every byte we send is echoed back.
-// Drop that many bytes from the receive stream before the library sees them.
-class EchoFilterPort : public DYNAMIXEL::SerialPortHandler {
+class PinAwareSerialPort : public DYNAMIXEL::SerialPortHandler {
  public:
-  EchoFilterPort(HardwareSerial& port, int dir_pin, int rx_pin, int tx_pin)
+  PinAwareSerialPort(HardwareSerial& port, int dir_pin, int rx_pin, int tx_pin)
       : DYNAMIXEL::SerialPortHandler(port, dir_pin), port_(port), rx_pin_(rx_pin), tx_pin_(tx_pin) {}
 
   void begin() override {
-    // Ensure pins are set before calling parent begin (which calls port_.begin).
     port_.begin(baud_, SERIAL_8N1, rx_pin_, tx_pin_);
     setOpenState(true);
   }
@@ -33,37 +31,13 @@ class EchoFilterPort : public DYNAMIXEL::SerialPortHandler {
     begin();
   }
 
-  int available() override {
-    drain();
-    return DYNAMIXEL::SerialPortHandler::available();
-  }
-  int read() override {
-    drain();
-    return DYNAMIXEL::SerialPortHandler::read();
-  }
-  size_t write(uint8_t b) override {
-    pending_echo_ = 1;
-    return DYNAMIXEL::SerialPortHandler::write(b);
-  }
-  size_t write(uint8_t* buf, size_t len) override {
-    pending_echo_ = len;
-    return DYNAMIXEL::SerialPortHandler::write(buf, len);
-  }
-
  private:
-  void drain() {
-    while (pending_echo_ > 0 && port_.available() > 0) {
-      port_.read();
-      pending_echo_--;
-    }
-  }
   HardwareSerial& port_;
-  size_t pending_echo_ = 0;
   int rx_pin_, tx_pin_;
   unsigned long baud_ = 57600;
 };
 
-EchoFilterPort dxl_port(dxl_serial, -1, DXL_RX_PIN, DXL_TX_PIN);
+PinAwareSerialPort dxl_port(dxl_serial, -1, DXL_RX_PIN, DXL_TX_PIN);
 Dynamixel2Arduino dxl;
 
 static bool writeReg8(uint16_t addr, uint8_t v) {
@@ -75,33 +49,70 @@ static bool writeReg32(uint16_t addr, int32_t v) {
   return dxl.write(DXL_ID, addr, b, 4, 100);
 }
 
+#ifdef WOKWI_TTL_SERVO_RAWDIAG
+static void rawPingDiag() {
+  const uint8_t ping_frame[] = {0xFF, 0xFF, 0xFD, 0x00, 0x01, 0x03, 0x00, 0x01, 0x19, 0x4E};
+  Serial.print("[diag] Sending raw PING: ");
+  for (size_t i = 0; i < sizeof(ping_frame); i++) {
+    Serial.printf("%02X ", ping_frame[i]);
+  }
+  Serial.println();
+  
+  dxl_serial.write(ping_frame, sizeof(ping_frame));
+  delay(20);
+  
+  Serial.print("[diag] RX buffer: ");
+  size_t count = 0;
+  while (dxl_serial.available() && count < 32) {
+    uint8_t b = dxl_serial.read();
+    Serial.printf("%02X ", b);
+    count++;
+  }
+  Serial.println();
+  Serial.printf("[diag] RX count: %zu\n", count);
+}
+#endif
+
 void setup() {
   Serial.begin(115200);
   delay(1000); // Give serial monitor time to settle
 
-  // setPort must be called before dxl.begin() so the port handler can override begin() calls
   dxl.setPort(dxl_port);
-  dxl.begin(57600); // This calls dxl_port.begin(57600), which sets pins GPIO4/5
+  dxl.begin(57600);
   dxl.setPortProtocolVersion(DXL_PROTOCOL_VERSION);
 
   Serial.println("[ESP32-C3] Initializing Dynamixel Target Bus...");
 
+#ifdef WOKWI_TTL_SERVO_RAWDIAG
+  rawPingDiag();
+#endif
+
   // Ping the servo to make sure communication is established
-  if (dxl.ping(DXL_ID)) {
+  bool ping_ok = dxl.ping(DXL_ID);
+  Serial.printf("[ping] result=%d, err=%d\n", ping_ok, dxl.getLastLibErrCode());
+  
+  if (!ping_ok) {
+    Serial.println("[fallback] Setting model number explicitly...");
+    dxl.setModelNumber(DXL_ID, DXL_MODEL_NUMBER);
+  }
+
+  if (ping_ok) {
     Serial.println("[SUCCESS] Servo found online!");
   } else {
-    Serial.println("[ERROR] Failed to ping custom Servo part.");
+    Serial.println("[WARNING] Ping failed; proceeding with explicit model number.");
   }
 
   // Set up velocity mode configurations
-  writeReg8(ADDR_TORQUE_ENABLE, 0);
-  writeReg8(ADDR_OPERATING_MODE, OPERATING_MODE_VELOCITY);
-  writeReg8(ADDR_TORQUE_ENABLE, 1);
+  bool w1 = writeReg8(ADDR_TORQUE_ENABLE, 0);
+  bool w2 = writeReg8(ADDR_OPERATING_MODE, OPERATING_MODE_VELOCITY);
+  bool w3 = writeReg8(ADDR_TORQUE_ENABLE, 1);
+  Serial.printf("[setup] torque_off=%d, mode=%d, torque_on=%d\n", w1, w2, w3);
 
   // Command continuous forward rotation
   int32_t active_speed = 150;
-  writeReg32(ADDR_GOAL_VELOCITY, active_speed);
-  Serial.println("Goal velocity set to 150. Reading live track data...");
+  bool w4 = writeReg32(ADDR_GOAL_VELOCITY, active_speed);
+  Serial.printf("[setup] goal_velocity=%d, result=%d\n", active_speed, w4);
+  Serial.println("Reading live track data...");
 }
 
 void loop() {
