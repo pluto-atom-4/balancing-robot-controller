@@ -1,5 +1,4 @@
 #include "wokwi-api.h"
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "wokwi-ttl-servo.bg.h"
@@ -77,18 +76,18 @@ typedef struct {
 } chip_state_t;
 
 // Horn display. Pixel format assumed RGBA32 as uint32 0xAABBGGRR (alpha 0xFF, red in low byte).
-// Format is assumed from Wokwi examples and is UNVERIFIED on the simulator.
+// CONFIRMED in the Wokwi simulator by the repo owner.
 #define HORN_RADIUS 28 // Reference ring radius, pixels
 #define HORN_BG        0xFF202020u
 #define HORN_RING      0xFF404040u
 #define HORN_TICK      0xFF808080u
 #define HORN_BODY_ON   0xFFE0E0E0u
 #define HORN_BODY_OFF  0xFF707070u
-#define HORN_TIP_ON    0xFF0000FFu // Red, unverified byte order
+#define HORN_TIP_ON    0xFF0000FFu // Red (0xAABBGGRR, byte order confirmed in the Wokwi simulator)
 #define HORN_TIP_OFF   0xFF000080u
 #define HORN_MAX_DIM 64
 // Background is a baked 64x64 image generated from wokwi-ttl-servo.svg by tools/svg_to_pixels.sh (`make wokwi_ttl_servo-bg`).
-// Same assumed 0xAABBGGRR pixel format as above, UNVERIFIED.
+// Same 0xAABBGGRR pixel format as above, CONFIRMED in the Wokwi simulator by the repo owner.
 #define BG_DIM 64
 // Horn geometry in half-pixel units (doubled coordinates)
 #define HORN_L 40
@@ -131,13 +130,10 @@ static uint32_t horn_pixel(int32_t u, int32_t v, uint32_t body, uint32_t tip) {
 
 // Background, reference ring, ticks, servo horn. Position 0 = arm up, clockwise.
 static void draw_horn(chip_state_t *chip) {
-  static uint8_t diag_dims_done = 0; // DIAG (temporary, remove after the display works)
-  static uint8_t diag_write_done = 0; // DIAG (temporary, remove after the display works)
   uint32_t w = chip->fb_w;
   uint32_t h = chip->fb_h;
   // Handle 0 is valid in Wokwi; validity is judged from the dimensions framebuffer_init reports.
   if (w == 0 || h == 0 || w > HORN_MAX_DIM || h > HORN_MAX_DIM) {
-    if (!diag_dims_done) { diag_dims_done = 1; printf("[servo] diag: draw skipped: bad dims w=%u h=%u\n", (unsigned)w, (unsigned)h); } // DIAG (temporary, remove after the display works)
     return;
   }
 
@@ -190,7 +186,6 @@ static void draw_horn(chip_state_t *chip) {
   }
 
   buffer_write(chip->fb, 0, pixels, w * h * 4);
-  if (!diag_write_done) { diag_write_done = 1; printf("[servo] diag: first buffer_write fb=%u %ux%u bytes=%u bg=%s\n", (unsigned)chip->fb, (unsigned)w, (unsigned)h, (unsigned)(w * h * 4), (w == BG_DIM && h == BG_DIM) ? "baked" : "plain"); } // DIAG (temporary, remove after the display works)
 }
 
 // Dynamixel Protocol 2.0 CRC-16 (poly 0x8005, MSB first, init 0)
@@ -369,10 +364,8 @@ void chip_uart_byte_received(void *user_data, uint8_t byte) {
 }
 
 static void chip_timer_callback(void *user_data) {
-  static uint8_t diag_timer_done = 0; // DIAG (temporary, remove after the display works)
   chip_state_t *chip = (chip_state_t *)user_data;
   uint64_t now = get_sim_nanos() / 1000;
-  if (!diag_timer_done) { diag_timer_done = 1; printf("[servo] diag: timer running fb=%u w=%u h=%u pos=%u torque=%u\n", (unsigned)chip->fb, (unsigned)chip->fb_w, (unsigned)chip->fb_h, (unsigned)chip->current_position, (unsigned)chip->torque_enable); } // DIAG (temporary, remove after the display works)
   double delta_t = (now - chip->last_update_us) / 1000000.0;
   chip->last_update_us = now;
 
@@ -432,7 +425,6 @@ void chip_init() {
 
   // Framebuffer: dims come from the host; draw_horn skips if they are 0 or > 64
   chip->fb = framebuffer_init(&chip->fb_w, &chip->fb_h);
-  printf("[servo] diag: framebuffer_init fb=%u w=%u h=%u\n", (unsigned)chip->fb, (unsigned)chip->fb_w, (unsigned)chip->fb_h); // DIAG (temporary, remove after the display works)
   draw_horn(chip);
   if (chip->fb_w != 0 && chip->fb_h != 0) {
     chip->last_pos_drawn = chip->current_position;
