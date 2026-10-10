@@ -132,6 +132,9 @@ static void draw_horn(chip_state_t *chip) {
   if (w == 0 || h == 0 || w > HORN_MAX_DIM || h > HORN_MAX_DIM) {
     return;
   }
+  if (!chip->fb) {
+    return;
+  }
 
   uint32_t body = chip->torque_enable ? HORN_BODY_ON : HORN_BODY_OFF;
   uint32_t tip = chip->torque_enable ? HORN_TIP_ON : HORN_TIP_OFF;
@@ -410,16 +413,18 @@ void chip_init() {
   chip->uart = uart_init(&uart_config);
   pin_mode(tx_pin, INPUT_PULLUP); // uart_init may have driven TX high; release it until a reply
 
+  // Framebuffer: dims come from the host; draw_horn skips if they are 0 or > 64
+  chip->fb = framebuffer_init(&chip->fb_w, &chip->fb_h);
+  draw_horn(chip);
+  if (chip->fb) {
+    chip->last_pos_drawn = chip->current_position;
+    chip->last_torque_drawn = chip->torque_enable;
+  }
+
   const timer_config_t timer_config = {
     .callback = chip_timer_callback,
     .user_data = chip,
   };
   timer_t timer = timer_init(&timer_config);
   timer_start(timer, 20000, true);
-
-  // Framebuffer: dims come from the host; draw_horn skips if they are 0 or > 64
-  chip->fb = framebuffer_init(&chip->fb_w, &chip->fb_h);
-  draw_horn(chip);
-  chip->last_pos_drawn = chip->current_position;
-  chip->last_torque_drawn = chip->torque_enable;
 }

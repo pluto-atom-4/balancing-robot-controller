@@ -53,13 +53,13 @@ static const Phase kPhases[] = {
 };
 static const uint8_t PHASE_COUNT = sizeof(kPhases) / sizeof(kPhases[0]);
 
-bool servo_ok = false;
-uint8_t phase_idx = 0;
-uint32_t phase_start_ms = 0;
-uint32_t last_read_ms = 0;
-uint32_t last_ping_ms = 0;
-int32_t last_pos = 0;
-bool have_last = false;
+static bool servo_ok = false;
+static uint8_t phase_idx = 0;
+static uint32_t phase_start_ms = 0;
+static uint32_t last_read_ms = 0;
+static uint32_t last_ping_ms = 0;
+static int32_t last_pos = 0;
+static bool have_last = false;
 
 static bool configure_servo() {
   bool w1 = dxl.torqueOff(DXL_ID);
@@ -80,10 +80,11 @@ static void enter_phase(uint8_t i) {
     bool r = dxl.setGoalVelocity(DXL_ID, (float)p.vel);
     ok = ok && r;
   }
+  const char* torque = p.torque == -1 ? "-" : (p.torque ? "1" : "0");
   if (p.vel == NO_VEL) {
-    Serial.printf("[demo] phase=%s v=- torque=%d ok=%d\n", p.name, p.torque, ok);
+    Serial.printf("[demo] phase=%s v=- torque=%s ok=%d\n", p.name, torque, ok);
   } else {
-    Serial.printf("[demo] phase=%s v=%ld torque=%d ok=%d\n", p.name, (long)p.vel, p.torque, ok);
+    Serial.printf("[demo] phase=%s v=%ld torque=%s ok=%d\n", p.name, (long)p.vel, torque, ok);
   }
   if (!ok) Serial.printf("[demo] WARN write failed phase=%s\n", p.name);
 
@@ -123,12 +124,9 @@ void setup() {
     Serial.println("[WARNING] Servo offline; proceeding anyway.");
   }
 
-  servo_ok = ping_ok;
+  servo_ok = ping_ok && configure_servo();
   last_ping_ms = millis();
-  if (ping_ok) {
-    configure_servo();
-    enter_phase(0);
-  }
+  if (servo_ok) enter_phase(0);
   Serial.println("Reading live track data...");
 }
 
@@ -143,8 +141,7 @@ void loop() {
   if (!servo_ok) {
     if (now - last_ping_ms >= REPING_PERIOD_MS) {
       last_ping_ms = now;
-      if (dxl.ping(DXL_ID)) {
-        configure_servo();
+      if (dxl.ping(DXL_ID) && configure_servo()) {
         servo_ok = true;
         enter_phase(0);
       } else {
@@ -173,6 +170,7 @@ void loop() {
       have_last = true;
     } else {
       Serial.printf("[pos] phase=%s read failed err=%d\n", name, dxl.getLastLibErrCode());
+      have_last = false;
     }
   }
 }
