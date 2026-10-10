@@ -100,6 +100,7 @@ typedef struct {
 #define HORN_HOLE_U2 32
 
 static uint32_t pixels[HORN_MAX_DIM * HORN_MAX_DIM]; // Static storage, not stack
+static uint8_t diag_fb_zero_at_init = 0; // DIAG (temporary, remove after the display works)
 
 // sin(i * 2pi / 64) * 1024, rounded. cos(i) = SIN_1024[(i + 16) & 63].
 static const int32_t SIN_1024[64] = {
@@ -131,12 +132,17 @@ static uint32_t horn_pixel(int32_t u, int32_t v, uint32_t body, uint32_t tip) {
 
 // Background, reference ring, ticks, servo horn. Position 0 = arm up, clockwise.
 static void draw_horn(chip_state_t *chip) {
+  static uint8_t diag_dims_done = 0; // DIAG (temporary, remove after the display works)
+  static uint8_t diag_fb_done = 0; // DIAG (temporary, remove after the display works)
+  static uint8_t diag_write_done = 0; // DIAG (temporary, remove after the display works)
   uint32_t w = chip->fb_w;
   uint32_t h = chip->fb_h;
   if (w == 0 || h == 0 || w > HORN_MAX_DIM || h > HORN_MAX_DIM) {
+    if (!diag_dims_done) { diag_dims_done = 1; printf("[servo] diag: draw skipped: bad dims w=%u h=%u\n", (unsigned)w, (unsigned)h); } // DIAG (temporary, remove after the display works)
     return;
   }
   if (!chip->fb) {
+    if (!diag_fb_done) { diag_fb_done = 1; printf("[servo] diag: draw skipped: fb handle is 0\n"); } // DIAG (temporary, remove after the display works)
     return;
   }
 
@@ -189,6 +195,7 @@ static void draw_horn(chip_state_t *chip) {
   }
 
   buffer_write(chip->fb, 0, pixels, w * h * 4);
+  if (!diag_write_done) { diag_write_done = 1; printf("[servo] diag: first buffer_write fb=%u %ux%u bytes=%u bg=%s\n", (unsigned)chip->fb, (unsigned)w, (unsigned)h, (unsigned)(w * h * 4), (w == BG_DIM && h == BG_DIM) ? "baked" : "plain"); } // DIAG (temporary, remove after the display works)
 }
 
 // Dynamixel Protocol 2.0 CRC-16 (poly 0x8005, MSB first, init 0)
@@ -367,8 +374,12 @@ void chip_uart_byte_received(void *user_data, uint8_t byte) {
 }
 
 static void chip_timer_callback(void *user_data) {
+  static uint8_t diag_timer_done = 0; // DIAG (temporary, remove after the display works)
+  static uint8_t diag_valid_done = 0; // DIAG (temporary, remove after the display works)
   chip_state_t *chip = (chip_state_t *)user_data;
   uint64_t now = get_sim_nanos() / 1000;
+  if (!diag_timer_done) { diag_timer_done = 1; printf("[servo] diag: timer running fb=%u w=%u h=%u pos=%u torque=%u\n", (unsigned)chip->fb, (unsigned)chip->fb_w, (unsigned)chip->fb_h, (unsigned)chip->current_position, (unsigned)chip->torque_enable); } // DIAG (temporary, remove after the display works)
+  if (!diag_valid_done && diag_fb_zero_at_init && chip->fb) { diag_valid_done = 1; printf("[servo] diag: fb became valid\n"); } // DIAG (temporary, remove after the display works)
   double delta_t = (now - chip->last_update_us) / 1000000.0;
   chip->last_update_us = now;
 
@@ -428,6 +439,8 @@ void chip_init() {
 
   // Framebuffer: dims come from the host; draw_horn skips if they are 0 or > 64
   chip->fb = framebuffer_init(&chip->fb_w, &chip->fb_h);
+  printf("[servo] diag: framebuffer_init fb=%u w=%u h=%u\n", (unsigned)chip->fb, (unsigned)chip->fb_w, (unsigned)chip->fb_h); // DIAG (temporary, remove after the display works)
+  diag_fb_zero_at_init = (chip->fb == 0); // DIAG (temporary, remove after the display works)
   draw_horn(chip);
   if (chip->fb) {
     chip->last_pos_drawn = chip->current_position;
