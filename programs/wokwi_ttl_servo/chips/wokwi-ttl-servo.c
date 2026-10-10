@@ -41,6 +41,11 @@ typedef struct {
   int32_t speed;
   uint64_t last_update_us;
 
+  // Half-duplex: TX pin is shared with RX on DATA, so our own reply echoes back
+  pin_t tx_pin;
+  bool transmitting;
+  uint64_t tx_deadline_us;
+
   // Custom attributes / Operating states
   uint8_t operating_mode;
   uint8_t torque_enable;
@@ -95,12 +100,36 @@ static void send_status_packet(chip_state_t *chip, uint8_t error, const uint8_t 
   tx_buf[total_tx_size - 2] = crc & 0xFF;
   tx_buf[total_tx_size - 1] = (crc >> 8) & 0xFF;
 
-  // Non-blocking; fails (reply dropped) only if the previous reply is still on the wire.
+  // Previous reply still on the wire: drop this one.
+  if (chip->transmitting) {
+    return;
+  }
+
+  // Drive TX only while the reply is on the wire; release it (INPUT_PULLUP) otherwise.
+  uint64_t now = get_sim_nanos() / 1000;
+  chip->transmitting = true;
+  chip->tx_deadline_us = now + (uint64_t)total_tx_size * 10 * 1000000 / 57600 + 2 * 20000; // Fallback if write_done never fires (+2 timer ticks of margin)
+  pin_mode(chip->tx_pin, OUTPUT_HIGH);
   uart_write(chip->uart, tx_buf, total_tx_size);
+}
+
+// Reply fully shifted out: release TX and stop dropping RX bytes.
+static void chip_uart_write_done(void *user_data) {
+  chip_state_t *chip = (chip_state_t *)user_data;
+  if (!chip->transmitting) {
+    return;
+  }
+  chip->transmitting = false;
+  pin_mode(chip->tx_pin, INPUT_PULLUP);
 }
 
 static void process_packet(chip_state_t *chip) {
   if (chip->rx_id != chip->servo_id && chip->rx_id != 0xFE) {
+    return;
+  }
+
+  // Never answer a status packet (our own reply echoed back, or another servo's)
+  if (chip->instruction == INST_STATUS) {
     return;
   }
 
@@ -159,6 +188,11 @@ static void process_packet(chip_state_t *chip) {
 void chip_uart_byte_received(void *user_data, uint8_t byte) {
   chip_state_t *chip = (chip_state_t *)user_data;
 
+  // Drop our own reply echoed back on DATA
+  if (chip->transmitting) {
+    return;
+  }
+
   switch (chip->state) {
     case STATE_HEADER1: chip->state = (byte == 0xFF) ? STATE_HEADER2 : STATE_HEADER1; break;
     case STATE_HEADER2: chip->state = (byte == 0xFF) ? STATE_HEADER3 : STATE_HEADER1; break;
@@ -205,6 +239,12 @@ static void chip_timer_callback(void *user_data) {
   double delta_t = (now - chip->last_update_us) / 1000000.0;
   chip->last_update_us = now;
 
+  // Fallback release if write_done never fired (timer ticks every 20 ms, so this is late by up to one tick)
+  if (chip->transmitting && now >= chip->tx_deadline_us) {
+    chip->transmitting = false;
+    pin_mode(chip->tx_pin, INPUT_PULLUP);
+  }
+
   if (chip->speed != 0) {
     int32_t step_delta = (int32_t)(chip->speed * delta_t * 10.0);
     chip->current_position += step_delta;
@@ -226,14 +266,19 @@ void chip_init() {
   // Full-duplex: separate RX and TX pins for clean bidirectional communication.
   pin_t rx_pin = pin_init("RX", INPUT_PULLUP);
   pin_t tx_pin = pin_init("TX", INPUT_PULLUP);
+  chip->tx_pin = tx_pin;
+  chip->transmitting = false;
+  chip->tx_deadline_us = 0;
   const uart_config_t uart_config = {
     .tx = tx_pin,
     .rx = rx_pin,
     .baud_rate = 57600,
     .rx_data = chip_uart_byte_received,
+    .write_done = chip_uart_write_done,
     .user_data = chip,
   };
   chip->uart = uart_init(&uart_config);
+  pin_mode(tx_pin, INPUT_PULLUP); // uart_init may have driven TX high; release it until a reply
 
   const timer_config_t timer_config = {
     .callback = chip_timer_callback,

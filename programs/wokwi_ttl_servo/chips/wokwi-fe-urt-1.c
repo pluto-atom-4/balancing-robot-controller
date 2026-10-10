@@ -19,13 +19,19 @@ static void on_txd_change(void *user_data, pin_t pin, uint32_t value) {
   
   // When TXD goes low, drive DATA low (ESP sending). When TXD goes high, release DATA (idle).
   if (value == 0) {
-    pin_mode(state->data, OUTPUT_LOW);
+    // Set txd_drive first: pin_mode fires on_data_change synchronously and must see it.
     state->txd_drive = true;
+    pin_mode(state->data, OUTPUT_LOW);
+#ifdef ADAPTER_TRACE
     printf("[adapter] TXD edge #%lu low -> DATA OUTPUT_LOW\n", state->txd_edge_count);
+#endif
   } else {
+    // Release DATA before clearing txd_drive so the release edge is suppressed (RXD stays high).
     pin_mode(state->data, INPUT_PULLUP);
     state->txd_drive = false;
+#ifdef ADAPTER_TRACE
     printf("[adapter] TXD edge #%lu high -> DATA INPUT_PULLUP\n", state->txd_edge_count);
+#endif
   }
 }
 
@@ -39,13 +45,19 @@ static void on_data_change(void *user_data, pin_t pin, uint32_t value) {
     state->rxd_write_count++;
     if (value == 0) {
       pin_write(state->rxd, 0);
+#ifdef ADAPTER_TRACE
       printf("[adapter] DATA edge #%lu low -> RXD write 0 (#%lu)\n", state->data_edge_count, state->rxd_write_count);
+#endif
     } else {
       pin_write(state->rxd, 1);
+#ifdef ADAPTER_TRACE
       printf("[adapter] DATA edge #%lu high -> RXD write 1 (#%lu)\n", state->data_edge_count, state->rxd_write_count);
+#endif
     }
   } else {
+#ifdef ADAPTER_TRACE
     printf("[adapter] DATA edge #%lu (suppressed, txd_drive=true)\n", state->data_edge_count);
+#endif
   }
 }
 
@@ -77,4 +89,7 @@ void chip_init(void) {
     .user_data = state,
   };
   pin_watch(state->data, &data_watch);
+
+  // Sync RXD to current DATA level so it does not start at a stale value.
+  pin_write(state->rxd, pin_read(state->data));
 }
