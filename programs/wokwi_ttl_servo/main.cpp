@@ -64,15 +64,21 @@ static bool have_last = false;
 static bool configure_servo() {
   bool w1 = dxl.torqueOff(DXL_ID);
   bool w2 = w1 && dxl.setOperatingMode(DXL_ID, OP_VELOCITY);
+  bool wv = false;
   bool w3 = false;
   if (w1 && w2) {
-    w3 = dxl.torqueOn(DXL_ID);
-  } else {
-    (void)dxl.setGoalVelocity(DXL_ID, 0);
-    (void)dxl.torqueOff(DXL_ID);  // best effort: never leave torque on with a stale goal while offline
+    wv = dxl.setGoalVelocity(DXL_ID, 0.0f);  // zero stale goal BEFORE torque on
+    w3 = wv && dxl.torqueOn(DXL_ID);
   }
-  Serial.printf("[setup] torque_off=%d, mode=%d, torque_on=%d\n", w1, w2, w3);
-  return w1 && w2 && w3;
+  bool ok = w1 && w2 && wv && w3;
+  if (!ok) {
+    (void)dxl.setGoalVelocity(DXL_ID, 0.0f);
+    (void)dxl.torqueOff(DXL_ID);  // best effort: torqueOn may have landed even if its reply timed out
+  }
+  const char* goal0 = (w1 && w2) ? (wv ? "1" : "0") : "skipped";
+  const char* torque_on = (w1 && w2) ? (w3 ? "1" : "0") : "skipped";
+  Serial.printf("[setup] torque_off=%d, mode=%d, goal0=%s, torque_on=%s\n", w1, w2, goal0, torque_on);
+  return ok;
 }
 
 static void enter_phase(uint8_t i) {
@@ -148,9 +154,13 @@ void loop() {
   if (!servo_ok) {
     if (now - last_ping_ms >= REPING_PERIOD_MS) {
       last_ping_ms = now;
-      if (dxl.ping(DXL_ID) && configure_servo()) {
-        servo_ok = true;
-        enter_phase(0);
+      if (dxl.ping(DXL_ID)) {
+        if (configure_servo()) {
+          servo_ok = true;
+          enter_phase(0);
+        } else {
+          Serial.println("[demo] waiting: servo answered but configuration failed");
+        }
       } else {
         Serial.println("[demo] waiting: servo offline");
       }
