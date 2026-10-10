@@ -20,7 +20,7 @@
     [ "esp32:9", "imu:SCL", "yellow", [ "v0" ] ],
 
     [ "esp32:GND.2", "servo1:GND", "black", [ "v0" ] ],
-    [ "esp32:5V", "servo1:V+", "red", [ "v0" ] ],
+    [ "esp32:5V.1", "servo1:V+", "red", [ "v0" ] ],
     [ "esp32:10", "servo1:PWM", "orange", [ "v0" ] ]
   ],
   "dependencies": {},
