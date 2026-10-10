@@ -61,6 +61,7 @@ typedef struct {
   uint32_t fb_w;
   uint32_t fb_h;
   uint32_t last_pos_drawn; // 0xFFFFFFFF = never drawn
+  uint8_t last_torque_drawn;
   uint8_t draw_div;        // Toggles every timer tick; redraw on every 2nd tick
 
   // Parser variables
@@ -76,11 +77,23 @@ typedef struct {
 
 // Horn display. Pixel format assumed RGBA32 as uint32 0xAABBGGRR (alpha 0xFF, red in low byte).
 // Format is assumed from Wokwi examples and is UNVERIFIED on the simulator.
-#define HORN_RADIUS 28
-#define HORN_BG   0xFF202020u
-#define HORN_RING 0xFF808080u
-#define HORN_RED  0xFF0000FFu
+#define HORN_RADIUS 28 // Reference ring radius, pixels
+#define HORN_BG        0xFF202020u
+#define HORN_RING      0xFF404040u
+#define HORN_TICK      0xFF808080u
+#define HORN_BODY_ON   0xFFE0E0E0u
+#define HORN_BODY_OFF  0xFF707070u
+#define HORN_TIP_ON    0xFF0000FFu // Red, unverified byte order
+#define HORN_TIP_OFF   0xFF000080u
 #define HORN_MAX_DIM 64
+// Horn geometry in half-pixel units (doubled coordinates)
+#define HORN_L 40
+#define HORN_W 6
+#define HORN_HUB 14
+#define HORN_BORE 4
+#define HORN_HOLE_R 2
+#define HORN_HOLE_U1 24
+#define HORN_HOLE_U2 32
 
 static uint32_t pixels[HORN_MAX_DIM * HORN_MAX_DIM]; // Static storage, not stack
 
@@ -92,38 +105,27 @@ static const int32_t SIN_1024[64] = {
  -1024,-1019,-1004, -980, -946, -903, -851, -792, -724, -650, -569, -483, -392, -297, -200, -100
 };
 
-static void put_pixel(chip_state_t *chip, int32_t x, int32_t y, uint32_t color) {
-  if (x < 0 || y < 0 || x >= (int32_t)chip->fb_w || y >= (int32_t)chip->fb_h) {
-    return;
+// Arm-local coordinates (u along arm, v across). Returns 0 if not horn.
+static uint32_t horn_pixel(int32_t u, int32_t v, uint32_t body, uint32_t tip) {
+  if (u * u + v * v <= HORN_BORE * HORN_BORE) {
+    return HORN_BG;
   }
-  pixels[y * (int32_t)chip->fb_w + x] = color;
+  int32_t du1 = u - HORN_HOLE_U1;
+  int32_t du2 = u - HORN_HOLE_U2;
+  if (du1 * du1 + v * v <= HORN_HOLE_R * HORN_HOLE_R || du2 * du2 + v * v <= HORN_HOLE_R * HORN_HOLE_R) {
+    return HORN_BG;
+  }
+  if (u * u + v * v <= HORN_HUB * HORN_HUB) {
+    return body;
+  }
+  int32_t du = (u < 0) ? -u : (u > HORN_L ? u - HORN_L : 0);
+  if (du * du + v * v <= HORN_W * HORN_W) {
+    return (u > HORN_L - 8) ? tip : body;
+  }
+  return 0;
 }
 
-// Integer Bresenham, all octants
-static void draw_line(chip_state_t *chip, int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint32_t color) {
-  int32_t dx = (x1 > x0) ? (x1 - x0) : (x0 - x1);
-  int32_t dy = -((y1 > y0) ? (y1 - y0) : (y0 - y1));
-  int32_t sx = (x0 < x1) ? 1 : -1;
-  int32_t sy = (y0 < y1) ? 1 : -1;
-  int32_t err = dx + dy;
-  for (;;) {
-    put_pixel(chip, x0, y0, color);
-    if (x0 == x1 && y0 == y1) {
-      break;
-    }
-    int32_t e2 = 2 * err;
-    if (e2 >= dy) {
-      err += dy;
-      x0 += sx;
-    }
-    if (e2 <= dx) {
-      err += dx;
-      y0 += sy;
-    }
-  }
-}
-
-// Background, grey ring, red pointer at angle = position * 2pi / 4096 (0 = 12 o'clock, clockwise)
+// Background, reference ring, ticks, servo horn. Position 0 = arm up, clockwise.
 static void draw_horn(chip_state_t *chip) {
   uint32_t w = chip->fb_w;
   uint32_t h = chip->fb_h;
@@ -131,34 +133,44 @@ static void draw_horn(chip_state_t *chip) {
     return;
   }
 
-  for (uint32_t i = 0; i < w * h; i++) {
-    pixels[i] = HORN_BG;
-  }
+  uint32_t body = chip->torque_enable ? HORN_BODY_ON : HORN_BODY_OFF;
+  uint32_t tip = chip->torque_enable ? HORN_TIP_ON : HORN_TIP_OFF;
 
-  int32_t cx = (int32_t)(w / 2);
-  int32_t cy = (int32_t)(h / 2);
-
-  // Ring: squared distance from centre within R-1 .. R+1
-  int32_t r_in = HORN_RADIUS - 1;
-  int32_t r_out = HORN_RADIUS + 1;
-  for (int32_t y = 0; y < (int32_t)h; y++) {
-    for (int32_t x = 0; x < (int32_t)w; x++) {
-      int32_t dx = x - cx;
-      int32_t dy = y - cy;
-      int32_t d2 = dx * dx + dy * dy;
-      if (d2 >= r_in * r_in && d2 <= r_out * r_out) {
-        put_pixel(chip, x, y, HORN_RING);
-      }
-    }
-  }
-
-  // Pointer: 4096 ticks per turn -> 64 table steps; screen y grows downward
+  // 4096 ticks per turn -> 64 table steps
   uint32_t idx = (chip->current_position / 64) & 63;
   int32_t sn = SIN_1024[idx];
   int32_t cs = SIN_1024[(idx + 16) & 63];
-  int32_t tip_x = cx + (sn * HORN_RADIUS) / 1024;
-  int32_t tip_y = cy - (cs * HORN_RADIUS) / 1024;
-  draw_line(chip, cx, cy, tip_x, tip_y, HORN_RED);
+
+  // Ring: 2R in half-pixel units, squared, within (R-1)..(R+1)
+  int32_t r_in2 = (2 * (HORN_RADIUS - 1)) * (2 * (HORN_RADIUS - 1));
+  int32_t r_out2 = (2 * (HORN_RADIUS + 1)) * (2 * (HORN_RADIUS + 1));
+
+  for (int32_t y = 0; y < (int32_t)h; y++) {
+    for (int32_t x = 0; x < (int32_t)w; x++) {
+      int32_t X = 2 * x + 1 - (int32_t)w;
+      int32_t Y = 2 * y + 1 - (int32_t)h;
+      int32_t ax = (X < 0) ? -X : X;
+      int32_t ay = (Y < 0) ? -Y : Y;
+      int32_t d2 = X * X + Y * Y;
+
+      uint32_t c = HORN_BG;
+      if (d2 >= r_in2 && d2 <= r_out2) {
+        c = HORN_RING;
+      }
+      if ((ax <= 1 && ay >= 48 && ay <= 56) || (ay <= 1 && ax >= 48 && ax <= 56)) {
+        c = HORN_TICK;
+      }
+
+      // >> on negative int32 is arithmetic in clang/wasm
+      int32_t u = (X * sn - Y * cs) >> 10;
+      int32_t v = (X * cs + Y * sn) >> 10;
+      uint32_t horn = horn_pixel(u, v, body, tip);
+      if (horn != 0) {
+        c = horn;
+      }
+      pixels[y * (int32_t)w + x] = c;
+    }
+  }
 
   buffer_write(chip->fb, 0, pixels, w * h * 4);
 }
@@ -360,9 +372,11 @@ static void chip_timer_callback(void *user_data) {
 
   // Redraw only on position change, and only every 2nd tick (~25 Hz)
   chip->draw_div ^= 1;
-  if (chip->draw_div == 0 && chip->current_position != chip->last_pos_drawn) {
+  if (chip->draw_div == 0 &&
+      (chip->current_position != chip->last_pos_drawn || chip->torque_enable != chip->last_torque_drawn)) {
     draw_horn(chip);
     chip->last_pos_drawn = chip->current_position;
+    chip->last_torque_drawn = chip->torque_enable;
   }
 }
 
@@ -407,4 +421,5 @@ void chip_init() {
   chip->fb = framebuffer_init(&chip->fb_w, &chip->fb_h);
   draw_horn(chip);
   chip->last_pos_drawn = chip->current_position;
+  chip->last_torque_drawn = chip->torque_enable;
 }
