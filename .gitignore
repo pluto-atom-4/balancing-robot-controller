@@ -52,6 +52,6 @@ graphify-out/
 .graphify_cache/
 .claude/settings.json.graphify-bak
 
-# Wokwi custom chip build output / fetched API header
-programs/*/chips/*.wasm
-programs/*/chips/wokwi-api.h
+# Wokwi custom chips: built wasm chips and the wokwi-api.h that wokwi-cli downloads on first `chip compile` (not vendored; it is fetched automatically)
+wokwi/chips/*.wasm
+wokwi/chips/wokwi-api.h

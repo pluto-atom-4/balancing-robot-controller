@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
     <!--
-      Source image for the 64x64 pixel background bake, run by tools/svg_to_pixels.sh
-      (make wokwi_ttl_servo-bg). The group id="horn" is hidden in the bake (hide-id horn);
+      Source image for the 64x64 pixel background bake, run by wokwi/tools/svg_to_pixels.sh
+      (make wokwi-bg). The group id="horn" is hidden in the bake (hide-id horn);
       the chip draws its own horn at runtime. Keep every shape >= 10 units
       (scale is 0.32 px per SVG unit).
     -->
