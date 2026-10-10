@@ -86,7 +86,7 @@ typedef struct {
 #define HORN_TIP_ON    0xFF0000FFu // Red (0xAABBGGRR, byte order confirmed in the Wokwi simulator)
 #define HORN_TIP_OFF   0xFF000080u
 #define HORN_MAX_DIM 64
-// Background is a baked 64x64 image generated from wokwi-ttl-servo.svg by tools/svg_to_pixels.sh (`make wokwi_ttl_servo-bg`).
+// Background is a baked 64x64 image generated from wokwi-ttl-servo.svg by wokwi/tools/svg_to_pixels.sh (`make wokwi-bg`).
 // Same 0xAABBGGRR pixel format as above, CONFIRMED in the Wokwi simulator by the repo owner.
 #define BG_DIM 64
 // Horn geometry in half-pixel units (doubled coordinates)

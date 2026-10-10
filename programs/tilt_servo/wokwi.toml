@@ -2,3 +2,11 @@
 version = 1
 firmware = '../../.pio/build/tilt_servo-xiao_c3/firmware.bin'
 elf = '../../.pio/build/tilt_servo-xiao_c3/firmware.elf'
+
+[[chip]]
+name = 'wokwi-fe-urt-1'
+binary = '../../wokwi/chips/wokwi-fe-urt-1.chip.wasm'
+
+[[chip]]
+name = 'wokwi-ttl-servo'
+binary = '../../wokwi/chips/wokwi-ttl-servo.chip.wasm'
