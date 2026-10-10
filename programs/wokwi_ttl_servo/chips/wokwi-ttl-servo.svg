@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+    <!-- Styles for Wokwi canvas scaling and standard layout -->
+    <style>
+        .body { fill: #2c3e50; stroke: #1a252f; stroke-width: 3; }
+        .horn-base { fill: #ecf0f1; stroke: #bdc3c7; stroke-width: 2; }
+        .horn-pointer { fill: #e74c3c; }
+        .pin { fill: #f1c40f; stroke: #d35400; stroke-width: 1; }
+        .text { font-family: monospace; font-size: 10px; fill: #ffffff; text-anchor: middle; }
+    </style>
+
+    <!-- Main Servo Body Box -->
+    <rect x="30" y="30" width="140" height="140" rx="10" ry="10" class="body" />
+
+    <!-- Connection Pins Visual Layout (GND, VCC, DATA) -->
+    <circle cx="50" cy="160" r="6" class="pin" />
+    <circle cx="100" cy="160" r="6" class="pin" />
+    <circle cx="150" cy="160" r="6" class="pin" />
+
+    <text x="50" y="150" class="text">GND</text>
+    <text x="100" y="150" class="text">VCC</text>
+    <text x="150" y="150" class="text">DATA</text>
+
+    <!-- Label Identification -->
+    <text x="100" y="55" class="text" font-size="12px" font-weight="bold">XL330 TTL</text>
+
+    <!--
+      The Rotating Horn Component Layer
+      Wokwi maps the 'transform' attribute dynamically via the C engine.
+      The center point of rotation is exactly at (100, 100).
+    -->
+    <g id="horn" transform="rotate(0, 100, 100)">
+        <!-- Circular Servo Horn Base -->
+        <circle cx="100" cy="100" r="35" class="horn-base" />
+
+        <!-- Central Gear Shaft Pin -->
+        <circle cx="100" cy="100" r="10" fill="#7f8c8d" />
+
+        <!-- Continuous Rotation Visual Alignment Anchor (The Pointer) -->
+        <!-- Points directly upward towards 12 o'clock at 0 degrees -->
+        <polygon points="100,60 92,75 108,75" class="horn-pointer" />
+
+        <!-- Secondary calibration marks around the wheel for visual velocity tracking -->
+        <circle cx="100" cy="130" r="3" fill="#7f8c8d" />
+        <circle cx="70" cy="100" r="3" fill="#7f8c8d" />
+        <circle cx="130" cy="100" r="3" fill="#7f8c8d" />
+    </g>
+</svg>

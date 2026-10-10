@@ -51,3 +51,7 @@ issue-content*.json
 graphify-out/
 .graphify_cache/
 .claude/settings.json.graphify-bak
+
+# Wokwi custom chip build output / fetched API header
+programs/*/chips/*.wasm
+programs/*/chips/wokwi-api.h

@@ -1,0 +1,8 @@
+[wokwi]
+version = 1
+firmware = '../../.pio/build/wokwi_ttl_servo-xiao_c3/firmware.bin'
+elf = '../../.pio/build/wokwi_ttl_servo-xiao_c3/firmware.elf'
+
+[[chip]]
+name = 'wokwi-ttl-servo'
+binary = 'chips/wokwi-ttl-servo.chip.wasm'

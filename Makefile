@@ -3,7 +3,7 @@
 #
 # NOTE: Arduino Uno (uno), Uno R4 WiFi (uno_r4_wifi) and ATtiny85 (attiny85) support only the 'blink' program.
 # ATtiny85 has no hardware serial, so monitor is unavailable; uses ISP programmer.
-# NOTE: tilt_servo, ttl_servo and stepper_motor support only XIAO ESP32-C3 (xiao_c3); they are not built for other boards.
+# NOTE: tilt_servo, ttl_servo, stepper_motor and wokwi_ttl_servo support only XIAO ESP32-C3 (xiao_c3); they are not built for other boards.
 
 # pio from PATH, else the user-level PlatformIO install, else plain `pio`.
 # Override with e.g. `make PIO=.venv/bin/pio build`.
@@ -14,11 +14,11 @@ PORT ?=
 UPLOAD_PORT := $(if $(PORT),--upload-port $(PORT))
 MONITOR_PORT := $(if $(PORT),--port $(PORT))
 
-ENVS := balance-xiao_c3 balance-xiao_c3-pid blink-uno blink-uno_r4_wifi blink-attiny85 blink-xiao_s3 blink-esp32dev blink-xiao_c3 tilt_servo-xiao_c3 ttl_servo-xiao_c3 stepper_motor-xiao_c3 c3_probe-xiao_c3 c3_facts-xiao_c3
+ENVS := balance-xiao_c3 balance-xiao_c3-pid blink-uno blink-uno_r4_wifi blink-attiny85 blink-xiao_s3 blink-esp32dev blink-xiao_c3 tilt_servo-xiao_c3 ttl_servo-xiao_c3 stepper_motor-xiao_c3 wokwi_ttl_servo-xiao_c3 c3_probe-xiao_c3 c3_facts-xiao_c3
 
 # Per-program entries: each programs/<name>/main.cpp gets its own target set.
 # BOARD picks the board suffix; CONTROLLER=pid picks the PID balance env.
-PROGRAMS := balance tilt_servo blink c3_probe ttl_servo stepper_motor
+PROGRAMS := balance tilt_servo blink c3_probe ttl_servo stepper_motor wokwi_ttl_servo
 BOARD ?= xiao_c3
 CONTROLLER ?= lqr
 VALID_ENVS := $(ENVS)
@@ -48,7 +48,7 @@ endef
 require_env = $(if $(filter $(call prog_env,$(1)),$(VALID_ENVS)),true,echo "No env $(call prog_env,$(1)) for program $(1) on BOARD=$(BOARD). Run 'make envs'." >&2; exit 1)
 
 .DEFAULT_GOAL := help
-.PHONY: help programs $(PROGRAMS) $(addsuffix -upload,$(PROGRAMS)) $(addsuffix -monitor,$(PROGRAMS)) $(addsuffix -sim,$(PROGRAMS)) build upload monitor clean test build-all clean-all envs graph ports port check sim sim-% build-% upload-% monitor-% clean-%
+.PHONY: help programs $(PROGRAMS) $(addsuffix -upload,$(PROGRAMS)) $(addsuffix -monitor,$(PROGRAMS)) $(addsuffix -sim,$(PROGRAMS)) build upload monitor clean test build-all clean-all envs graph ports port check wokwi_ttl_servo-chip sim sim-% build-% upload-% monitor-% clean-%
 
 # Build the default (or specified) environment.
 build: ## Build ENV (default: balance-xiao_c3)
@@ -141,6 +141,16 @@ sim-%: ## Build env and run in Wokwi (e.g., sim-blink-xiao_c3)
 	grep -Fq "build/$*/" $$toml || { echo "$$toml is not configured for env $* (its firmware paths point at a different env)" >&2; exit 1; }
 	$(PIO) run -e $*
 	$(WOKWI) $(WOKWI_ARGS) programs/$(firstword $(subst -, ,$*))
+
+# wokwi_ttl_servo drives a custom Wokwi chip (C, built to wasm by wokwi-cli; downloads WASI-SDK on first use).
+TTL_CHIP_SRC := programs/wokwi_ttl_servo/chips/wokwi-ttl-servo.c
+TTL_CHIP_WASM := programs/wokwi_ttl_servo/chips/wokwi-ttl-servo.chip.wasm
+
+$(TTL_CHIP_WASM): $(TTL_CHIP_SRC) $(TTL_CHIP_SRC:.c=.chip.json)
+	$(WOKWI) chip compile $(TTL_CHIP_SRC) -o $@
+
+wokwi_ttl_servo-chip: $(TTL_CHIP_WASM) ## Build the Wokwi custom chip (wasm) for wokwi_ttl_servo
+sim-wokwi_ttl_servo-xiao_c3: $(TTL_CHIP_WASM)
 
 # Pattern rules: build-<env>, upload-<env>, monitor-<env>, clean-<env>
 # Example: make build-blink-uno, make upload-balance-xiao_c3 PORT=/dev/ttyUSB0
