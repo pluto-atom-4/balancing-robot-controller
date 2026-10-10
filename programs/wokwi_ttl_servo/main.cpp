@@ -6,13 +6,6 @@
 
 const float DXL_PROTOCOL_VERSION = 2.0;
 const uint8_t DXL_ID = 1;
-const uint16_t DXL_MODEL_NUMBER = 1200; // XL330_M288
-
-const uint16_t ADDR_OPERATING_MODE = 11;
-const uint16_t ADDR_TORQUE_ENABLE  = 64;
-const uint16_t ADDR_GOAL_VELOCITY  = 104;
-
-const uint8_t OPERATING_MODE_VELOCITY = 1;
 
 HardwareSerial dxl_serial(1);
 
@@ -40,39 +33,6 @@ class PinAwareSerialPort : public DYNAMIXEL::SerialPortHandler {
 PinAwareSerialPort dxl_port(dxl_serial, -1, DXL_RX_PIN, DXL_TX_PIN);
 Dynamixel2Arduino dxl;
 
-static bool writeReg8(uint16_t addr, uint8_t v) {
-  return dxl.write(DXL_ID, addr, &v, 1, 100);
-}
-
-static bool writeReg32(uint16_t addr, int32_t v) {
-  uint8_t b[4] = {uint8_t(v), uint8_t(v >> 8), uint8_t(v >> 16), uint8_t(v >> 24)};
-  return dxl.write(DXL_ID, addr, b, 4, 100);
-}
-
-#ifdef WOKWI_TTL_SERVO_RAWDIAG
-static void rawPingDiag() {
-  const uint8_t ping_frame[] = {0xFF, 0xFF, 0xFD, 0x00, 0x01, 0x03, 0x00, 0x01, 0x19, 0x4E};
-  Serial.print("[diag] Sending raw PING: ");
-  for (size_t i = 0; i < sizeof(ping_frame); i++) {
-    Serial.printf("%02X ", ping_frame[i]);
-  }
-  Serial.println();
-  
-  dxl_serial.write(ping_frame, sizeof(ping_frame));
-  delay(20);
-  
-  Serial.print("[diag] RX buffer: ");
-  size_t count = 0;
-  while (dxl_serial.available() && count < 32) {
-    uint8_t b = dxl_serial.read();
-    Serial.printf("%02X ", b);
-    count++;
-  }
-  Serial.println();
-  Serial.printf("[diag] RX count: %zu\n", count);
-}
-#endif
-
 void setup() {
   Serial.begin(115200);
   delay(1000); // Give serial monitor time to settle
@@ -82,10 +42,6 @@ void setup() {
   dxl.setPortProtocolVersion(DXL_PROTOCOL_VERSION);
 
   Serial.println("[ESP32-C3] Initializing Dynamixel Target Bus...");
-
-#ifdef WOKWI_TTL_SERVO_RAWDIAG
-  rawPingDiag();
-#endif
 
   // Ping the servo to make sure communication is established
   bool ping_ok = dxl.ping(DXL_ID);
@@ -102,11 +58,6 @@ void setup() {
   else if (err_code == 6) Serial.println(" (NULLPTR)");
   else Serial.printf(" (unknown #%d)\n", err_code);
   
-  if (!ping_ok) {
-    Serial.println("[info] Servo did not respond to PING; attempting to set model number...");
-    dxl.setModelNumber(DXL_ID, DXL_MODEL_NUMBER);
-  }
-
   if (ping_ok) {
     Serial.println("[SUCCESS] Servo found online!");
   } else {
@@ -114,14 +65,14 @@ void setup() {
   }
 
   // Set up velocity mode configurations
-  bool w1 = writeReg8(ADDR_TORQUE_ENABLE, 0);
-  bool w2 = writeReg8(ADDR_OPERATING_MODE, OPERATING_MODE_VELOCITY);
-  bool w3 = writeReg8(ADDR_TORQUE_ENABLE, 1);
+  bool w1 = dxl.torqueOff(DXL_ID);
+  bool w2 = dxl.setOperatingMode(DXL_ID, OP_VELOCITY);
+  bool w3 = dxl.torqueOn(DXL_ID);
   Serial.printf("[setup] torque_off=%d, mode=%d, torque_on=%d\n", w1, w2, w3);
 
   // Command continuous forward rotation
   int32_t active_speed = 150;
-  bool w4 = writeReg32(ADDR_GOAL_VELOCITY, active_speed);
+  bool w4 = dxl.setGoalVelocity(DXL_ID, active_speed);
   Serial.printf("[setup] goal_velocity=%d, result=%d\n", active_speed, w4);
   Serial.println("Reading live track data...");
 }
