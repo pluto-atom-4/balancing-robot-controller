@@ -1,7 +1,7 @@
 #include "wokwi-api.h"
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "wokwi-ttl-servo.bg.h"
 
 #define MODEL_NUMBER 1200 /* XL330-M288 */
 #define FIRMWARE_VERSION 1
@@ -76,16 +76,19 @@ typedef struct {
 } chip_state_t;
 
 // Horn display. Pixel format assumed RGBA32 as uint32 0xAABBGGRR (alpha 0xFF, red in low byte).
-// Format is assumed from Wokwi examples and is UNVERIFIED on the simulator.
+// CONFIRMED in the Wokwi simulator by the repo owner.
 #define HORN_RADIUS 28 // Reference ring radius, pixels
 #define HORN_BG        0xFF202020u
 #define HORN_RING      0xFF404040u
 #define HORN_TICK      0xFF808080u
 #define HORN_BODY_ON   0xFFE0E0E0u
 #define HORN_BODY_OFF  0xFF707070u
-#define HORN_TIP_ON    0xFF0000FFu // Red, unverified byte order
+#define HORN_TIP_ON    0xFF0000FFu // Red (0xAABBGGRR, byte order confirmed in the Wokwi simulator)
 #define HORN_TIP_OFF   0xFF000080u
 #define HORN_MAX_DIM 64
+// Background is a baked 64x64 image generated from wokwi-ttl-servo.svg by tools/svg_to_pixels.sh (`make wokwi_ttl_servo-bg`).
+// Same 0xAABBGGRR pixel format as above, CONFIRMED in the Wokwi simulator by the repo owner.
+#define BG_DIM 64
 // Horn geometry in half-pixel units (doubled coordinates)
 #define HORN_L 40
 #define HORN_W 6
@@ -129,10 +132,8 @@ static uint32_t horn_pixel(int32_t u, int32_t v, uint32_t body, uint32_t tip) {
 static void draw_horn(chip_state_t *chip) {
   uint32_t w = chip->fb_w;
   uint32_t h = chip->fb_h;
+  // Handle 0 is valid in Wokwi; validity is judged from the dimensions framebuffer_init reports.
   if (w == 0 || h == 0 || w > HORN_MAX_DIM || h > HORN_MAX_DIM) {
-    return;
-  }
-  if (!chip->fb) {
     return;
   }
 
@@ -157,6 +158,15 @@ static void draw_horn(chip_state_t *chip) {
       int32_t d2 = X * X + Y * Y;
 
       uint32_t c = HORN_BG;
+      if (w == BG_DIM && h == BG_DIM) {
+        uint32_t b = servo_bg_pixels[y * BG_DIM + x];
+        if (b >> 24) {
+          c = b;
+        }
+        if (!chip->torque_enable) {
+          c = ((c >> 1) & 0x007F7F7Fu) | 0xFF000000u;
+        }
+      }
       if (d2 >= r_in2 && d2 <= r_out2) {
         c = HORN_RING;
       }
@@ -416,7 +426,7 @@ void chip_init() {
   // Framebuffer: dims come from the host; draw_horn skips if they are 0 or > 64
   chip->fb = framebuffer_init(&chip->fb_w, &chip->fb_h);
   draw_horn(chip);
-  if (chip->fb) {
+  if (chip->fb_w != 0 && chip->fb_h != 0) {
     chip->last_pos_drawn = chip->current_position;
     chip->last_torque_drawn = chip->torque_enable;
   }

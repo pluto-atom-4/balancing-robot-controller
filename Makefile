@@ -48,7 +48,7 @@ endef
 require_env = $(if $(filter $(call prog_env,$(1)),$(VALID_ENVS)),true,echo "No env $(call prog_env,$(1)) for program $(1) on BOARD=$(BOARD). Run 'make envs'." >&2; exit 1)
 
 .DEFAULT_GOAL := help
-.PHONY: help programs $(PROGRAMS) $(addsuffix -upload,$(PROGRAMS)) $(addsuffix -monitor,$(PROGRAMS)) $(addsuffix -sim,$(PROGRAMS)) build upload monitor clean test build-all clean-all envs graph ports port check wokwi_ttl_servo-chip sim sim-% build-% upload-% monitor-% clean-%
+.PHONY: help programs $(PROGRAMS) $(addsuffix -upload,$(PROGRAMS)) $(addsuffix -monitor,$(PROGRAMS)) $(addsuffix -sim,$(PROGRAMS)) build upload monitor clean test build-all clean-all envs graph ports port check wokwi_ttl_servo-chip wokwi_ttl_servo-bg sim sim-% build-% upload-% monitor-% clean-%
 
 # Build the default (or specified) environment.
 build: ## Build ENV (default: balance-xiao_c3)
@@ -149,12 +149,18 @@ FE_URT_1_SRC := programs/wokwi_ttl_servo/chips/wokwi-fe-urt-1.c
 FE_URT_1_WASM := programs/wokwi_ttl_servo/chips/wokwi-fe-urt-1.chip.wasm
 TTL_SERVO_SRC := programs/wokwi_ttl_servo/chips/wokwi-ttl-servo.c
 TTL_SERVO_WASM := programs/wokwi_ttl_servo/chips/wokwi-ttl-servo.chip.wasm
+TTL_SERVO_BG := programs/wokwi_ttl_servo/chips/wokwi-ttl-servo.bg.h
+TTL_SERVO_SVG := programs/wokwi_ttl_servo/chips/wokwi-ttl-servo.svg
+SVG_TO_PIXELS := programs/wokwi_ttl_servo/tools/svg_to_pixels.sh
 
 $(FE_URT_1_WASM): $(FE_URT_1_SRC) $(FE_URT_1_SRC:.c=.chip.json)
 	$(WOKWI) chip compile $(FE_URT_1_SRC) -o $@
 
-$(TTL_SERVO_WASM): $(TTL_SERVO_SRC) $(TTL_SERVO_SRC:.c=.chip.json)
+$(TTL_SERVO_WASM): $(TTL_SERVO_SRC) $(TTL_SERVO_SRC:.c=.chip.json) $(TTL_SERVO_BG)
 	$(WOKWI) chip compile $(TTL_SERVO_SRC) -o $@
+
+wokwi_ttl_servo-bg: ## Regenerate the servo chip background pixel header from the SVG (needs inkscape + ImageMagick)
+	bash $(SVG_TO_PIXELS) --hide-id horn $(TTL_SERVO_SVG) $(TTL_SERVO_BG)
 
 wokwi_ttl_servo-chip: $(FE_URT_1_WASM) $(TTL_SERVO_WASM) ## Build both Wokwi custom chips for wokwi_ttl_servo
 sim-wokwi_ttl_servo-xiao_c3: $(FE_URT_1_WASM) $(TTL_SERVO_WASM)
