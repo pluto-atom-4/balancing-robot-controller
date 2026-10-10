@@ -4,13 +4,18 @@
   "editor": "wokwi",
   "parts": [
     { "type": "board-esp32-c3-devkitm-1", "id": "esp", "top": 0, "left": 0, "attrs": { "serialInterface": "USB_SERIAL_JTAG" } },
-    { "type": "chip-wokwi-ttl-servo", "id": "servo1", "top": -50, "left": 200, "attrs": {} }
+    { "type": "chip-wokwi-fe-urt-1", "id": "adapter", "top": -100, "left": 200, "attrs": {} },
+    { "type": "chip-wokwi-ttl-servo", "id": "servo1", "top": -100, "left": 400, "attrs": {} }
   ],
   "connections": [
-    [ "esp:GND.1", "servo1:GND", "black", [] ],
-    [ "esp:5V", "servo1:VCC", "red", [] ],
-    [ "servo1:RX", "esp:4", "green", [] ],
-    [ "servo1:TX", "esp:5", "green", [] ]
+    [ "esp:GND.1", "adapter:GND", "black", [] ],
+    [ "esp:5V", "adapter:VCC", "red", [] ],
+    [ "esp:4", "adapter:RXD", "green", [] ],
+    [ "esp:5", "adapter:TXD", "green", [] ],
+    [ "adapter:DATA", "servo1:RX", "orange", [] ],
+    [ "adapter:DATA", "servo1:TX", "orange", [] ],
+    [ "servo1:GND", "esp:GND.1", "black", [] ],
+    [ "servo1:VCC", "esp:5V", "red", [] ]
   ],
   "dependencies": {}
 }

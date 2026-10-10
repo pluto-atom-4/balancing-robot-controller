@@ -35,6 +35,7 @@ typedef enum {
 
 typedef struct {
   uart_dev_t uart;
+  pin_t data_pin;
   uint8_t servo_id;
   uint32_t current_position;
   int32_t speed;

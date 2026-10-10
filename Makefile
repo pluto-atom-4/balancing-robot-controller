@@ -142,15 +142,22 @@ sim-%: ## Build env and run in Wokwi (e.g., sim-blink-xiao_c3)
 	$(PIO) run -e $*
 	$(WOKWI) $(WOKWI_ARGS) programs/$(firstword $(subst -, ,$*))
 
-# wokwi_ttl_servo drives a custom Wokwi chip (C, built to wasm by wokwi-cli; downloads WASI-SDK on first use).
-TTL_CHIP_SRC := programs/wokwi_ttl_servo/chips/wokwi-ttl-servo.c
-TTL_CHIP_WASM := programs/wokwi_ttl_servo/chips/wokwi-ttl-servo.chip.wasm
+# wokwi_ttl_servo drives two custom Wokwi chips (C, built to wasm by wokwi-cli; downloads WASI-SDK on first use).
+# FE_URT_1: half-duplex adapter (ESP UART TXD/RXD -> servo DATA bus, suppresses echo)
+# TTL_SERVO: Dynamixel XL330 servo (pins RX, TX connected via adapter's DATA line)
+FE_URT_1_SRC := programs/wokwi_ttl_servo/chips/wokwi-fe-urt-1.c
+FE_URT_1_WASM := programs/wokwi_ttl_servo/chips/wokwi-fe-urt-1.chip.wasm
+TTL_SERVO_SRC := programs/wokwi_ttl_servo/chips/wokwi-ttl-servo.c
+TTL_SERVO_WASM := programs/wokwi_ttl_servo/chips/wokwi-ttl-servo.chip.wasm
 
-$(TTL_CHIP_WASM): $(TTL_CHIP_SRC) $(TTL_CHIP_SRC:.c=.chip.json)
-	$(WOKWI) chip compile $(TTL_CHIP_SRC) -o $@
+$(FE_URT_1_WASM): $(FE_URT_1_SRC) $(FE_URT_1_SRC:.c=.chip.json)
+	$(WOKWI) chip compile $(FE_URT_1_SRC) -o $@
 
-wokwi_ttl_servo-chip: $(TTL_CHIP_WASM) ## Build the Wokwi custom chip (wasm) for wokwi_ttl_servo
-sim-wokwi_ttl_servo-xiao_c3: $(TTL_CHIP_WASM)
+$(TTL_SERVO_WASM): $(TTL_SERVO_SRC) $(TTL_SERVO_SRC:.c=.chip.json)
+	$(WOKWI) chip compile $(TTL_SERVO_SRC) -o $@
+
+wokwi_ttl_servo-chip: $(FE_URT_1_WASM) $(TTL_SERVO_WASM) ## Build both Wokwi custom chips for wokwi_ttl_servo
+sim-wokwi_ttl_servo-xiao_c3: $(FE_URT_1_WASM) $(TTL_SERVO_WASM)
 
 # Pattern rules: build-<env>, upload-<env>, monitor-<env>, clean-<env>
 # Example: make build-blink-uno, make upload-balance-xiao_c3 PORT=/dev/ttyUSB0

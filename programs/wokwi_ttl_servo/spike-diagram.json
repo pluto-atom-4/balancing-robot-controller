@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "parts": [
+    { "type": "chip-wokwi-spike-same-pin-uart", "id": "spike1" }
+  ],
+  "connections": []
+}
