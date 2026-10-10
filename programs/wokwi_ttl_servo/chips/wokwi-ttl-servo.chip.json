@@ -1,0 +1,5 @@
+{
+  "name": "wokwi-ttl-servo",
+  "author": "balancing-robot-controller",
+  "pins": ["GND", "VCC", "RX", "TX"]
+}

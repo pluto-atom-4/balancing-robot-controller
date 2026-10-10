@@ -1,0 +1,5 @@
+{
+  "name": "wokwi-fe-urt-1",
+  "author": "balancing-robot-controller",
+  "pins": ["GND", "VCC", "TXD", "RXD", "DATA"]
+}
