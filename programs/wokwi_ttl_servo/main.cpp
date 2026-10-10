@@ -61,7 +61,7 @@ void setup() {
   if (ping_ok) {
     Serial.println("[SUCCESS] Servo found online!");
   } else {
-    Serial.println("[WARNING] Servo offline; proceeding with manual register writes.");
+    Serial.println("[WARNING] Servo offline; proceeding anyway.");
   }
 
   // Set up velocity mode configurations
