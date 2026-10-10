@@ -9,13 +9,13 @@
   ],
   "connections": [
     [ "esp:GND.1", "adapter:GND", "black", [] ],
-    [ "esp:5V", "adapter:VCC", "red", [] ],
+    [ "esp:5V.1", "adapter:VCC", "red", [] ],
     [ "esp:4", "adapter:TXD", "green", [] ],
     [ "esp:5", "adapter:RXD", "green", [] ],
     [ "adapter:DATA", "servo1:RX", "orange", [] ],
     [ "adapter:DATA", "servo1:TX", "orange", [] ],
     [ "servo1:GND", "esp:GND.1", "black", [] ],
-    [ "servo1:VCC", "esp:5V", "red", [] ]
+    [ "servo1:VCC", "esp:5V.1", "red", [] ]
   ],
   "dependencies": {}
 }

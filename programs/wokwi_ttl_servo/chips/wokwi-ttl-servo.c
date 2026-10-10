@@ -8,6 +8,11 @@
 #define MAX_PARAMS 64
 #define MAX_READ_LEN 64
 
+// Velocity unit 0.229 rpm per unit: ROBOTIS XL330-M077 e-Manual https://emanual.robotis.com/docs/en/dxl/x/xl330-m077/
+// Same constant as lib/dxl_units/dxl_units.h; this chip's MODEL_NUMBER 1200 is XL330-M288 (same unit), hand-copied here.
+#define TICKS_PER_REV 4096.0
+#define VEL_TICKS_PER_S_PER_UNIT (0.229 * TICKS_PER_REV / 60.0)
+
 #define ADDR_OPERATING_MODE 11
 #define ADDR_TORQUE_ENABLE  64
 #define ADDR_GOAL_VELOCITY  104
@@ -38,6 +43,7 @@ typedef struct {
   pin_t data_pin;
   uint8_t servo_id;
   uint32_t current_position;
+  double pos_frac; // Sub-tick remainder of integrated position
   int32_t speed;
   uint64_t last_update_us;
 
@@ -154,6 +160,9 @@ static void process_packet(chip_state_t *chip) {
       chip->operating_mode = chip->params[2];
     } else if (target_address == ADDR_TORQUE_ENABLE) {
       chip->torque_enable = chip->params[2];
+      if (chip->torque_enable == 0) {
+        chip->pos_frac = 0;
+      }
     } else if (target_address == ADDR_GOAL_VELOCITY && data_len >= 4) {
       memcpy(&chip->speed, &chip->params[2], 4);
     }
@@ -245,10 +254,12 @@ static void chip_timer_callback(void *user_data) {
     pin_mode(chip->tx_pin, INPUT_PULLUP);
   }
 
-  if (chip->speed != 0) {
-    int32_t step_delta = (int32_t)(chip->speed * delta_t * 10.0);
-    chip->current_position += step_delta;
-    chip->current_position %= 4096;
+  // delta_t is in seconds (us / 1e6), so ticks = units * ticks-per-s-per-unit * seconds
+  if (chip->torque_enable && chip->speed != 0) {
+    chip->pos_frac += chip->speed * VEL_TICKS_PER_S_PER_UNIT * delta_t;
+    int32_t whole = (int32_t)chip->pos_frac;
+    chip->pos_frac -= whole;
+    chip->current_position = (uint32_t)((((int64_t)chip->current_position + whole) % 4096 + 4096) % 4096);
   }
 }
 
