@@ -1,5 +1,6 @@
 {
   "name": "wokwi-ttl-servo",
   "author": "balancing-robot-controller",
-  "pins": ["GND", "VCC", "RX", "TX"]
+  "pins": ["GND", "VCC", "RX", "TX"],
+  "display": { "width": 64, "height": 64 }
 }

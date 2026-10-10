@@ -56,6 +56,13 @@ typedef struct {
   uint8_t operating_mode;
   uint8_t torque_enable;
 
+  // Display: framebuffer handle and dims reported by the host (never hardcoded)
+  buffer_t fb;
+  uint32_t fb_w;
+  uint32_t fb_h;
+  uint32_t last_pos_drawn; // 0xFFFFFFFF = never drawn
+  uint8_t draw_div;        // Toggles every timer tick; redraw on every 2nd tick
+
   // Parser variables
   parse_state_t state;
   uint16_t packet_length;
@@ -66,6 +73,95 @@ typedef struct {
   uint16_t param_idx;
   uint8_t tx_buf[96];
 } chip_state_t;
+
+// Horn display. Pixel format assumed RGBA32 as uint32 0xAABBGGRR (alpha 0xFF, red in low byte).
+// Format is assumed from Wokwi examples and is UNVERIFIED on the simulator.
+#define HORN_RADIUS 28
+#define HORN_BG   0xFF202020u
+#define HORN_RING 0xFF808080u
+#define HORN_RED  0xFF0000FFu
+#define HORN_MAX_DIM 64
+
+static uint32_t pixels[HORN_MAX_DIM * HORN_MAX_DIM]; // Static storage, not stack
+
+// sin(i * 2pi / 64) * 1024, rounded. cos(i) = SIN_1024[(i + 16) & 63].
+static const int32_t SIN_1024[64] = {
+     0,  100,  200,  297,  392,  483,  569,  650,  724,  792,  851,  903,  946,  980, 1004, 1019,
+  1024, 1019, 1004,  980,  946,  903,  851,  792,  724,  650,  569,  483,  392,  297,  200,  100,
+     0, -100, -200, -297, -392, -483, -569, -650, -724, -792, -851, -903, -946, -980,-1004,-1019,
+ -1024,-1019,-1004, -980, -946, -903, -851, -792, -724, -650, -569, -483, -392, -297, -200, -100
+};
+
+static void put_pixel(chip_state_t *chip, int32_t x, int32_t y, uint32_t color) {
+  if (x < 0 || y < 0 || x >= (int32_t)chip->fb_w || y >= (int32_t)chip->fb_h) {
+    return;
+  }
+  pixels[y * (int32_t)chip->fb_w + x] = color;
+}
+
+// Integer Bresenham, all octants
+static void draw_line(chip_state_t *chip, int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint32_t color) {
+  int32_t dx = (x1 > x0) ? (x1 - x0) : (x0 - x1);
+  int32_t dy = -((y1 > y0) ? (y1 - y0) : (y0 - y1));
+  int32_t sx = (x0 < x1) ? 1 : -1;
+  int32_t sy = (y0 < y1) ? 1 : -1;
+  int32_t err = dx + dy;
+  for (;;) {
+    put_pixel(chip, x0, y0, color);
+    if (x0 == x1 && y0 == y1) {
+      break;
+    }
+    int32_t e2 = 2 * err;
+    if (e2 >= dy) {
+      err += dy;
+      x0 += sx;
+    }
+    if (e2 <= dx) {
+      err += dx;
+      y0 += sy;
+    }
+  }
+}
+
+// Background, grey ring, red pointer at angle = position * 2pi / 4096 (0 = 12 o'clock, clockwise)
+static void draw_horn(chip_state_t *chip) {
+  uint32_t w = chip->fb_w;
+  uint32_t h = chip->fb_h;
+  if (w == 0 || h == 0 || w > HORN_MAX_DIM || h > HORN_MAX_DIM) {
+    return;
+  }
+
+  for (uint32_t i = 0; i < w * h; i++) {
+    pixels[i] = HORN_BG;
+  }
+
+  int32_t cx = (int32_t)(w / 2);
+  int32_t cy = (int32_t)(h / 2);
+
+  // Ring: squared distance from centre within R-1 .. R+1
+  int32_t r_in = HORN_RADIUS - 1;
+  int32_t r_out = HORN_RADIUS + 1;
+  for (int32_t y = 0; y < (int32_t)h; y++) {
+    for (int32_t x = 0; x < (int32_t)w; x++) {
+      int32_t dx = x - cx;
+      int32_t dy = y - cy;
+      int32_t d2 = dx * dx + dy * dy;
+      if (d2 >= r_in * r_in && d2 <= r_out * r_out) {
+        put_pixel(chip, x, y, HORN_RING);
+      }
+    }
+  }
+
+  // Pointer: 4096 ticks per turn -> 64 table steps; screen y grows downward
+  uint32_t idx = (chip->current_position / 64) & 63;
+  int32_t sn = SIN_1024[idx];
+  int32_t cs = SIN_1024[(idx + 16) & 63];
+  int32_t tip_x = cx + (sn * HORN_RADIUS) / 1024;
+  int32_t tip_y = cy - (cs * HORN_RADIUS) / 1024;
+  draw_line(chip, cx, cy, tip_x, tip_y, HORN_RED);
+
+  buffer_write(chip->fb, 0, pixels, w * h * 4);
+}
 
 // Dynamixel Protocol 2.0 CRC-16 (poly 0x8005, MSB first, init 0)
 static uint16_t calculate_crc(uint16_t crc, const uint8_t *data, uint16_t size) {
@@ -261,6 +357,13 @@ static void chip_timer_callback(void *user_data) {
     chip->pos_frac -= whole;
     chip->current_position = (uint32_t)((((int64_t)chip->current_position + whole) % 4096 + 4096) % 4096);
   }
+
+  // Redraw only on position change, and only every 2nd tick (~25 Hz)
+  chip->draw_div ^= 1;
+  if (chip->draw_div == 0 && chip->current_position != chip->last_pos_drawn) {
+    draw_horn(chip);
+    chip->last_pos_drawn = chip->current_position;
+  }
 }
 
 void chip_init() {
@@ -273,6 +376,8 @@ void chip_init() {
   chip->state = STATE_HEADER1;
   chip->param_count = 0;
   chip->last_update_us = get_sim_nanos() / 1000;
+  chip->last_pos_drawn = 0xFFFFFFFFu;
+  chip->draw_div = 0;
 
   // Full-duplex: separate RX and TX pins for clean bidirectional communication.
   pin_t rx_pin = pin_init("RX", INPUT_PULLUP);
@@ -297,4 +402,9 @@ void chip_init() {
   };
   timer_t timer = timer_init(&timer_config);
   timer_start(timer, 20000, true);
+
+  // Framebuffer: dims come from the host; draw_horn skips if they are 0 or > 64
+  chip->fb = framebuffer_init(&chip->fb_w, &chip->fb_h);
+  draw_horn(chip);
+  chip->last_pos_drawn = chip->current_position;
 }
