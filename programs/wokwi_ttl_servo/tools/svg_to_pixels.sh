@@ -13,6 +13,7 @@
 #   --hide-id ID     hide the SVG element with this id before rendering, e.g.
 #                    `horn` to bake only the static servo body (the chip draws
 #                    the rotating horn itself). Repeatable: each ID is hidden.
+#                    Exits 1 if the SVG has no element with that id.
 #   --flatten COLOR  after downscale, composite onto COLOR (default #202020) so
 #                    every pixel is opaque (alpha 0xFF). `none` keeps transparency.
 #   --bgr            swap R and B (use if red shows up blue in the GUI)
@@ -28,11 +29,11 @@ name="servo_bg_pixels"
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --size) size="$2"; shift 2 ;;
-    --hide-id) hide_ids+=("$2"); shift 2 ;;
-    --flatten) flatten="$2"; shift 2 ;;
+    --size) [ $# -ge 2 ] || { echo "$1 needs a value" >&2; exit 2; }; size="$2"; shift 2 ;;
+    --hide-id) [ $# -ge 2 ] || { echo "$1 needs a value" >&2; exit 2; }; hide_ids+=("$2"); shift 2 ;;
+    --flatten) [ $# -ge 2 ] || { echo "$1 needs a value" >&2; exit 2; }; flatten="$2"; shift 2 ;;
     --bgr) swap=1; shift ;;
-    --name) name="$2"; shift 2 ;;
+    --name) [ $# -ge 2 ] || { echo "$1 needs a value" >&2; exit 2; }; name="$2"; shift 2 ;;
     -h|--help) sed -n '2,/^set -euo/p' "$0" | sed '$d'; exit 0 ;;
     --) shift; break ;;
     -*) echo "unknown option: $1" >&2; exit 2 ;;
@@ -44,6 +45,9 @@ in="${1:-}"
 out="${2:-}"
 [ -n "$in" ] || { echo "usage: $0 [options] in.svg [out.h]" >&2; exit 2; }
 [ -f "$in" ] || { echo "no such file: $in" >&2; exit 1; }
+for id in ${hide_ids[@]+"${hide_ids[@]}"}; do
+  grep -q "id=\"$id\"" "$in" || { echo "no element with id=\"$id\" in $in" >&2; exit 1; }
+done
 command -v inkscape >/dev/null || { echo "inkscape not found" >&2; exit 1; }
 if command -v magick >/dev/null; then im=(magick); else im=(convert); fi
 command -v "${im[0]}" >/dev/null || { echo "ImageMagick not found" >&2; exit 1; }
@@ -62,8 +66,13 @@ if [ "${#hide_ids[@]}" -gt 0 ]; then
   done
 fi
 actions="${actions}export-type:png;export-filename:$tmp/big.png;export-width:$big;export-height:$big;export-background-opacity:0;export-do"
-inkscape --actions="$actions" "$in" >/dev/null 2>&1
-[ -f "$tmp/big.png" ] || { echo "inkscape produced no PNG" >&2; exit 1; }
+rc=0
+inkscape --actions="$actions" "$in" >/dev/null 2>"$tmp/inkscape.log" || rc=$?
+if [ ! -f "$tmp/big.png" ]; then
+  echo "inkscape produced no PNG (exit $rc); last log lines:" >&2
+  tail -n 20 "$tmp/inkscape.log" >&2
+  exit 1
+fi
 
 # 2. Downscale to size x size; optionally flatten onto a solid colour so the
 #    alpha channel is forced to 0xFF. Dump raw 8-bit RGBA bytes.
@@ -97,8 +106,17 @@ emit() {
       if (NR % 8 == 0) printf "\n"; else printf " " }
     END {
       if (bad) { print "error: non-opaque pixel after --flatten" > "/dev/stderr"; exit 1 }
-      if (NR % 8 != 0) printf "\n" }'
+      if (NR % 8 != 0) printf "\n" }' || return 1
   echo "};"
 }
 
-if [ -n "$out" ]; then emit > "$out"; echo "wrote $out" >&2; else emit; fi
+if [ -n "$out" ]; then
+  if ! emit > "$tmp/out.h"; then
+    echo "failed to generate header; $out left unchanged" >&2
+    exit 1
+  fi
+  mv "$tmp/out.h" "$out"
+  echo "wrote $out" >&2
+else
+  emit
+fi
