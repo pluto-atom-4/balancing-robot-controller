@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+    <!--
+      Source image for the 64x64 pixel background bake, run by tools/svg_to_pixels.sh
+      (make wokwi_ttl_servo-bg). The group id="horn" is hidden in the bake (hide-id horn);
+      the chip draws its own horn at runtime. Keep every shape >= 10 units
+      (scale is 0.32 px per SVG unit).
+    -->
+
+    <!-- Mounting ears (behind the body) -->
+    <rect x="10" y="78" width="20" height="44" rx="6" ry="6" fill="#3d566e" stroke="#1a252f" stroke-width="3" />
+    <rect x="170" y="78" width="20" height="44" rx="6" ry="6" fill="#3d566e" stroke="#1a252f" stroke-width="3" />
+
+    <!-- Main servo body -->
+    <rect x="30" y="30" width="140" height="140" rx="14" ry="14" fill="#2c3e50" stroke="#1a252f" stroke-width="4" />
+
+    <!-- Bezel behind the horn -->
+    <circle cx="100" cy="100" r="60" fill="#1a252f" stroke="#4a6178" stroke-width="4" />
+
+    <!-- Rotating horn layer (id and transform must stay as-is) -->
+    <g id="horn" transform="rotate(0, 100, 100)">
+        <circle cx="100" cy="100" r="35" fill="#ecf0f1" />
+        <circle cx="100" cy="100" r="10" fill="#7f8c8d" />
+        <polygon points="100,60 92,75 108,75" fill="#e74c3c" />
+    </g>
+</svg>

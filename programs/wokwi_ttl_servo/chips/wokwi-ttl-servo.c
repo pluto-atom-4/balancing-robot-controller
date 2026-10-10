@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "wokwi-ttl-servo.bg.h"
 
 #define MODEL_NUMBER 1200 /* XL330-M288 */
 #define FIRMWARE_VERSION 1
@@ -86,6 +87,9 @@ typedef struct {
 #define HORN_TIP_ON    0xFF0000FFu // Red, unverified byte order
 #define HORN_TIP_OFF   0xFF000080u
 #define HORN_MAX_DIM 64
+// Background is a baked 64x64 image generated from wokwi-ttl-servo.svg by tools/svg_to_pixels.sh (`make wokwi_ttl_servo-bg`).
+// Same assumed 0xAABBGGRR pixel format as above, UNVERIFIED.
+#define BG_DIM 64
 // Horn geometry in half-pixel units (doubled coordinates)
 #define HORN_L 40
 #define HORN_W 6
@@ -157,6 +161,15 @@ static void draw_horn(chip_state_t *chip) {
       int32_t d2 = X * X + Y * Y;
 
       uint32_t c = HORN_BG;
+      if (w == BG_DIM && h == BG_DIM) {
+        uint32_t b = servo_bg_pixels[y * BG_DIM + x];
+        if (b >> 24) {
+          c = b;
+        }
+        if (!chip->torque_enable) {
+          c = ((c >> 1) & 0x007F7F7Fu) | 0xFF000000u;
+        }
+      }
       if (d2 >= r_in2 && d2 <= r_out2) {
         c = HORN_RING;
       }
