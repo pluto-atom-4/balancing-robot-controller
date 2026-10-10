@@ -13,12 +13,15 @@
 #   --hide-id ID     hide the SVG element with this id before rendering, e.g.
 #                    `horn` to bake only the static servo body (the chip draws
 #                    the rotating horn itself). Repeatable: each ID is hidden.
-#                    Exits 1 if the SVG has no element with that id.
+#                    Exits 1 if Inkscape (--query-all) reports no element with that id.
 #   --flatten COLOR  after downscale, composite onto COLOR (default #202020) so
 #                    every pixel is opaque (alpha 0xFF). `none` keeps transparency.
 #   --bgr            swap R and B (use if red shows up blue in the GUI)
 #   --name SYMBOL    C array name (default: servo_bg_pixels)
 # Without out.h the array is printed to stdout.
+# Exit codes: 0 success; 2 usage/option error (bad option, missing value,
+# invalid --size or --name); 1 runtime failure (missing file or tool, unknown
+# --hide-id, invalid --flatten colour, bad out path, render or write failure).
 set -euo pipefail
 
 size=64
@@ -44,16 +47,39 @@ done
 in="${1:-}"
 out="${2:-}"
 [ -n "$in" ] || { echo "usage: $0 [options] in.svg [out.h]" >&2; exit 2; }
+[[ "$size" =~ ^[1-9][0-9]*$ ]] || { echo "--size must be a positive integer: $size" >&2; exit 2; }
+[[ "$name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || { echo "--name must be a C identifier: $name" >&2; exit 2; }
 [ -f "$in" ] || { echo "no such file: $in" >&2; exit 1; }
-for id in ${hide_ids[@]+"${hide_ids[@]}"}; do
-  grep -q "id=\"$id\"" "$in" || { echo "no element with id=\"$id\" in $in" >&2; exit 1; }
-done
+if [ -n "$out" ]; then
+  [ ! -d "$out" ] || { echo "out is a directory: $out" >&2; exit 1; }
+  [ -d "$(dirname "$out")" ] || { echo "output directory does not exist: $(dirname "$out")" >&2; exit 1; }
+fi
 command -v inkscape >/dev/null || { echo "inkscape not found" >&2; exit 1; }
 if command -v magick >/dev/null; then im=(magick); else im=(convert); fi
 command -v "${im[0]}" >/dev/null || { echo "ImageMagick not found" >&2; exit 1; }
 
 tmp="$(mktemp -d)"
-trap 'rm -rf "$tmp"' EXIT
+tmp_out=""
+trap 'rm -rf "$tmp"; [ -z "${tmp_out:-}" ] || rm -f "$tmp_out"' EXIT
+
+# 0. Validate --hide-id against Inkscape's own element list, before rasterizing.
+if [ "${#hide_ids[@]}" -gt 0 ]; then
+  inkscape --query-all "$in" 2>/dev/null | cut -d, -f1 > "$tmp/ids.txt" \
+    || { echo "inkscape --query-all failed on $in" >&2; exit 1; }
+  for id in "${hide_ids[@]}"; do
+    grep -qxF -- "$id" "$tmp/ids.txt" || { echo "no element with id=\"$id\" in $in" >&2; exit 1; }
+  done
+fi
+
+# 0b. Validate --flatten colour (skip for none): ImageMagick must accept it and
+#     produce exactly one RGBA pixel (4 bytes).
+if [ "$flatten" != "none" ]; then
+  if ! { "${im[@]}" -size 1x1 "xc:$flatten" -depth 8 "rgba:$tmp/col.raw" >/dev/null 2>&1 \
+         && [ "$(wc -c < "$tmp/col.raw")" -eq 4 ]; }; then
+    echo "invalid --flatten colour: $flatten" >&2
+    exit 1
+  fi
+fi
 
 # 1. Rasterize at 4x, then downscale with a box filter (cleaner edges than
 #    rendering straight to 64 px). Transparent background stays transparent
@@ -111,11 +137,15 @@ emit() {
 }
 
 if [ -n "$out" ]; then
-  if ! emit > "$tmp/out.h"; then
+  # Temp file beside the target so mv is an atomic rename on the same filesystem.
+  tmp_out="$(mktemp "$(dirname "$out")/.$(basename "$out").XXXXXX")"
+  if ! emit > "$tmp_out"; then
+    rm -f "$tmp_out"
     echo "failed to generate header; $out left unchanged" >&2
     exit 1
   fi
-  mv "$tmp/out.h" "$out"
+  chmod 0644 "$tmp_out"
+  mv -f "$tmp_out" "$out"
   echo "wrote $out" >&2
 else
   emit
