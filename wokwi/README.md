@@ -34,8 +34,10 @@ The path resolves relative to the toml directory. A missing `.wasm` fails with `
 
 - `make wokwi-chips`: build all chips (`wokwi-cli chip compile`). Alias: `make wokwi_ttl_servo-chip`.
 - `make wokwi-bg`: regenerate `wokwi/chips/wokwi-ttl-servo.bg.h` from the SVG. Needs inkscape and ImageMagick.
-- `make sim-tilt_servo-xiao_c3`: tilt_servo sim with the servo and FE-URT-1 chips on the UART0 pads (GPIO20/21). Needs `WOKWI_CLI_TOKEN`. A headless CLI run showed boot, `[dxl] ping ok` and `[dxl] torque on`; the GUI display was not checked.
+- `make sim-tilt_servo-xiao_c3`: tilt_servo sim with the servo and FE-URT-1 chips on the Serial1 pins (GPIO20/21, `esp:RX`/`esp:TX`). Needs `WOKWI_CLI_TOKEN`. A headless CLI run showed boot, `[dxl] ping ok` and `[dxl] torque on`; the GUI display was not checked.
 - `make wokwi_ttl_servo-sim`: needs `WOKWI_CLI_TOKEN`.
+
+The first run of `make sim-tilt_servo-xiao_c3`, `make sim-wokwi_ttl_servo-xiao_c3` or `make sim` also builds the chips via `make wokwi-chips`. That step needs network, because `wokwi-cli` downloads the WASI-SDK and `wokwi-api.h` on first use.
 
 ## Limits
 
