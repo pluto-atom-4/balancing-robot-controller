@@ -63,8 +63,14 @@ static bool have_last = false;
 
 static bool configure_servo() {
   bool w1 = dxl.torqueOff(DXL_ID);
-  bool w2 = dxl.setOperatingMode(DXL_ID, OP_VELOCITY);
-  bool w3 = dxl.torqueOn(DXL_ID);
+  bool w2 = w1 && dxl.setOperatingMode(DXL_ID, OP_VELOCITY);
+  bool w3 = false;
+  if (w1 && w2) {
+    w3 = dxl.torqueOn(DXL_ID);
+  } else {
+    (void)dxl.setGoalVelocity(DXL_ID, 0);
+    (void)dxl.torqueOff(DXL_ID);  // best effort: never leave torque on with a stale goal while offline
+  }
   Serial.printf("[setup] torque_off=%d, mode=%d, torque_on=%d\n", w1, w2, w3);
   return w1 && w2 && w3;
 }
@@ -121,10 +127,11 @@ void setup() {
   if (ping_ok) {
     Serial.println("[SUCCESS] Servo found online!");
   } else {
-    Serial.println("[WARNING] Servo offline; proceeding anyway.");
+    Serial.printf("[WARNING] Servo offline; will re-ping every %d s.\n", REPING_PERIOD_MS / 1000);
   }
 
   servo_ok = ping_ok && configure_servo();
+  if (ping_ok && !servo_ok) Serial.println("[WARNING] Servo answered ping but configuration failed; will retry.");
   last_ping_ms = millis();
   if (servo_ok) enter_phase(0);
   Serial.println("Reading live track data...");
