@@ -39,7 +39,7 @@ The path resolves relative to the toml directory. A missing `.wasm` fails with `
 - `make sim-ttl_servo-xiao_c3`: ttl_servo closed-loop Segway sim; the same two chips on the Serial1 pins, velocity mode. Needs `WOKWI_CLI_TOKEN`. Headless gyro push: `WOKWI_ARGS="--scenario scenario.yaml --timeout 20000"`.
 - `make wokwi_ttl_servo-sim`: needs `WOKWI_CLI_TOKEN`.
 
-`make sim-tilt_servo-xiao_c3`, `make sim-wokwi_ttl_servo-xiao_c3` and `make sim` (with the default `SIM_ENV`) also build the chips via `make wokwi-chips` whenever a chip's `.chip.wasm` is missing or older than its sources. On a fresh clone that is the first run, and it needs network: `wokwi-cli` downloaded `wokwi-api.h` on first use when it was tested (the WASI-SDK download is also done by `wokwi-cli`, not checked here).
+`make sim-tilt_servo-xiao_c3`, `make sim-ttl_servo-xiao_c3`, `make sim-wokwi_ttl_servo-xiao_c3` and `make sim` (with the default `SIM_ENV`) also build the chips via `make wokwi-chips` whenever a chip's `.chip.wasm` is missing or older than its sources. On a fresh clone that is the first run, and it needs network: `wokwi-cli` downloaded `wokwi-api.h` on first use when it was tested (the WASI-SDK download is also done by `wokwi-cli`, not checked here).
 
 ## Tilt injection tip
 
