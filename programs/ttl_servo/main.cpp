@@ -12,7 +12,9 @@
 // 10 Hz telemetry also reads the present position (pos, dpos) for the sim check.
 // 1 Hz [dxl] line reports transaction counts and the max transaction time (us).
 // Fall: zero-velocity stop (3 tries, torque off if all fail), then hold 1 s and restart.
-// 3 failed writes in a row latch bus_down (no Dynamixel calls; reset the board to retry).
+// 3 failed writes in a row: the firmware first stops the chip (velocity 0 with 3 tries,
+// torque off if needed), then latches bus_down (no Dynamixel calls; reset the board to retry).
+// The same stop-then-latch runs after a failed bring-up.
 // -D TTL_SERVO_FALL_TEST: low gains (kp=2 kd=1) so the frame falls within seconds.
 #include <Arduino.h>
 #include <Wire.h>
@@ -99,6 +101,7 @@ static bool stop_chip_best_effort(const char* why) {
     return true;
   }
   bool off = false;
+  // Torque-off transactions are not counted in tx_ok/tx_fail/max_us (stats cover goal-velocity writes and position reads only).
   for (uint8_t i = 0; i < 3 && !off; ++i) off = dxl.torqueOff(DXL_ID);
   Serial.printf("[safe] torque off %s%s\n", why,
                 off ? "" : " (TORQUE OFF NOT CONFIRMED)");
@@ -159,7 +162,11 @@ void setup() {
       Serial.println("[dxl] config failed, read-only");
     }
   }
-  if (!servo_ok) latch_bus_down();
+  if (!servo_ok) {
+    // Blocks boot while the servo is absent (helper retries 3 + 3 times); accepted.
+    (void)stop_chip_best_effort("bring-up failed");
+    latch_bus_down();
+  }
 
   // Gyro Z bias: average with the Wokwi gyro slider at rest.
   float sum = 0.0f;
@@ -235,7 +242,7 @@ void loop() {
       if (servo_ok) {
         if (!stop_chip_best_effort("after fall")) latch_bus_down();
       }
-      hold_until_ms = now_ms + 1000;
+      hold_until_ms = millis() + 1000;
       holding = true;
     } else if (servo_ok) {
       // Goal velocity to the chip. Only on change, only if the chip is live.
@@ -291,6 +298,7 @@ void loop() {
         have_last_pos = false;
       }
     }
+    // cmd = last value CONFIRMED written to the chip; stale (non-zero) after a failed stop.
     Serial.printf("[ttl_servo] sim theta=%.3f rate=%.3f wheel=%.2f cmd=%ld pos=%s dpos=%s gyroZ=%.3f bus=%d\n",
                   segway_sim.theta_rad, segway_sim.theta_dot_rad_s,
                   segway_sim.wheel_vel_rad_s, (long)last_written_raw,
