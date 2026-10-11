@@ -133,7 +133,9 @@ static void latch_bus_down() {
 
 #ifdef TTL_SERVO_HORN_SELFTEST
 // Velocity self-test: 2 s forward, 2 s reverse at 90 deg/s, then 0. Prints the
-// chip's present position every 250 ms. Blocks boot; needs a live servo.
+// chip's present position every 250 ms. Blocks boot (~4 s) with the wheel spinning and
+// no fall check active; needs a live servo. A failed write stops the chip and latches
+// bus_down at once (no 3-in-a-row rule here). Keep the flag out of non-sim builds.
 static bool selftest_read_pos(int32_t* pos) {
   *pos = dxl.getPresentPosition(DXL_ID);
   return dxl.getLastLibErrCode() == DXL_LIB_OK;
@@ -162,10 +164,15 @@ static void horn_selftest() {
     for (int i = 0; i < steps[ph]; ++i) {
       delay(250);
       int32_t pos = 0;
-      if (selftest_read_pos(&pos) && have_prev) {
-        Serial.printf("[ttl_servo] selftest cmd=%ld pos=%ld dpos=%ld\n", (long)cmds[ph],
-                      (long)pos, (long)(((pos - prev + 6144) % 4096) - 2048));
+      if (selftest_read_pos(&pos)) {
+        if (have_prev) {
+          Serial.printf("[ttl_servo] selftest cmd=%ld pos=%ld dpos=%ld\n", (long)cmds[ph],
+                        (long)pos, (long)(((pos - prev + 6144) % 4096) - 2048));
+        } else {
+          Serial.printf("[ttl_servo] selftest cmd=%ld pos=%ld dpos=n/a\n", (long)cmds[ph], (long)pos);
+        }
         prev = pos;
+        have_prev = true;
       } else {
         Serial.printf("[ttl_servo] selftest cmd=%ld pos=ERR\n", (long)cmds[ph]);
         have_prev = false;
