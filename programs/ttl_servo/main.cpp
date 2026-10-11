@@ -91,11 +91,29 @@ static bool write_vel_zero_with_retries() {
   return false;
 }
 
+static bool stop_chip_best_effort(const char* why) {
+  bool zok = write_vel_zero_with_retries();
+  Serial.printf("[dxl] stop vel=0 ok=%d\n", zok ? 1 : 0);
+  if (zok) {
+    last_written_raw = 0;
+    return true;
+  }
+  bool off = false;
+  for (uint8_t i = 0; i < 3 && !off; ++i) off = dxl.torqueOff(DXL_ID);
+  Serial.printf("[safe] torque off %s%s\n", why,
+                off ? "" : " (TORQUE OFF NOT CONFIRMED)");
+  return false;
+}
+
 // Latch: no Dynamixel calls until reset. Physics and telemetry keep running.
 static void latch_bus_down() {
   servo_ok = false;
   if (bus_down) return;
   bus_down = true;
+  Serial.printf("[dxl] tx_ok=%lu tx_fail=%lu rd_ok=%lu rd_fail=%lu max_us=%lu\n",
+                (unsigned long)tx_ok, (unsigned long)tx_fail,
+                (unsigned long)rd_ok, (unsigned long)rd_fail,
+                (unsigned long)max_us);
   Serial.println("[safe] bus down (reset the board to retry)");
 }
 
@@ -196,7 +214,7 @@ void loop() {
 
   // 2. Hold after a fall: physics frozen, wheel stays stopped, then restart.
   if (holding) {
-    if (now_ms >= hold_until_ms) {
+    if ((int32_t)(now_ms - hold_until_ms) >= 0) {
       segway_sim.reset(SIM_INIT_THETA_RAD);
 #ifdef TTL_SERVO_FALL_TEST
       segway_sim.params.kp = 2.0f;
@@ -215,17 +233,7 @@ void loop() {
       // 4. Fall first, so a fall tick never writes the lagged velocity.
       Serial.printf("[ttl_servo] FELL theta=%.3f\n", segway_sim.theta_rad);
       if (servo_ok) {
-        bool zok = write_vel_zero_with_retries();
-        Serial.printf("[dxl] stop vel=0 ok=%d\n", zok ? 1 : 0);
-        if (zok) {
-          last_written_raw = 0;
-        } else {
-          bool off = false;
-          for (uint8_t i = 0; i < 3 && !off; ++i) off = dxl.torqueOff(DXL_ID);
-          Serial.printf("[safe] torque off after fall%s\n",
-                        off ? "" : " (TORQUE OFF NOT CONFIRMED)");
-          latch_bus_down();
-        }
+        if (!stop_chip_best_effort("after fall")) latch_bus_down();
       }
       hold_until_ms = now_ms + 1000;
       holding = true;
@@ -248,7 +256,10 @@ void loop() {
           if (write_fail == 1 || write_fail % 50 == 0)
             Serial.printf("[dxl] write failed raw=%ld (n=%lu)\n",
                           (long)raw, (unsigned long)write_fail);
-          if (consec_fail >= 3) latch_bus_down();
+          if (consec_fail >= 3) {
+            (void)stop_chip_best_effort("before bus latch");
+            latch_bus_down();
+          }
         }
       }
     }
@@ -282,7 +293,7 @@ void loop() {
     }
     Serial.printf("[ttl_servo] sim theta=%.3f rate=%.3f wheel=%.2f cmd=%ld pos=%s dpos=%s gyroZ=%.3f bus=%d\n",
                   segway_sim.theta_rad, segway_sim.theta_dot_rad_s,
-                  segway_sim.wheel_vel_rad_s, (long)(holding ? 0 : last_written_raw),
+                  segway_sim.wheel_vel_rad_s, (long)last_written_raw,
                   pos_s, dpos_s, gyroZ_filtered_rad_s, servo_ok ? 1 : 0);
   }
 
