@@ -15,6 +15,7 @@
 // 3 failed writes in a row: the firmware first stops the chip (velocity 0 with 3 tries,
 // torque off if needed), then latches bus_down (no Dynamixel calls; reset the board to retry).
 // The same stop-then-latch runs after a failed bring-up.
+// -D TTL_SERVO_HORN_SELFTEST: after gyro calibration, 2 s forward + 2 s reverse at 90 deg/s, then 0.
 // -D TTL_SERVO_FALL_TEST: low gains (kp=2 kd=1) so the frame falls within seconds.
 #include <Arduino.h>
 #include <Wire.h>
@@ -130,6 +131,58 @@ static void latch_bus_down() {
   Serial.println("[safe] bus down (reset the board to retry)");
 }
 
+#ifdef TTL_SERVO_HORN_SELFTEST
+// Velocity self-test: 2 s forward, 2 s reverse at 90 deg/s, then 0. Prints the
+// chip's present position every 250 ms. Blocks boot (~4 s) with the wheel spinning and
+// no fall check active; needs a live servo. A failed write stops the chip and latches
+// bus_down at once (no 3-in-a-row rule here). Keep the flag out of non-sim builds.
+static bool selftest_read_pos(int32_t* pos) {
+  *pos = dxl.getPresentPosition(DXL_ID);
+  return dxl.getLastLibErrCode() == DXL_LIB_OK;
+}
+
+static void horn_selftest() {
+  if (!servo_ok) {
+    Serial.println("[ttl_servo] selftest skipped (no servo)");
+    return;
+  }
+  const int32_t raw = segway::wheel_cmd_to_raw(90.0f / segway::kRadToDeg);
+  const int32_t cmds[3] = {raw, -raw, 0};
+  const int steps[3] = {8, 8, 1};
+  int32_t prev = 0;
+  bool have_prev = selftest_read_pos(&prev);
+  for (int ph = 0; ph < 3; ++ph) {
+    if (!dxl.setGoalVelocity(DXL_ID, (float)cmds[ph], UNIT_RAW)) {
+      ++tx_fail;
+      Serial.printf("[ttl_servo] selftest write failed cmd=%ld\n", (long)cmds[ph]);
+      (void)stop_chip_best_effort("selftest write failed");
+      latch_bus_down();
+      return;
+    }
+    ++tx_ok;
+    last_written_raw = cmds[ph];
+    for (int i = 0; i < steps[ph]; ++i) {
+      delay(250);
+      int32_t pos = 0;
+      if (selftest_read_pos(&pos)) {
+        if (have_prev) {
+          Serial.printf("[ttl_servo] selftest cmd=%ld pos=%ld dpos=%ld\n", (long)cmds[ph],
+                        (long)pos, (long)(((pos - prev + 6144) % 4096) - 2048));
+        } else {
+          Serial.printf("[ttl_servo] selftest cmd=%ld pos=%ld dpos=n/a\n", (long)cmds[ph], (long)pos);
+        }
+        prev = pos;
+        have_prev = true;
+      } else {
+        Serial.printf("[ttl_servo] selftest cmd=%ld pos=ERR\n", (long)cmds[ph]);
+        have_prev = false;
+      }
+    }
+  }
+  have_last_pos = false;  // telemetry dpos restarts from its first read
+}
+#endif
+
 // ===== Arduino entry points =====
 void setup() {
   Serial.begin(115200);
@@ -200,6 +253,9 @@ void setup() {
   Serial.printf("[ttl_servo] gyro Z bias=%.4f rad/s (keep the slider at 0 during boot)\n",
                 gyroZ_bias_rad_s);
 
+#ifdef TTL_SERVO_HORN_SELFTEST
+  horn_selftest();
+#endif
   segway_sim.reset(SIM_INIT_THETA_RAD);
 #ifdef TTL_SERVO_FALL_TEST
   segway_sim.params.kp = 2.0f;
