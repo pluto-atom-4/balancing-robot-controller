@@ -247,10 +247,12 @@ static void send_status_packet(chip_state_t *chip, uint8_t error, const uint8_t 
   // Drive TX only while the reply is on the wire; release it (INPUT_PULLUP) otherwise.
   uint64_t now = get_sim_nanos() / 1000;
   chip->transmitting = true;
-  // Fallback if write_done never fires (+2 timer ticks of margin). Measured in the simulator (issue #81, sim-only):
-  // over 800 replies in the wokwi_ttl_servo demo and the tilt_servo sim, write_done always arrived (max delay about
-  // 2.6 ms, about one 15-byte reply on the wire), the fallback never fired and no stale write_done was seen, so
-  // the late-write_done race is not expected to be reachable here. write_done carries no reply id, so it was not made safe by design.
+  // Fallback if write_done never fires (+2 timer ticks of margin, so it releases 40-60 ms after the reply ends).
+  // write_done carries no reply id, so a late write_done for an earlier reply cannot be told apart from the
+  // current one; this path relies on that timing margin, not on construction. The race needs the fallback to
+  // fire first. In the simulator (issue #81, sim-only), over 800 replies in the wokwi_ttl_servo demo and the
+  // tilt_servo sim, write_done always arrived (longest observed delay about 2.6 ms, one 15-byte reply; replies
+  // can be up to about 13 ms) and the fallback never fired. Re-measure if the traffic pattern changes.
   chip->tx_deadline_us = now + (uint64_t)total_tx_size * 10 * 1000000 / 57600 + 2 * 20000;
   pin_mode(chip->tx_pin, OUTPUT_HIGH);
   uart_write(chip->uart, tx_buf, total_tx_size);
