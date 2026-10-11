@@ -28,6 +28,11 @@
 # If out.h is a symlink, the link's target is replaced and the symlink is kept
 # (relative link targets resolve against the link's directory; at most 10
 # levels, else exit 1). The message `wrote <out>` shows the path as given.
+# A dangling symlink as out.h creates its target file. Link targets are joined
+# lexically: a target that goes through a symlinked directory followed by `..`
+# can resolve differently from the kernel and is unsupported.
+# The --name keyword check covers C keywords only (the consumer is C).
+# Not exercised: the SIGINT handler interactively, and macOS bash 3.2.
 # Exit codes: 0 success; 2 usage/option error (bad option, missing value,
 # invalid --size, --name or --hide-id); 1 runtime failure (missing file or tool,
 # unknown --hide-id, invalid --flatten colour, bad out path, too many symlink
