@@ -16,6 +16,8 @@
 // Servo: continuous rotation, 90 deg = stop, above = forward, below = reverse.
 
 #include <math.h>
+#include <stdint.h>
+#include <dxl_units.h>
 
 namespace segway {
 
@@ -68,6 +70,17 @@ inline float servo_deg_to_wheel(const Params& p, int servo_deg) {
   return ((float)(d - 90) / 90.0f) * p.wheel_max_rad_s;
 }
 
+// Host-side cap in Dynamixel raw units (about 3 rad/s = wheel_max_rad_s at
+// 0.229 rpm/unit). The simulated XL330 chip returns 0 for the Velocity Limit
+// register, so the cap must be a host constant, never a device read.
+constexpr int32_t kWheelCapRaw = 125;
+
+// Wheel command (rad/s) -> Dynamixel goal velocity raw, clamped to +-cap_raw.
+// cap_raw <= 0 returns 0 (the frozen-wheel case). NaN returns 0.
+inline int32_t wheel_cmd_to_raw(float rad_s, int32_t cap_raw = kWheelCapRaw) {
+  return dxl_units::radSToRaw(dxl_units::kXl330, rad_s, cap_raw);
+}
+
 class SegwaySim {
  public:
   Params params;
@@ -111,6 +124,15 @@ class SegwaySim {
     step(servo_deg_to_wheel(params, servo),
          disturbance_from_gyro(params, gyro_z_rad_s), dt_s);
     return servo;
+  }
+
+  // One firmware tick for the Dynamixel path: PD command in rad/s (unrounded),
+  // then physics step. The caller sends wheel_vel_rad_s (the lagged plant
+  // velocity) or this command through wheel_cmd_to_raw.
+  float tick_cmd(float gyro_z_rad_s, float dt_s) {
+    float cmd = pd_wheel_cmd(params, theta_rad, theta_dot_rad_s);
+    step(cmd, disturbance_from_gyro(params, gyro_z_rad_s), dt_s);
+    return cmd;
   }
 };
 
