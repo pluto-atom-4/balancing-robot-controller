@@ -9,6 +9,8 @@
 // 57600 baud, protocol 2.0, through the FE-URT-1 adapter (direction handled in
 // hardware). Velocity mode. The goal is the simulated wheel's lagged velocity
 // in raw units, capped on the host (segway::kWheelCapRaw), never a device read.
+// 10 Hz telemetry also reads the present position (pos, dpos) for the sim check.
+// 1 Hz [dxl] line reports transaction counts and the max transaction time (us).
 #include <Arduino.h>
 #include <Wire.h>
 #include <Adafruit_MPU6050.h>
@@ -44,6 +46,10 @@ float gyroZ_filtered_rad_s = 0.0f;
 bool servo_ok = false;          // false: chip absent or setup failed, read-only sim
 int32_t last_written_raw = 0;   // raw goal velocity most recently accepted by the chip
 uint32_t write_fail = 0;
+static uint32_t tx_ok, tx_fail, rd_ok, rd_fail, max_us;
+static uint32_t lastBusPrintMs;
+static int32_t last_pos = 0;
+static bool have_last_pos = false;
 
 // ===== Helpers =====
 static float ema_update(float prev, float raw, uint32_t dt_ms) {
@@ -127,6 +133,7 @@ void setup() {
 
   lastLoopMs = millis();
   lastPrintMs = lastLoopMs;
+  lastBusPrintMs = lastLoopMs;
 }
 
 void loop() {
@@ -157,9 +164,15 @@ void loop() {
   if (servo_ok) {
     int32_t raw = segway::wheel_cmd_to_raw(segway_sim.wheel_vel_rad_s);
     if (raw != last_written_raw) {
-      if (dxl.setGoalVelocity(DXL_ID, (float)raw, UNIT_RAW)) {
+      uint32_t t0 = micros();
+      bool wok = dxl.setGoalVelocity(DXL_ID, (float)raw, UNIT_RAW);
+      uint32_t el = micros() - t0;
+      if (el > max_us) max_us = el;
+      if (wok) {
+        ++tx_ok;
         last_written_raw = raw;
       } else {
+        ++tx_fail;
         ++write_fail;
         if (write_fail == 1 || write_fail % 50 == 0)
           Serial.printf("[dxl] write failed raw=%ld (n=%lu)\n",
@@ -170,7 +183,18 @@ void loop() {
 
   // 4. Fall: stop the wheel, report and restart the sim.
   if (segway_sim.has_fallen) {
-    if (servo_ok && dxl.setGoalVelocity(DXL_ID, 0.0f, UNIT_RAW)) last_written_raw = 0;
+    if (servo_ok) {
+      uint32_t t0 = micros();
+      bool zok = dxl.setGoalVelocity(DXL_ID, 0.0f, UNIT_RAW);
+      uint32_t el = micros() - t0;
+      if (el > max_us) max_us = el;
+      if (zok) {
+        ++tx_ok;
+        last_written_raw = 0;
+      } else {
+        ++tx_fail;
+      }
+    }
     Serial.printf("[ttl_servo] FELL theta=%.3f, reset\n", segway_sim.theta_rad);
     segway_sim.reset(SIM_INIT_THETA_RAD);
   }
@@ -178,9 +202,41 @@ void loop() {
   // 5. Telemetry (10 Hz)
   if (now_ms - lastPrintMs >= PRINT_PERIOD_MS) {
     lastPrintMs = now_ms;
-    Serial.printf("[ttl_servo] sim theta=%.3f rate=%.3f wheel=%.2f cmd=%ld gyroZ=%.3f\n",
+    char pos_s[12] = "NA";
+    char dpos_s[12] = "n/a";
+    if (servo_ok) {
+      uint32_t t0 = micros();
+      int32_t pos = dxl.getPresentPosition(DXL_ID);
+      bool rd = (dxl.getLastLibErrCode() == DXL_LIB_OK);
+      uint32_t el = micros() - t0;
+      if (el > max_us) max_us = el;
+      if (rd) {
+        ++rd_ok;
+        snprintf(pos_s, sizeof(pos_s), "%ld", (long)pos);
+        if (have_last_pos) {
+          int32_t dpos = ((pos - last_pos + 6144) % 4096) - 2048;
+          snprintf(dpos_s, sizeof(dpos_s), "%ld", (long)dpos);
+        }
+        last_pos = pos;
+        have_last_pos = true;
+      } else {
+        ++rd_fail;
+        snprintf(pos_s, sizeof(pos_s), "ERR");
+        have_last_pos = false;
+      }
+    }
+    Serial.printf("[ttl_servo] sim theta=%.3f rate=%.3f wheel=%.2f cmd=%ld pos=%s dpos=%s gyroZ=%.3f\n",
                   segway_sim.theta_rad, segway_sim.theta_dot_rad_s,
                   segway_sim.wheel_vel_rad_s, (long)last_written_raw,
-                  gyroZ_filtered_rad_s);
+                  pos_s, dpos_s, gyroZ_filtered_rad_s);
+  }
+
+  if (servo_ok && now_ms - lastBusPrintMs >= 1000) {
+    Serial.printf("[dxl] tx_ok=%lu tx_fail=%lu rd_ok=%lu rd_fail=%lu max_us=%lu\n",
+                  (unsigned long)tx_ok, (unsigned long)tx_fail,
+                  (unsigned long)rd_ok, (unsigned long)rd_fail,
+                  (unsigned long)max_us);
+    max_us = 0;
+    lastBusPrintMs = now_ms;
   }
 }
