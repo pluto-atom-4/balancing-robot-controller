@@ -150,7 +150,7 @@ pio device monitor -e <env> [--port <port>]
 - `programs/<name>/wokwi.toml`, `diagram.json` – Wokwi simulation config (`blink`, `tilt_servo`, `balance`)
 - `lib/` – shared libraries usable by every program: `hal_iface`, `balance_core` (incl. generated `balance_gains_generated.h` and `balance_stamp.h`), `loop_stats`, `dxl_units`, `imu_math`, `wheel_servo`, `balance_supervisor`, `tilt`. Details under Key Libraries
 - `include/` – shared headers (create when needed)
-- `test/` – unit tests for the native `test` env (12 suites, 199 `RUN_TEST` cases: balance_core, balance_parity, balance_stamp, balance_supervisor, dxl_units, hal_iface, imu_math, loop_stats, ramp_guard, tilt, vector_roundtrip, wheel_pair)
+- `test/` – unit tests for the native `test` env (15 suites, 240 `RUN_TEST` cases: balance_core, balance_parity, balance_stamp, balance_supervisor, dxl_units, hal_iface, imu_math, loop_stats, ramp_guard, segway_sim, stepper_speed, tilt, ttl_servo_slew, vector_roundtrip, wheel_pair)
 - `platformio.ini` – board sections and `<program>-<board>` envs
 - `Makefile` – wrapper around `pio`
 - `CLAUDE.md` – project guide for Claude Code
