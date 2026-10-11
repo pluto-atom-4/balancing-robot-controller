@@ -93,19 +93,29 @@ static bool write_vel_zero_with_retries() {
   return false;
 }
 
-static bool stop_chip_best_effort(const char* why) {
+// force_torque_off: also run the torque-off sequence after a successful zero
+// write (the chip may be in position mode); returns true only if torque-off
+// was confirmed in that case.
+static bool stop_chip_best_effort(const char* why, bool force_torque_off = false) {
   bool zok = write_vel_zero_with_retries();
   Serial.printf("[dxl] stop vel=0 ok=%d\n", zok ? 1 : 0);
   if (zok) {
     last_written_raw = 0;
-    return true;
+    if (!force_torque_off) return true;
   }
   bool off = false;
   // Torque-off transactions are not counted in tx_ok/tx_fail/max_us (stats cover goal-velocity writes and position reads only).
   for (uint8_t i = 0; i < 3 && !off; ++i) off = dxl.torqueOff(DXL_ID);
   Serial.printf("[safe] torque off %s%s\n", why,
                 off ? "" : " (TORQUE OFF NOT CONFIRMED)");
-  return false;
+  return force_torque_off ? off : false;
+}
+
+// Serial1 + protocol setup for the servo bus. Called once, before any bus use.
+static void dxl_bus_begin() {
+  dxl.begin(DXL_BAUD);
+  Serial1.begin(DXL_BAUD, SERIAL_8N1, DXL_RX, DXL_TX);
+  dxl.setPortProtocolVersion(DXL_PROTO);
 }
 
 // Latch: no Dynamixel calls until reset. Physics and telemetry keep running.
@@ -125,22 +135,22 @@ void setup() {
   Serial.begin(115200);
   delay(1000); // Boot without blocking on USB host
 
+  dxl_bus_begin();
   Wire.begin(I2C_SDA, I2C_SCL);
 
   Serial.println("\n[ttl_servo] Segway physics sim (Wokwi, SIM-ONLY, UNVERIFIED)");
 
   if (!mpu.begin(MPU_ADDR, &Wire)) {
     Serial.println("[ttl_servo] Failed to find MPU6050 chip");
+    // Ping first: Dynamixel2Arduino resolves registers through the model number a ping fills in,
+    // so a write without a prior ping fails even when the servo is present.
+    (void)dxl.ping(DXL_ID);
+    (void)stop_chip_best_effort("no IMU", true);
     while (1) { delay(10); }
   }
   mpu.setGyroRange(MPU6050_RANGE_250_DEG);
 
-  // Servo bring-up before the (blocking) calibration. Order matters: begin()
-  // first, then Serial1.begin with explicit pins, then the protocol version.
-  dxl.begin(DXL_BAUD);
-  Serial1.begin(DXL_BAUD, SERIAL_8N1, DXL_RX, DXL_TX);
-  dxl.setPortProtocolVersion(DXL_PROTO);
-
+  // Servo bring-up before the (blocking) calibration; the bus was begun above.
   bool ping_ok = dxl.ping(DXL_ID);
   Serial.printf("[dxl] ping %s\n", ping_ok ? "ok" : "FAILED");
   if (!ping_ok) {
@@ -163,8 +173,10 @@ void setup() {
     }
   }
   if (!servo_ok) {
-    // Blocks boot while the servo is absent (helper retries 3 + 3 times); accepted.
-    (void)stop_chip_best_effort("bring-up failed");
+    // Blocks boot while the servo is absent. Worst case about 7 timed-out
+    // transactions (ping, 3 zero writes, 3 torque-off), roughly 140 ms in the sim;
+    // up to 8 if ping answers but config fails (adds the config-fail torque-off).
+    (void)stop_chip_best_effort("bring-up failed", true);
     latch_bus_down();
   }
 
@@ -299,6 +311,7 @@ void loop() {
       }
     }
     // cmd = last value CONFIRMED written to the chip; stale (non-zero) after a failed stop.
+    // cmd=0 before the first write is not a chip state.
     Serial.printf("[ttl_servo] sim theta=%.3f rate=%.3f wheel=%.2f cmd=%ld pos=%s dpos=%s gyroZ=%.3f bus=%d\n",
                   segway_sim.theta_rad, segway_sim.theta_dot_rad_s,
                   segway_sim.wheel_vel_rad_s, (long)last_written_raw,
