@@ -1,7 +1,9 @@
 #include "wokwi-api.h"
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "wokwi-ttl-servo.bg.h"
+#include "ttl_servo_slew.h"
 
 #define MODEL_NUMBER 1200 /* XL330-M288 */
 #define FIRMWARE_VERSION 1
@@ -16,6 +18,8 @@
 #define ADDR_OPERATING_MODE 11
 #define ADDR_TORQUE_ENABLE  64
 #define ADDR_GOAL_VELOCITY  104
+#define ADDR_PROFILE_ACCEL 108 // Profile Acceleration: stored only, not modelled (sim-only)
+#define ADDR_PROFILE_VEL   112 // Profile Velocity: unit 0.229 rpm assumed like velocity; UNVERIFIED for profile registers (sim-only)
 #define ADDR_GOAL_POSITION  116
 #define ADDR_PRESENT_POSITION 132
 
@@ -55,6 +59,14 @@ typedef struct {
   // Custom attributes / Operating states
   uint8_t operating_mode;
   uint8_t torque_enable;
+
+  // Position mode: goal and profile registers (sim-only model, see chip_timer_callback)
+  uint32_t goal_position;
+  uint32_t profile_vel;
+  uint32_t profile_acc;
+  uint32_t log_tick;          // Counts position-mode ticks for the rate-limited log
+  uint32_t last_logged_goal;
+  uint32_t last_logged_pos;
 
   // Display: framebuffer handle and dims reported by the host (never hardcoded)
   buffer_t fb;
@@ -279,6 +291,9 @@ static void process_packet(chip_state_t *chip) {
 
     if (target_address == ADDR_OPERATING_MODE) {
       chip->operating_mode = chip->params[2];
+      // Drop any stale goal so a mode change never snaps the horn
+      chip->goal_position = chip->current_position;
+      chip->pos_frac = 0;
     } else if (target_address == ADDR_TORQUE_ENABLE) {
       chip->torque_enable = chip->params[2];
       if (chip->torque_enable == 0) {
@@ -286,6 +301,14 @@ static void process_packet(chip_state_t *chip) {
       }
     } else if (target_address == ADDR_GOAL_VELOCITY && data_len >= 4) {
       memcpy(&chip->speed, &chip->params[2], 4);
+    } else if (target_address == ADDR_GOAL_POSITION && data_len >= 4) {
+      uint32_t value;
+      memcpy(&value, &chip->params[2], 4);
+      chip->goal_position = ttl_servo_clamp_goal(value);
+    } else if (target_address == ADDR_PROFILE_VEL && data_len >= 4) {
+      memcpy(&chip->profile_vel, &chip->params[2], 4);
+    } else if (target_address == ADDR_PROFILE_ACCEL && data_len >= 4) {
+      memcpy(&chip->profile_acc, &chip->params[2], 4);
     }
     // Return empty status packet acknowledging write success
     if (chip->rx_id != 0xFE) {
@@ -307,6 +330,14 @@ static void process_packet(chip_state_t *chip) {
       send_status_packet(chip, 0, buffer, 4);
     } else if (target_address == ADDR_TORQUE_ENABLE && read_length == 1) {
       send_status_packet(chip, 0, &chip->torque_enable, 1);
+    } else if (target_address == ADDR_OPERATING_MODE && read_length == 1) {
+      send_status_packet(chip, 0, &chip->operating_mode, 1);
+    } else if (target_address == ADDR_GOAL_POSITION && read_length == 4) {
+      send_status_packet(chip, 0, (const uint8_t *)&chip->goal_position, 4);
+    } else if (target_address == ADDR_PROFILE_VEL && read_length == 4) {
+      send_status_packet(chip, 0, (const uint8_t *)&chip->profile_vel, 4);
+    } else if (target_address == ADDR_PROFILE_ACCEL && read_length == 4) {
+      send_status_packet(chip, 0, (const uint8_t *)&chip->profile_acc, 4);
     } else {
       // Fallback zeroed array response for unhandled register reads
       uint8_t empty[MAX_READ_LEN] = {0};
@@ -376,11 +407,27 @@ static void chip_timer_callback(void *user_data) {
   }
 
   // delta_t is in seconds (us / 1e6), so ticks = units * ticks-per-s-per-unit * seconds
-  if (chip->torque_enable && chip->speed != 0) {
+  // Goal Velocity is ignored in position mode (Operating Mode 3), as on the real servo.
+  if (chip->torque_enable && chip->speed != 0 && chip->operating_mode != 3) {
     chip->pos_frac += chip->speed * VEL_TICKS_PER_S_PER_UNIT * delta_t;
     int32_t whole = (int32_t)chip->pos_frac;
     chip->pos_frac -= whole;
     chip->current_position = (uint32_t)((((int64_t)chip->current_position + whole) % 4096 + 4096) % 4096);
+  }
+
+  if (chip->torque_enable && chip->operating_mode == 3) {
+    chip->current_position = ttl_servo_slew_step(chip->current_position, chip->goal_position, chip->profile_vel, VEL_TICKS_PER_S_PER_UNIT, delta_t, &chip->pos_frac);
+
+    // Sim-only verification aid: rate-limited position-mode log (about 1 s)
+    chip->log_tick++;
+    if (chip->log_tick >= 50) {
+      if (chip->goal_position != chip->last_logged_goal || chip->current_position != chip->last_logged_pos) {
+        printf("[servo] goal=%u pos=%u vel=%u torque=%u\n", (unsigned)chip->goal_position, (unsigned)chip->current_position, (unsigned)chip->profile_vel, (unsigned)chip->torque_enable);
+        chip->last_logged_goal = chip->goal_position;
+        chip->last_logged_pos = chip->current_position;
+      }
+      chip->log_tick = 0;
+    }
   }
 
   // Redraw only on position change, and only every 2nd tick (~25 Hz)
@@ -398,6 +445,7 @@ void chip_init() {
   chip->servo_id = 1;
   chip->current_position = 2048;
   chip->speed = 0;
+  chip->goal_position = 2048;
   chip->operating_mode = 3; // Position mode default
   chip->torque_enable = 0;
   chip->state = STATE_HEADER1;
