@@ -11,6 +11,11 @@
 // in raw units, capped on the host (segway::kWheelCapRaw), never a device read.
 // 10 Hz telemetry also reads the present position (pos, dpos) for the sim check.
 // 1 Hz [dxl] line reports transaction counts and the max transaction time (us).
+// Fall: zero-velocity stop (3 tries, torque off if all fail), then hold 1 s and restart.
+// 3 failed writes in a row: the firmware first stops the chip (velocity 0 with 3 tries,
+// torque off if needed), then latches bus_down (no Dynamixel calls; reset the board to retry).
+// The same stop-then-latch runs after a failed bring-up.
+// -D TTL_SERVO_FALL_TEST: low gains (kp=2 kd=1) so the frame falls within seconds.
 #include <Arduino.h>
 #include <Wire.h>
 #include <Adafruit_MPU6050.h>
@@ -50,6 +55,10 @@ static uint32_t tx_ok, tx_fail, rd_ok, rd_fail, max_us;
 static uint32_t lastBusPrintMs;
 static int32_t last_pos = 0;
 static bool have_last_pos = false;
+static bool bus_down = false;        // latched: no Dynamixel calls until reset
+static uint8_t consec_fail = 0;      // consecutive failed writes (reset on success)
+static bool holding = false;         // true for 1 s after a fall
+static uint32_t hold_until_ms = 0;
 
 // ===== Helpers =====
 static float ema_update(float prev, float raw, uint32_t dt_ms) {
@@ -66,27 +75,82 @@ static float clamp_dt_s(uint32_t dt_ms) {
   return dt;
 }
 
+// Goal velocity 0, up to 3 attempts. Each attempt is timed and counted.
+static bool write_vel_zero_with_retries() {
+  for (uint8_t i = 0; i < 3; ++i) {
+    uint32_t t0 = micros();
+    bool ok = dxl.setGoalVelocity(DXL_ID, 0.0f, UNIT_RAW);
+    uint32_t el = micros() - t0;
+    if (el > max_us) max_us = el;
+    if (ok) {
+      ++tx_ok;
+      consec_fail = 0;
+      return true;
+    }
+    ++tx_fail;
+    ++consec_fail;
+  }
+  return false;
+}
+
+// force_torque_off: also run the torque-off sequence after a successful zero
+// write (the chip may be in position mode); returns true only if torque-off
+// was confirmed in that case.
+static bool stop_chip_best_effort(const char* why, bool force_torque_off = false) {
+  bool zok = write_vel_zero_with_retries();
+  Serial.printf("[dxl] stop vel=0 ok=%d\n", zok ? 1 : 0);
+  if (zok) {
+    last_written_raw = 0;
+    if (!force_torque_off) return true;
+  }
+  bool off = false;
+  // Torque-off transactions are not counted in tx_ok/tx_fail/max_us (stats cover goal-velocity writes and position reads only).
+  for (uint8_t i = 0; i < 3 && !off; ++i) off = dxl.torqueOff(DXL_ID);
+  Serial.printf("[safe] torque off %s%s\n", why,
+                off ? "" : " (TORQUE OFF NOT CONFIRMED)");
+  return force_torque_off ? off : false;
+}
+
+// Serial1 + protocol setup for the servo bus. Called once, before any bus use.
+static void dxl_bus_begin() {
+  dxl.begin(DXL_BAUD);
+  Serial1.begin(DXL_BAUD, SERIAL_8N1, DXL_RX, DXL_TX);
+  dxl.setPortProtocolVersion(DXL_PROTO);
+}
+
+// Latch: no Dynamixel calls until reset. Physics and telemetry keep running.
+static void latch_bus_down() {
+  servo_ok = false;
+  if (bus_down) return;
+  bus_down = true;
+  Serial.printf("[dxl] tx_ok=%lu tx_fail=%lu rd_ok=%lu rd_fail=%lu max_us=%lu\n",
+                (unsigned long)tx_ok, (unsigned long)tx_fail,
+                (unsigned long)rd_ok, (unsigned long)rd_fail,
+                (unsigned long)max_us);
+  Serial.println("[safe] bus down (reset the board to retry)");
+}
+
 // ===== Arduino entry points =====
 void setup() {
   Serial.begin(115200);
   delay(1000); // Boot without blocking on USB host
 
+  dxl_bus_begin();
   Wire.begin(I2C_SDA, I2C_SCL);
 
   Serial.println("\n[ttl_servo] Segway physics sim (Wokwi, SIM-ONLY, UNVERIFIED)");
 
   if (!mpu.begin(MPU_ADDR, &Wire)) {
     Serial.println("[ttl_servo] Failed to find MPU6050 chip");
+    // Ping first: Dynamixel2Arduino resolves registers through the model number a ping fills in,
+    // so a write without a prior ping fails even when the servo is present.
+    (void)dxl.ping(DXL_ID);
+    (void)stop_chip_best_effort("no IMU", true);
     while (1) { delay(10); }
   }
   mpu.setGyroRange(MPU6050_RANGE_250_DEG);
 
-  // Servo bring-up before the (blocking) calibration. Order matters: begin()
-  // first, then Serial1.begin with explicit pins, then the protocol version.
-  dxl.begin(DXL_BAUD);
-  Serial1.begin(DXL_BAUD, SERIAL_8N1, DXL_RX, DXL_TX);
-  dxl.setPortProtocolVersion(DXL_PROTO);
-
+  // Servo bring-up before the (blocking) calibration; the bus was begun above.
   bool ping_ok = dxl.ping(DXL_ID);
   Serial.printf("[dxl] ping %s\n", ping_ok ? "ok" : "FAILED");
   if (!ping_ok) {
@@ -107,6 +171,14 @@ void setup() {
       (void)dxl.torqueOff(DXL_ID);  // best effort, torqueOn may have landed
       Serial.println("[dxl] config failed, read-only");
     }
+  }
+  if (!servo_ok) {
+    // Blocks boot while the servo is absent. Worst case about 7 timed-out
+    // transactions (ping, 3 zero writes, 3 torque-off), roughly 140 ms in the sim;
+    // up to 12 (about 240 ms) if ping answers and the config fails at its last step
+    // (ping + 4 config steps + the config-fail torque-off + 3 zero writes + 3 torque-off).
+    (void)stop_chip_best_effort("bring-up failed", true);
+    latch_bus_down();
   }
 
   // Gyro Z bias: average with the Wokwi gyro slider at rest.
@@ -129,6 +201,11 @@ void setup() {
                 gyroZ_bias_rad_s);
 
   segway_sim.reset(SIM_INIT_THETA_RAD);
+#ifdef TTL_SERVO_FALL_TEST
+  segway_sim.params.kp = 2.0f;
+  segway_sim.params.kd = 1.0f;
+  Serial.println("[ttl_servo] FALL TEST: kp=2 kd=1 (expect FELL within ~6 s)");
+#endif
   Serial.println("[ttl_servo] Sim starts at 15 deg; PD should settle to 0. Move gyro Z to push.\n");
 
   lastLoopMs = millis();
@@ -155,48 +232,57 @@ void loop() {
     Serial.println("[ttl_servo] IMU read failed, holding last gyro Z");
   }
 
-  // 2. PD -> physics, same code the native tests exercise. The returned PD
-  // command is ignored: the chip gets the plant's lagged wheel velocity.
-  float dt_s = clamp_dt_s(dt_ms);
-  (void)segway_sim.tick_cmd(gyroZ_filtered_rad_s, dt_s);
+  // 2. Hold after a fall: physics frozen, wheel stays stopped, then restart.
+  if (holding) {
+    if ((int32_t)(now_ms - hold_until_ms) >= 0) {
+      segway_sim.reset(SIM_INIT_THETA_RAD);
+#ifdef TTL_SERVO_FALL_TEST
+      segway_sim.params.kp = 2.0f;
+      segway_sim.params.kd = 1.0f;
+#endif
+      holding = false;
+      Serial.println("[ttl_servo] restart");
+    }
+  } else {
+    // 3. PD -> physics, same code the native tests exercise. The returned PD
+    // command is ignored: the chip gets the plant's lagged wheel velocity.
+    float dt_s = clamp_dt_s(dt_ms);
+    (void)segway_sim.tick_cmd(gyroZ_filtered_rad_s, dt_s);
 
-  // 3. Goal velocity to the chip. Only on change, only if the chip is live.
-  if (servo_ok) {
-    int32_t raw = segway::wheel_cmd_to_raw(segway_sim.wheel_vel_rad_s);
-    if (raw != last_written_raw) {
-      uint32_t t0 = micros();
-      bool wok = dxl.setGoalVelocity(DXL_ID, (float)raw, UNIT_RAW);
-      uint32_t el = micros() - t0;
-      if (el > max_us) max_us = el;
-      if (wok) {
-        ++tx_ok;
-        last_written_raw = raw;
-      } else {
-        ++tx_fail;
-        ++write_fail;
-        if (write_fail == 1 || write_fail % 50 == 0)
-          Serial.printf("[dxl] write failed raw=%ld (n=%lu)\n",
-                        (long)raw, (unsigned long)write_fail);
+    if (segway_sim.has_fallen) {
+      // 4. Fall first, so a fall tick never writes the lagged velocity.
+      Serial.printf("[ttl_servo] FELL theta=%.3f\n", segway_sim.theta_rad);
+      if (servo_ok) {
+        if (!stop_chip_best_effort("after fall")) latch_bus_down();
+      }
+      hold_until_ms = millis() + 1000;
+      holding = true;
+    } else if (servo_ok) {
+      // Goal velocity to the chip. Only on change, only if the chip is live.
+      int32_t raw = segway::wheel_cmd_to_raw(segway_sim.wheel_vel_rad_s);
+      if (raw != last_written_raw) {
+        uint32_t t0 = micros();
+        bool wok = dxl.setGoalVelocity(DXL_ID, (float)raw, UNIT_RAW);
+        uint32_t el = micros() - t0;
+        if (el > max_us) max_us = el;
+        if (wok) {
+          ++tx_ok;
+          consec_fail = 0;
+          last_written_raw = raw;
+        } else {
+          ++tx_fail;
+          ++write_fail;
+          ++consec_fail;
+          if (write_fail == 1 || write_fail % 50 == 0)
+            Serial.printf("[dxl] write failed raw=%ld (n=%lu)\n",
+                          (long)raw, (unsigned long)write_fail);
+          if (consec_fail >= 3) {
+            (void)stop_chip_best_effort("before bus latch");
+            latch_bus_down();
+          }
+        }
       }
     }
-  }
-
-  // 4. Fall: stop the wheel, report and restart the sim.
-  if (segway_sim.has_fallen) {
-    if (servo_ok) {
-      uint32_t t0 = micros();
-      bool zok = dxl.setGoalVelocity(DXL_ID, 0.0f, UNIT_RAW);
-      uint32_t el = micros() - t0;
-      if (el > max_us) max_us = el;
-      if (zok) {
-        ++tx_ok;
-        last_written_raw = 0;
-      } else {
-        ++tx_fail;
-      }
-    }
-    Serial.printf("[ttl_servo] FELL theta=%.3f, reset\n", segway_sim.theta_rad);
-    segway_sim.reset(SIM_INIT_THETA_RAD);
   }
 
   // 5. Telemetry (10 Hz)
@@ -225,10 +311,13 @@ void loop() {
         have_last_pos = false;
       }
     }
-    Serial.printf("[ttl_servo] sim theta=%.3f rate=%.3f wheel=%.2f cmd=%ld pos=%s dpos=%s gyroZ=%.3f\n",
+    // cmd = last value CONFIRMED written to the chip; stale (non-zero) after a failed stop.
+    // With bus=1, cmd=0 before the first loop write is the chip's real goal (bring-up confirmed goal 0);
+    // with bus=0 cmd only holds the last confirmed value and says nothing about the chip.
+    Serial.printf("[ttl_servo] sim theta=%.3f rate=%.3f wheel=%.2f cmd=%ld pos=%s dpos=%s gyroZ=%.3f bus=%d\n",
                   segway_sim.theta_rad, segway_sim.theta_dot_rad_s,
                   segway_sim.wheel_vel_rad_s, (long)last_written_raw,
-                  pos_s, dpos_s, gyroZ_filtered_rad_s);
+                  pos_s, dpos_s, gyroZ_filtered_rad_s, servo_ok ? 1 : 0);
   }
 
   if (servo_ok && now_ms - lastBusPrintMs >= 1000) {
