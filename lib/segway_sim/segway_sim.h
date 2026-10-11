@@ -87,7 +87,7 @@ class SegwaySim {
     has_fallen = false;
   }
 
-  // Physics only. wheel_cmd_rad_s is what the servo was told to do.
+  // Physics only. wheel_cmd_rad_s is what the Dynamixel chip was told to do.
   // dt <= 0, NaN, or an already-fallen sim is a no-op; dt is clamped to 0.1 s.
   void step(float wheel_cmd_rad_s, float disturbance_rad_s2, float dt_s) {
     if (!(dt_s > 0.0f) || has_fallen) return;

@@ -93,8 +93,8 @@ void test_open_loop_falls(void) {
   TEST_ASSERT_TRUE(s.has_fallen);
 }
 
-// Gate 4: sign. Forward lean -> positive command (forward); back lean -> negative.
-void test_servo_sign(void) {
+// Gate 4: wheel command sign. Forward lean -> positive command (forward); back lean -> negative.
+void test_wheel_cmd_sign(void) {
   Params p;
   TEST_ASSERT_EQUAL_FLOAT(0.0f, pd_wheel_cmd(p, 0.0f, 0.0f));
   TEST_ASSERT_TRUE(pd_wheel_cmd(p, 0.1f, 0.0f) > 0.0f);
@@ -242,7 +242,7 @@ int main(void) {
   RUN_TEST(test_recovers_from_30_deg);
   RUN_TEST(test_recovers_from_gyro_z_impulse);
   RUN_TEST(test_open_loop_falls);
-  RUN_TEST(test_servo_sign);
+  RUN_TEST(test_wheel_cmd_sign);
   RUN_TEST(test_forward_wheel_opposes_forward_lean);
   RUN_TEST(test_mapping_and_guards);
   RUN_TEST(test_sustained_gyro_z_bounded);
