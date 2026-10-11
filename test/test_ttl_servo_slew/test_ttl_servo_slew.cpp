@@ -59,7 +59,6 @@ void test_slew_v1_fractional_accumulation(void) {
   pos = ttl_servo_slew_step(pos, 3000, 1, TPS, DT, &frac);
   TEST_ASSERT_EQUAL_UINT32(2049, pos);
   // total 1.2505 ticks, remainder 0.2505
-  TEST_ASSERT_TRUE(frac > 0.24 && frac < 0.26);
   TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.25f, (float)frac);
 }
 
@@ -74,7 +73,60 @@ void test_slew_goal_clamped_never_exceeds_max(void) {
   double frac = 0.0;
   uint32_t pos = ttl_servo_slew_step(4090, 5000, 0, TPS, DT, &frac);
   TEST_ASSERT_EQUAL_UINT32(4095, pos);
-  TEST_ASSERT_TRUE(pos <= 4095u);
+}
+
+// Test a2: finite V toward out-of-range goal, carried frac, never exceeds 4095.
+void test_slew_finite_v_out_of_range_goal_ends_at_max(void) {
+  double frac = 0.0;
+  uint32_t pos = 4090;
+  for (int i = 0; i < 50; i++) {
+    pos = ttl_servo_slew_step(pos, 5000, 100, TPS, DT, &frac);
+    TEST_ASSERT_TRUE(pos <= 4095u);
+    if (pos == 4095u) {
+      break;
+    }
+  }
+  TEST_ASSERT_EQUAL_UINT32(4095, pos);
+}
+
+// Test b2: downward with carried fraction, V=1.
+void test_slew_down_v1_carries_negative_frac(void) {
+  double frac = 0.0;
+  uint32_t pos = 2048;
+  for (int i = 0; i < 4; i++) {
+    pos = ttl_servo_slew_step(pos, 1000, 1, TPS, DT, &frac);
+  }
+  TEST_ASSERT_EQUAL_UINT32(2047, pos);
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, -0.25f, (float)frac);
+}
+
+// Test c2: goal 0 edge, no wrap below 0.
+void test_slew_goal_zero_no_wrap(void) {
+  double frac = 0.0;
+  uint32_t pos = ttl_servo_slew_step(20, 0, 100, TPS, DT, &frac);
+  TEST_ASSERT_EQUAL_UINT32(0, pos);
+}
+
+// Test d2: huge profile velocity, single call reaches goal.
+void test_slew_huge_v_reaches_goal_in_one_call(void) {
+  double frac = 0.0;
+  uint32_t pos = ttl_servo_slew_step(2048, 2400, 4294967295u, TPS, DT, &frac);
+  TEST_ASSERT_EQUAL_UINT32(2400, pos);
+}
+
+// Test e2: direction reversal drops the stale positive fraction.
+void test_slew_reversal_drops_stale_frac(void) {
+  double frac = 0.0;
+  uint32_t pos = 2048;
+  for (int i = 0; i < 4; i++) {
+    pos = ttl_servo_slew_step(pos, 3000, 1, TPS, DT, &frac);
+  }
+  TEST_ASSERT_EQUAL_UINT32(2049, pos);
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.25f, (float)frac);
+  pos = ttl_servo_slew_step(pos, 1000, 1, TPS, DT, &frac);
+  TEST_ASSERT_EQUAL_UINT32(2049, pos);
+  // stale +0.25 dropped; only the new -0.3127 step remains
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, -0.3127f, (float)frac);
 }
 
 // Test f: pos == goal resets a stale remainder.
@@ -102,5 +154,10 @@ int main(int argc, char **argv) {
   RUN_TEST(test_slew_goal_clamped_never_exceeds_max);
   RUN_TEST(test_slew_pos_equals_goal_resets_frac);
   RUN_TEST(test_slew_tiny_remainder_no_overshoot);
+  RUN_TEST(test_slew_finite_v_out_of_range_goal_ends_at_max);
+  RUN_TEST(test_slew_down_v1_carries_negative_frac);
+  RUN_TEST(test_slew_goal_zero_no_wrap);
+  RUN_TEST(test_slew_huge_v_reaches_goal_in_one_call);
+  RUN_TEST(test_slew_reversal_drops_stale_frac);
   return UNITY_END();
 }

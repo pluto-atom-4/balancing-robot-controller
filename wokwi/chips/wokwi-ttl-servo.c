@@ -407,7 +407,8 @@ static void chip_timer_callback(void *user_data) {
   }
 
   // delta_t is in seconds (us / 1e6), so ticks = units * ticks-per-s-per-unit * seconds
-  if (chip->torque_enable && chip->speed != 0) {
+  // Goal Velocity is ignored in position mode (Operating Mode 3), as on the real servo.
+  if (chip->torque_enable && chip->speed != 0 && chip->operating_mode != 3) {
     chip->pos_frac += chip->speed * VEL_TICKS_PER_S_PER_UNIT * delta_t;
     int32_t whole = (int32_t)chip->pos_frac;
     chip->pos_frac -= whole;

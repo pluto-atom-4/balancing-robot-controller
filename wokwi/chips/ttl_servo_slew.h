@@ -22,7 +22,9 @@ static inline uint32_t ttl_servo_clamp_goal(uint32_t goal) {
    profile_vel == 0 means no velocity limit: jump to the goal.
    Otherwise step = profile_vel * ticks_per_s_per_unit * delta_t (ticks, may be fractional).
    *frac carries the sub-tick remainder between calls (signed). Never overshoots the goal.
-   The goal is clamped with ttl_servo_clamp_goal first. Raw difference, no wrap-around. */
+   The goal is clamped with ttl_servo_clamp_goal first. Raw difference, no wrap-around.
+   If the motion direction reverses, the stale remainder in *frac (sign opposite to the
+   new direction) is dropped (*frac = 0) before the new step is accumulated. */
 static inline uint32_t ttl_servo_slew_step(uint32_t pos, uint32_t goal, uint32_t profile_vel,
                                            double ticks_per_s_per_unit, double delta_t, double *frac) {
   goal = ttl_servo_clamp_goal(goal);
@@ -40,6 +42,9 @@ static inline uint32_t ttl_servo_slew_step(uint32_t pos, uint32_t goal, uint32_t
   if (step >= absrem) {
     *frac = 0.0;
     return goal;
+  }
+  if ((*frac > 0.0 && rem < 0) || (*frac < 0.0 && rem > 0)) {
+    *frac = 0.0;
   }
   *frac += (rem > 0 ? step : -step);
   int32_t whole = (int32_t)*frac; /* truncates toward zero */

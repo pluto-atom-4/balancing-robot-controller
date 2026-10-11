@@ -47,7 +47,7 @@ To tilt the `tilt_servo` sim without moving the board, set the part attributes `
 ## Limits
 
 - The servo chip answers ping and acks writes. It integrates goal velocity into present position (Operating Mode 11, Torque 64, Goal Velocity 104, Present Position 132).
-- Position mode (Operating Mode 3, torque on): the chip moves present position toward Goal Position (reg 116) at Profile Velocity (reg 112) times the same 0.229 rpm unit as goal velocity. Profile Velocity 0 jumps instantly. The goal is clamped to 0..4095, stored while torque is off and applied on torque-on, and an Operating Mode write sets goal = present. Profile Acceleration (reg 108) is stored but NOT modelled. Units of regs 108/112 are UNVERIFIED against the XL330 e-Manual.
+- Position mode (Operating Mode 3, torque on): the chip moves present position toward Goal Position (reg 116) at Profile Velocity (reg 112) times the same 0.229 rpm unit as goal velocity. Profile Velocity 0 jumps instantly. The goal is clamped to 0..4095, stored while torque is off and applied on torque-on, and an Operating Mode write sets goal = present. Profile Acceleration (reg 108) is stored but NOT modelled. Units of regs 108/112 are UNVERIFIED against the XL330 e-Manual. Goal Velocity is ignored in position mode.
 - Position-mode evidence is headless only: with an injected 20 degree tilt, the firmware goal ramped to 2272 and the chip logged `[servo] goal=2272 pos=2272 vel=100 torque=1`. The GUI horn was not checked. The chip logs `[servo] goal=.. pos=.. vel=.. torque=..` (rate-limited, position mode only) as a sim aid.
 - Velocity mode (the `wokwi_ttl_servo` demo) is unchanged.
 - The chip hard-codes servo ID 1. The balance sim does not use these chips (it needs ID 2).
