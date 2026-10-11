@@ -370,9 +370,11 @@ void loop() {
     // cmd = last value CONFIRMED written to the chip; stale (non-zero) after a failed stop.
     // With bus=1, cmd=0 before the first loop write is the chip's real goal (bring-up confirmed goal 0);
     // with bus=0 cmd only holds the last confirmed value and says nothing about the chip.
+    // During the post-fall hold the plant is frozen at its fall values; the wheel is stopped, so show 0.
+    float wheel_shown = holding ? 0.0f : segway_sim.wheel_vel_rad_s;
     Serial.printf("[ttl_servo] sim theta=%.3f rate=%.3f wheel=%.2f cmd=%ld pos=%s dpos=%s gyroZ=%.3f bus=%d\n",
                   segway_sim.theta_rad, segway_sim.theta_dot_rad_s,
-                  segway_sim.wheel_vel_rad_s, (long)last_written_raw,
+                  wheel_shown, (long)last_written_raw,
                   pos_s, dpos_s, gyroZ_filtered_rad_s, servo_ok ? 1 : 0);
   }
 
