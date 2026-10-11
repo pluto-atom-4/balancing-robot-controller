@@ -1,6 +1,7 @@
 #include <unity.h>
 #include <math.h>
 #include <segway_sim.h>
+#include <dxl_units.h>
 
 using namespace segway;
 
@@ -316,6 +317,69 @@ void test_horn_follows_closed_loop(void) {
   TEST_ASSERT_TRUE(fabsf(travelled - at3s) < 0.5f);  // still after 3 s
 }
 
+// tick_cmd: the PD command (rad/s) from 15 deg converges within 3 s, no fall.
+void test_tick_cmd_converges_from_15_deg(void) {
+  SegwaySim s(0.2618f);
+  float first = s.tick_cmd(0.0f, 0.02f);
+  TEST_ASSERT_TRUE(first > 0.0f);
+  for (int i = 0; i < 149; ++i) {
+    s.tick_cmd(0.0f, 0.02f);
+    TEST_ASSERT_FALSE(s.has_fallen);
+  }
+  TEST_ASSERT_TRUE(fabsf(s.theta_rad) < 0.01745f);
+  TEST_ASSERT_TRUE(fabsf(s.wheel_vel_rad_s) < 0.1f);
+}
+
+// wheel_cmd_to_raw: rad/s -> XL330 raw velocity, rounded, clamped to the cap.
+void test_wheel_cmd_to_raw_mapping(void) {
+  TEST_ASSERT_EQUAL_INT(0, wheel_cmd_to_raw(0.0f));
+  TEST_ASSERT_EQUAL_INT(42, wheel_cmd_to_raw(1.0f));
+  TEST_ASSERT_EQUAL_INT(125, wheel_cmd_to_raw(3.0f));
+  TEST_ASSERT_EQUAL_INT(-125, wheel_cmd_to_raw(-3.0f));
+  TEST_ASSERT_EQUAL_INT(125, wheel_cmd_to_raw(100.0f));
+  TEST_ASSERT_EQUAL_INT(0, wheel_cmd_to_raw(__builtin_nanf("")));
+  TEST_ASSERT_EQUAL_INT(4, wheel_cmd_to_raw(0.1f));
+  TEST_ASSERT_EQUAL_INT(0, wheel_cmd_to_raw(0.0119f));
+  TEST_ASSERT_EQUAL_INT(1, wheel_cmd_to_raw(0.0240f));
+  int raw90 = wheel_cmd_to_raw(1.5708f);  // 90 deg/s
+  TEST_ASSERT_TRUE(raw90 >= 65 && raw90 <= 66);
+  const float xs[] = {0.5f, 1.0f, 2.0f};
+  for (int k = 0; k < 3; ++k)
+    TEST_ASSERT_EQUAL_INT(-wheel_cmd_to_raw(xs[k]), wheel_cmd_to_raw(-xs[k]));
+  // Regression: frozen-wheel case when a device-read Velocity Limit is 0.
+  TEST_ASSERT_EQUAL_INT(0, wheel_cmd_to_raw(1.0f, 0));
+}
+
+// The raw cap matches the wheel speed cap in Params and the XL330 scale.
+void test_wheel_cap_matches_params(void) {
+  Params p;
+  TEST_ASSERT_EQUAL_INT(kWheelCapRaw, wheel_cmd_to_raw(p.wheel_max_rad_s));
+  float cap_rad_s = dxl_units::rawToRadS(dxl_units::kXl330, kWheelCapRaw);
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, 3.0f, cap_rad_s);
+  TEST_ASSERT_TRUE(cap_rad_s <= p.wheel_max_rad_s);
+}
+
+// Sign and range of the raw command over a full closed-loop run from +15 deg:
+// first forward, the cap is never exceeded, and the sign reverses (overshoot).
+void test_tick_cmd_sign_and_range(void) {
+  SegwaySim pos(0.2618f);
+  TEST_ASSERT_TRUE(wheel_cmd_to_raw(pos.tick_cmd(0.0f, 0.02f)) > 0);
+
+  SegwaySim neg(-0.2618f);
+  TEST_ASSERT_TRUE(wheel_cmd_to_raw(neg.tick_cmd(0.0f, 0.02f)) < 0);
+
+  SegwaySim s(0.2618f);
+  bool seen_pos = false, seen_neg_after_pos = false;
+  for (int i = 0; i < 200; ++i) {
+    int raw = wheel_cmd_to_raw(s.tick_cmd(0.0f, 0.02f));
+    TEST_ASSERT_TRUE(raw <= 125 && raw >= -125);
+    if (raw > 0) seen_pos = true;
+    if (seen_pos && raw < 0) seen_neg_after_pos = true;
+  }
+  TEST_ASSERT_TRUE(seen_pos);
+  TEST_ASSERT_TRUE(seen_neg_after_pos);
+}
+
 int main(void) {
   UNITY_BEGIN();
   RUN_TEST(test_converges_from_15_deg);
@@ -338,5 +402,9 @@ int main(void) {
   RUN_TEST(test_horn_us_mapping);
   RUN_TEST(test_horn_slow_speed_moves_output);
   RUN_TEST(test_horn_follows_closed_loop);
+  RUN_TEST(test_tick_cmd_converges_from_15_deg);
+  RUN_TEST(test_wheel_cmd_to_raw_mapping);
+  RUN_TEST(test_wheel_cap_matches_params);
+  RUN_TEST(test_tick_cmd_sign_and_range);
   return UNITY_END();
 }
