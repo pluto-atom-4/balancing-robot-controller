@@ -175,7 +175,8 @@ void setup() {
   if (!servo_ok) {
     // Blocks boot while the servo is absent. Worst case about 7 timed-out
     // transactions (ping, 3 zero writes, 3 torque-off), roughly 140 ms in the sim;
-    // up to 8 if ping answers but config fails (adds the config-fail torque-off).
+    // up to 12 (about 240 ms) if ping answers and the config fails at its last step
+    // (ping + 4 config steps + the config-fail torque-off + 3 zero writes + 3 torque-off).
     (void)stop_chip_best_effort("bring-up failed", true);
     latch_bus_down();
   }
@@ -311,7 +312,8 @@ void loop() {
       }
     }
     // cmd = last value CONFIRMED written to the chip; stale (non-zero) after a failed stop.
-    // cmd=0 before the first write is not a chip state.
+    // With bus=1, cmd=0 before the first loop write is the chip's real goal (bring-up confirmed goal 0);
+    // with bus=0 cmd only holds the last confirmed value and says nothing about the chip.
     Serial.printf("[ttl_servo] sim theta=%.3f rate=%.3f wheel=%.2f cmd=%ld pos=%s dpos=%s gyroZ=%.3f bus=%d\n",
                   segway_sim.theta_rad, segway_sim.theta_dot_rad_s,
                   segway_sim.wheel_vel_rad_s, (long)last_written_raw,
