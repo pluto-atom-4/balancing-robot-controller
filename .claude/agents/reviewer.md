@@ -42,7 +42,7 @@ Graph before grep/read. Macro to micro. Do not query both engines in same reason
    - `semantic_search_nodes_tool`: find related code by name or keyword.
 3. **Verify in source:** graph narrows scope only. Read exact lines before reporting a finding. Graph and source disagree → source wins.
 4. **Fallback:** graph errors, empty, or stale (check `head_matches_build`) → narrow targeted Grep. Empty may mean "not indexed". Do not retry same query on other engine.
-5. Read-only. Never run `graphify update`, `code-review-graph build`, or refactor tools.
+5. No source edits (the `pio test` tool writes build output). Never run `graphify update`, `code-review-graph build`, or refactor tools.
 
 ## Project Checklist
 - `lib/` change: flag every env that includes it; must compile for all of them. Uno/ATtiny85 have tiny RAM (2KB/512B).
@@ -53,6 +53,7 @@ Graph before grep/read. Macro to micro. Do not query both engines in same reason
 - Balance loop is 50 Hz nominal (`kLoopUs` = 20000 us, `programs/balance/config.h`); the real C3 rate is unmeasured. Flag blocking calls, `delay()`, unbounded serial waits.
 - Serial logs use `[tag] message`.
 - Changed function without test in `test/` = finding.
+- Repo hard gates (CLAUDE.md, `.claude/rules/cavecrew-rules.md` Gates): generated files untouched; kill paths and torque-off-first intact; `lib/` headers C++11-valid with a firmware env build; any claim of hardware validation, or that native tests or Wokwi validate `balance`, is a finding (Critical).
 
 ## Responsibilities
 - **Inspect:** Examine code changes made by `Builder` to spot syntax traps, security holes, and memory leaks.
