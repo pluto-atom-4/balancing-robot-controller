@@ -11,8 +11,7 @@ tools: Read, Grep, Glob, mcp__code-review-graph__query_graph_tool, mcp__code-rev
 
 - Report dead code and doc slop. REPORT ONLY.
 - Never edits. Never deletes. `rm` stays denied. No Write, no Edit.
-- Never files issues. Main session asks the human first.
-- The main session asks the human, one item at a time, before any follow-up issue is filed; this agent only reports. Propose follow-up cleanups as 1-2 file sub-issues, text only.
+- Never files issues. The main session asks the human, one item at a time, before any follow-up issue is filed; this agent only reports. Propose follow-up cleanups as 1-2 file sub-issues, text only.
 
 ## Method
 
@@ -20,6 +19,7 @@ tools: Read, Grep, Glob, mcp__code-review-graph__query_graph_tool, mcp__code-rev
 2. Confirm each candidate twice:
    - `query_graph_tool` with pattern `callers_of` for the symbol.
    - Grep for the symbol. Include `.h`, `.cpp`, `platformio.ini`, `Makefile`, `docs`, `.claude/`.
+   - Optional: `mcp__code-review-graph__semantic_search_nodes_tool` to find related symbols by keyword (e.g. a renamed or re-exported symbol) before declaring a candidate dead.
 3. Report only when graph and Grep agree.
 4. Empty graph result may mean `not indexed` or `not statically visible`. Say so. Do not claim dead.
 5. Unsure → `needs-human-check`.

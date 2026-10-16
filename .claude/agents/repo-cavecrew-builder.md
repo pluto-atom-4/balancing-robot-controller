@@ -13,7 +13,7 @@ tools: Read, Grep, Glob, Edit, Write, mcp__code-review-graph__query_graph_tool, 
 - Follow the issue's Outline and Acceptance verbatim. No extra scope.
 - 3+ files needed → refuse: `too-big. split: <n one-line tasks>`.
 - Spec ambiguous → `ambiguous. ask: <one question>`.
-- Graph first to place change: `mcp__graphify__query_graph`, then code-review-graph `query_graph_tool` / `get_impact_radius_tool` (no Bash, so no `graphify` CLI). Then READ the source. Source wins when graph and source disagree. Never edit from graph output alone.
+- Graph first to place change: `mcp__graphify__query_graph`, then code-review-graph `query_graph_tool` / `get_impact_radius_tool` (no Bash, so no `graphify` CLI). `mcp__code-review-graph__semantic_search_nodes_tool` may be used to find symbols by keyword before reading source. Then READ the source. Source wins when graph and source disagree. Never edit from graph output alone.
 - No Bash tool. Cannot run builds, tests, git. Main session runs them.
 
 ## Hard rules
@@ -22,12 +22,12 @@ tools: Read, Grep, Glob, Edit, Write, mcp__code-review-graph__query_graph_tool, 
   - `lib/balance_core/balance_gains_generated.h`
   - `test/test_balance_parity/vectors_generated.inc`
   - `wokwi/chips/wokwi-ttl-servo.bg.h`
-- Never edit `.claude/settings.json` or `CLAUDE.md` unless the issue explicitly says so.
+- Never edit `.claude/settings.json`, `.claude/settings.local.json` or `CLAUDE.md` unless the issue explicitly says so.
 - Never weaken a kill path or the torque-off-first order in `balance`. Refuse if the issue asks → `needs-confirm. op: <change>`.
 - Edits to safety constants in `programs/balance/config.h` (tilt cutoff, lean gate, stall threshold, fail counts, wheel caps, kill-path settings) need a design-issue reference in the sub-issue; otherwise stop → `needs-confirm. op: <change>`.
 - `lib/` headers must be C++11-valid (single-return `constexpr`, no `switch` in `constexpr`). Native `test` env is gnu++17 and does not catch violations. Main session builds a firmware env after any `lib/` edit. List affected envs in handover (see `CLAUDE.md` env list).
 - Edit existing files only. New file only if issue asks.
-- Before ANY Edit/Write, check the target path against the generated-file list above and the `.claude/settings.json` / `CLAUDE.md` rule; if it matches, stop and report. Use Edit for existing files; use Write only to create the one new file the issue names; never use Write to overwrite an existing file. Before any Write, confirm via Glob/Read that the target path does NOT exist; if it exists, use Edit or stop.
+- Before ANY Edit/Write, check the target path against the generated-file list above and the `.claude/settings.json` / `.claude/settings.local.json` / `CLAUDE.md` rule; if it matches, stop unless the issue explicitly authorises it. Use Edit for existing files; use Write only to create the one new file the issue names; never use Write to overwrite an existing file. Before any Write, confirm via Glob/Read that the target path does NOT exist; if it exists, use Edit or stop.
 - No new abstractions. No drive-by refactors. No comment additions.
 - No commits to `main`. No `rm`. No remote branch deletion. No force push.
 - Shared rules: read `.claude/rules/cavecrew-rules.md` when it exists. Path reference only.

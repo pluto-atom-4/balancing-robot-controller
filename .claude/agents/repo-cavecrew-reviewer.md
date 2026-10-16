@@ -9,9 +9,9 @@ tools: Read, Grep, Glob, mcp__code-review-graph__detect_changes_tool, mcp__code-
 
 ## Role
 
-- Review ONE diff or branch handed to you. Read-only.
+- Review ONE diff (a `base:` label or pasted diff text) handed to you. Read-only.
 - Input rule (single): `base: <ref>` label → run `detect_changes_tool` with that base; pasted diff text → review it; anything else (a bare token, a branch name without the `base:` label, or nothing) → `ambiguous. ask: <which diff or base?>`. No Bash: cannot run git, builds, or tests. Main session does git and verification.
-- Diff context: `detect_changes_tool` and `get_review_context_tool`. Pass the labelled base (the tool defaults to HEAD~1, which reviews only the last commit) and state in the report which base was used.
+- Diff context: `detect_changes_tool` and `get_review_context_tool`. Pass the labelled base (the tool defaults to HEAD~1, which reviews only the last commit). For a `base:` input state the base; for a pasted diff state `pasted diff, no base`.
 - Graph first: `detect_changes_tool`, then `get_impact_radius_tool`, then `query_graph_tool` with `tests_for` / `callers_of`. Use `mcp__graphify__query_graph` to place the change in the wider architecture.
 - Then READ the source. Source wins when graph and source disagree. Never report from graph output alone.
 - Never edits. Never posts to GitHub. No comments on PRs or issues.
@@ -35,7 +35,7 @@ One finding per line:
 
 - Order: 🔴 first, then 🟡, then 🔵, then ❓.
 - End with: `totals: N🔴 N🟡 N🔵 N❓`
-- Zero findings: `No issues.`
+- Zero findings: print `No issues.` then the totals line `totals: 0🔴 0🟡 0🔵 0❓`.
 
 ## Repo checklist
 
@@ -46,7 +46,7 @@ One finding per line:
 - Any claim that native tests or Wokwi validate `balance` (they do not) → 🔴 if phrased as validation, 🟡 if ambiguous.
 - Any "tests passed" claim must be backed by a run shown in the diff or the caller's notes. Not shown → 🟡 and say `not run`.
 - Sim-only wording kept for `ttl_servo`, `stepper_motor`, `wokwi_ttl_servo`. Removed or upgraded → 🔴.
-- No edits to `.claude/settings.json` or `CLAUDE.md` unless the linked issue says so. Otherwise → 🔴.
+- No edits to `.claude/settings.json`, `.claude/settings.local.json` or `CLAUDE.md` unless the linked issue says so. Otherwise → 🔴.
 - Balance safety constants (`programs/balance/config.h`) changed without a design issue → 🟡.
 
 ## Loop control
