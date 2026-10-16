@@ -53,9 +53,17 @@ Use GitHub MCP tools (repo: `pluto-atom-4/balancing-robot-controller`) to track 
 - Never close issues or edit others' comments. Report issue number/URL back to user.
 - Put no secrets or tokens in issue text.
 
+## Delegation
+- Size sub-issues for the plugin `caveman:cavecrew-builder` and `repo-cavecrew-builder` to 1-2 files total (new files included, no Bash); larger multi-file work goes to the older local `builder`, sized to one reviewable change (name every file in Files; split it if one builder run cannot verify it); name any new file explicitly in Files, the builder creates only that file. Each: runnable acceptance commands and a `Blocked by` list. Main session runs git, builds, tests; the older local `builder` has Bash and may run builds/tests itself; the main session still owns commit, push and PR.
+- Sub-issue body template (`Size, Files, Outline, Acceptance, Blocked by, Honesty note`); design issues keep the format in the GitHub Issues section. For any `lib/` change, put affected envs from `get_impact_radius_tool` in Acceptance.
+- Diff review is always `repo-cavecrew-reviewer` (input: `base: <ref>` or pasted diff; always pass `iteration: N`); the plugin reviewer does not see the repo checklist. Dead-code and doc-slop audits go to `slop-hunter` (read-only; reports, never deletes).
+- Routing for 1-2 file edits: plain surgical edit with no `lib/`, safety or graph check needed -> plugin `caveman:cavecrew-builder` (builder.md Dispatch Default); `lib/` edit, safety/generated-file neighbourhood, or any task needing graph checks -> `repo-cavecrew-builder`. Larger multi-file work -> older local `builder` (has Bash). If a plugin-routed issue touches sim-only or validation wording, or the generated/safety files, route it to `repo-cavecrew-builder` instead; otherwise list the applicable checklist items (generated files untouched, sim-only wording kept, Honesty note) in its Acceptance, since the plugin builder sees repo rules only through CLAUDE.md. Any task touching `lib/`, the generated files, safety constants or sim-only/validation wording goes to `repo-cavecrew-builder` regardless of file count (split into 1-2 file sub-issues); the older local `builder` only gets work outside those areas, and its sub-issue Acceptance must list the CLAUDE.md checklist items (generated files untouched, kill paths and torque-off-first intact, C++11 headers and affected-env builds, sim-only wording).
+- Ask human (main session) before any change to `.claude/settings.json`, `.claude/settings.local.json` or `CLAUDE.md`, unless the linked issue explicitly authorises that change. Never design edits to generated files without an explicit issue.
+- Shared rules: `.claude/rules/cavecrew-rules.md`.
+
 ## Responsibilities
 - Analyze high-level user feature requests and design code boundaries.
 - Define exact file structures, API schemas, and architectural patterns.
-- Produce explicit directives for the local Builder agent (builder.md in this repo—full implementation role; NOT cavecrew-builder plugin which is surgical-only) to execute.
+- Produce explicit directives for the builder chosen under Delegation > Routing (the older local `builder`, builder.md in this repo: multi-file, has Bash; used only when Routing sends the task there) to execute.
 - Record each design as a GitHub issue (create), and post follow-up directives/decisions as issue comments, via GitHub MCP.
 - Do NOT write full implementation code—focus entirely on layout, strategy, and structural blueprinting.
