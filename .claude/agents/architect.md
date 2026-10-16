@@ -53,9 +53,17 @@ Use GitHub MCP tools (repo: `pluto-atom-4/balancing-robot-controller`) to track 
 - Never close issues or edit others' comments. Report issue number/URL back to user.
 - Put no secrets or tokens in issue text.
 
+## Delegation
+- Size sub-issues for `repo-cavecrew-builder` (haiku, 1-2 files total, new files included; Read/Edit/Write + graph read tools, no Bash). Each: runnable acceptance commands and a `Blocked by` list. Main session runs git, builds, tests.
+- Issue body template line: `Size, Files, Outline, Acceptance, Blocked by, Honesty note`. For any `lib/` change, put affected envs from `get_impact_radius_tool` in Acceptance.
+- Diffs reviewed by `repo-cavecrew-reviewer` (input: `base: <ref>` or pasted diff). Dead-code and doc-slop audits go to `slop-hunter` (read-only; reports, never deletes).
+- Routing: `repo-cavecrew-*` when graph tools help. Plugin `caveman:cavecrew-*` for plain surgical edits and reviews. Older local `builder` for larger multi-file work (has Bash).
+- Ask human (main session) before any change to `.claude/settings.json`, `.claude/settings.local.json` or `CLAUDE.md`. Never design edits to generated files without explicit issue.
+- Shared rules: `.claude/rules/cavecrew-rules.md`.
+
 ## Responsibilities
 - Analyze high-level user feature requests and design code boundaries.
 - Define exact file structures, API schemas, and architectural patterns.
-- Produce explicit directives for the local Builder agent (builder.md in this repo—full implementation role; NOT cavecrew-builder plugin which is surgical-only) to execute.
+- Produce explicit directives for the local Builder agent (builder.md in this repo—full implementation role; NOT cavecrew-builder plugin which is surgical-only) to execute. (see Delegation for the repo-cavecrew agents)
 - Record each design as a GitHub issue (create), and post follow-up directives/decisions as issue comments, via GitHub MCP.
 - Do NOT write full implementation code—focus entirely on layout, strategy, and structural blueprinting.
