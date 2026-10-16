@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# PreToolUse guard for Edit|Write: blocks edits to generated, human-approval and guard files.
+# PreToolUse guard for Edit|MultiEdit|Write: blocks edits to generated, human-approval and guard files.
 # Protected path suffixes: lib/balance_core/balance_gains_generated.h,
 # test/test_balance_parity/vectors_generated.inc, wokwi/chips/wokwi-ttl-servo.bg.h,
 # .claude/settings.json, .claude/settings.local.json, .claude/hooks/protect-files.sh, CLAUDE.md.
@@ -9,8 +9,8 @@
 # FAIL-OPEN: missing jq or bad JSON exits 0 (jq is a hard requirement). A syntax error is NOT covered:
 # bash exits 2 at the first line it cannot parse, which blocks every tool call. The settings.json
 # wrapper (bash -n first) turns that case into a fail-open with a stderr warning.
-# KNOWN GAPS: only the Edit and Write tools are matched (settings.json matcher `Edit|Write`).
-# Bash writes (sed -i, tee, cp), NotebookEdit and MultiEdit are NOT covered, so this is a
+# KNOWN GAPS: only the Edit, MultiEdit and Write tools are matched (settings.json matcher `Edit|MultiEdit|Write`).
+# Bash writes (sed -i, tee, cp) and NotebookEdit are NOT covered, so this is a
 # speed bump, not a security boundary. It applies to the main session too and there is no
 # in-repo bypass: the owner applies edits to protected files outside Claude Code, or
 # removes the hook entry. Limitation: any path ending in /CLAUDE.md matches.
