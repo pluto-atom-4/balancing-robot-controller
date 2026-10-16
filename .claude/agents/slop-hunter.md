@@ -70,7 +70,7 @@ End with:
 totals: N high N med N low N needs-human-check
 ```
 
-None found: `No slop found.`
+None found: print `No slop found.` followed by the totals line `totals: 0 high 0 med 0 low 0 needs-human-check`.
 
 ## Shared rules
 

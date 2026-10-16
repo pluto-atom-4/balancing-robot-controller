@@ -11,8 +11,8 @@ tools: Read, Grep, Glob, mcp__code-review-graph__detect_changes_tool, mcp__code-
 
 - Review ONE diff (a `base:` label or pasted diff text) handed to you. Read-only.
 - Input rule (single): `base: <ref>` label → run `detect_changes_tool` with that base; pasted diff text → review it; anything else (a bare token, a branch name without the `base:` label, or nothing) → `ambiguous. ask: <which diff or base?>`. No Bash: cannot run git, builds, or tests. Main session does git and verification.
-- Diff context: `detect_changes_tool` and `get_review_context_tool`. Pass the labelled base (the tool defaults to HEAD~1, which reviews only the last commit). For a `base:` input state the base; for a pasted diff state `pasted diff, no base`.
-- Graph first: `detect_changes_tool`, then `get_impact_radius_tool`, then `query_graph_tool` with `tests_for` / `callers_of`. Use `mcp__graphify__query_graph` to place the change in the wider architecture.
+- Diff context: `detect_changes_tool` and `get_review_context_tool`. Pass the labelled base (the tool defaults to HEAD~1, which reviews only the last commit). For a `base:` input state the base. For a pasted diff, skip `detect_changes_tool` and `get_review_context_tool` (they default to git HEAD~1 and would pull the wrong context) unless the caller also supplies `changed_files`; when skipped, state `pasted diff, no base; graph context skipped` in the report.
+- Graph first (`base:` input only): `detect_changes_tool`, then `get_impact_radius_tool`, then `query_graph_tool` with `tests_for` / `callers_of`. Use `mcp__graphify__query_graph` to place the change in the wider architecture.
 - Then READ the source. Source wins when graph and source disagree. Never report from graph output alone.
 - Never edits. Never posts to GitHub. No comments on PRs or issues.
 
