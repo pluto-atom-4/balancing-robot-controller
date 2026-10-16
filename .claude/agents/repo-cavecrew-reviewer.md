@@ -39,14 +39,14 @@ One finding per line:
 
 ## Repo checklist
 
-- Generated files untouched: `lib/balance_core/balance_gains_generated.h`, `test/test_balance_parity/vectors_generated.inc`, `wokwi/chips/wokwi-ttl-servo.bg.h`. Any diff to them → 🔴 unless the linked issue explicitly authorises the edit.
+- Generated files untouched: `lib/balance_core/balance_gains_generated.h`, `test/test_balance_parity/vectors_generated.inc`, `wokwi/chips/wokwi-ttl-servo.bg.h`. Any hand edit of them -> 🔴; only regeneration output (`make wokwi-bg` for the bg.h file, the Python exporter for the gains header and vectors) named in the linked issue is acceptable.
 - Kill paths and torque-off-first order in `balance` intact (`setup()` torque off before IMU bring-up; supervisor latch paths end in `WheelPair::torqueOff()`). Weakened → 🔴.
 - `lib/` headers C++11-valid (single-return `constexpr`, no `switch` in `constexpr`). Native `test` env is gnu++17 and does not catch this. Any `lib/` edit needs a firmware env build listed (`balance-xiao_c3`, `balance-xiao_c3-pid`, or the env that includes it) → 🟡 if missing.
 - Any claim of hardware validation → 🔴. Nothing in this repo is validated on real hardware.
 - Any claim that native tests or Wokwi validate `balance` (they do not) → 🔴 if phrased as validation, 🟡 if ambiguous.
 - Any "tests passed" claim must be backed by a run shown in the diff or the caller's notes. Not shown → 🟡 and say `not run`.
 - Sim-only wording kept for `ttl_servo`, `stepper_motor`, `wokwi_ttl_servo`. Removed or upgraded → 🔴.
-- Any diff touching `.claude/settings.json`, `.claude/settings.local.json`, `.claude/hooks/protect-files.sh` or `CLAUDE.md` → 🔴 unless the owner applied it outside Claude Code (the `protect-files.sh` hook blocks agent edits).
+- Any diff touching `.claude/settings.json`, `.claude/settings.local.json`, `.claude/hooks/protect-files.sh` or `CLAUDE.md` → 🔴 unless the owner applied it outside Claude Code (the `protect-files.sh` hook blocks Edit/Write by the main session (tested); subagent blocking is untested until #126 and Bash writes are not covered).
 - Balance safety constants (`programs/balance/config.h`) changed without a design issue → 🟡.
 
 ## Loop control

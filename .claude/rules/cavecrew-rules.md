@@ -19,7 +19,7 @@ Text rules for repo cavecrew agents. Untested until smoke test #126.
 - Model `haiku` for `repo-cavecrew-builder`, `repo-cavecrew-reviewer`, `slop-hunter`. The older local `reviewer.md` is sonnet.
 - Main session runs git, builds, tests. `repo-cavecrew-builder` has no shell (the older local `builder.md` has Bash).
 - slop-hunter Bash is exact strings only; filtered runs (e.g. `--kind`, `--limit`, `--file-pattern`, `--path`, `--min-lines`) are run by the main session.
-- Refusal/output tokens: `ambiguous. ask:`, `too-big. split:`, `needs-confirm. op:`, `ESCALATE to human`, `No issues.`, `No slop found.`
+- Refusal/output tokens: `ambiguous. ask:`, `too-big. split:`, `needs-confirm. op:` (also for requests to edit protected or generated files), `ESCALATE to human`, `No issues.`, `No slop found.`
 
 ## Handover
 
@@ -29,7 +29,7 @@ Text rules for repo cavecrew agents. Untested until smoke test #126.
 
 ## Gates
 
-- Generated files: `lib/balance_core/balance_gains_generated.h`, `test/test_balance_parity/vectors_generated.inc`, `wokwi/chips/wokwi-ttl-servo.bg.h`. Not edited; regenerate (`make wokwi-bg` for the bg.h file, the Python exporter for the gains header and vectors). The hook blocks edits.
+- Generated files: `lib/balance_core/balance_gains_generated.h`, `test/test_balance_parity/vectors_generated.inc`, `wokwi/chips/wokwi-ttl-servo.bg.h`. Not edited; regenerate (`make wokwi-bg` for the bg.h file, the Python exporter for the gains header and vectors). The `protect-files.sh` hook blocks Edit/Write on them (tested for the main session; subagents untested until #126; Bash writes are not covered).
 - `.claude/settings.json`, `.claude/settings.local.json`, `CLAUDE.md`: not edited by agents; the `protect-files.sh` hook blocks them (and the generated files and the hook script itself): verified for the main session; subagents expected, untested until #126. A linked issue that authorises such a change means the owner applies it outside Claude Code or removes the hook entry temporarily. `settings.json` edits are batched into one PR the owner reviews in full.
 - The guard covers only the Edit and Write tools: Bash writes, NotebookEdit and MultiEdit are not covered (a speed bump, not a boundary). jq is a hard requirement for both hooks (they fail open without it). The path match is case-sensitive (a differently-cased name on a case-insensitive filesystem would slip through).
 - No weakening of kill paths or the torque-off-first order.
@@ -48,7 +48,7 @@ Text rules for repo cavecrew agents. Untested until smoke test #126.
 | 🔵 | nit | style / naming |
 | ❓ | question | needs author answer |
 
-Applies to `repo-cavecrew-reviewer` only (blue nit only when the caller asks for a thorough review); the older `reviewer.md` keeps its own scale.
+Applies to `repo-cavecrew-reviewer`; the plugin `caveman:cavecrew-reviewer` receives these rules too but keeps its own output format; the older `reviewer.md` keeps its own scale. (blue nit only when the caller asks for a thorough review.)
 
 ## Loop cap
 
