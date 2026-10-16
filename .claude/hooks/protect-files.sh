@@ -6,7 +6,9 @@
 # Reads the tool input JSON on stdin, exits 2 with a stderr message on a match, else 0.
 # Both the raw path and the `realpath -m` form are checked, so `..`, `//` and symlinked
 # parent directories do not slip past the suffix match.
-# FAIL-OPEN: missing jq, bad JSON or any error exits 0 (jq is a hard requirement for the guard).
+# FAIL-OPEN: missing jq or bad JSON exits 0 (jq is a hard requirement). A syntax error is NOT covered:
+# bash exits 2 at the first line it cannot parse, which blocks every tool call. The settings.json
+# wrapper (bash -n first) turns that case into a fail-open with a stderr warning.
 # KNOWN GAPS: only the Edit and Write tools are matched (settings.json matcher `Edit|Write`).
 # Bash writes (sed -i, tee, cp), NotebookEdit and MultiEdit are NOT covered, so this is a
 # speed bump, not a security boundary. It applies to the main session too and there is no

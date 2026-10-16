@@ -88,7 +88,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/protect-files.sh\""
+            "command": "s=\"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/protect-files.sh\"; bash -n \"$s\" 2>/dev/null || { echo \"protect-files: script missing or does not parse, guard disabled\" >&2; exit 0; }; exec bash \"$s\""
           }
         ]
       }
