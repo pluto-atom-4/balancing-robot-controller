@@ -7,7 +7,7 @@ Text rules for repo cavecrew agents. Untested until smoke test #126.
 - `architect`: plans, files issues. Graph + GitHub tools. No code edits.
 - `repo-cavecrew-builder`: haiku. 1-2 file edits (files touched, new files included). Read/Grep/Glob/Edit/Write + graph MCP read tools. No Bash.
 - `repo-cavecrew-reviewer`: haiku. Read-only diff review. Input: `base: <ref>` label or pasted diff; anything else is ambiguous.
-- `slop-hunter`: haiku. Read-only dead-code and doc-slop reporter. Bash only: `code-review-graph dead-code`, `code-review-graph dead-code --json`, `code-review-graph architecture`, `code-review-graph large-functions`.
+- `slop-hunter`: haiku. Read-only dead-code and doc-slop reporter. Bash intended only (enforcement unverified, #126): `code-review-graph dead-code`, `code-review-graph dead-code --json`, `code-review-graph architecture`, `code-review-graph large-functions`.
 - For a pasted diff, `repo-cavecrew-reviewer` skips `detect_changes_tool` and `get_review_context_tool` entirely.
 - Plugin agents `caveman:cavecrew-builder` and `caveman:cavecrew-reviewer` are separate agents. Project files do not extend them. CLAUDE.md only points to this file; the SubagentStart hook in `.claude/settings.json` is what injects it (a probe showed the hook injects the rules into both reviewers: `repo-cavecrew-reviewer` and `caveman:cavecrew-reviewer` each quoted the injected text; the builders and slop-hunter are untested until smoke test #126).
 - Older local agents `builder`, `reviewer`, `investigator` still exist and are separate.
@@ -15,10 +15,10 @@ Text rules for repo cavecrew agents. Untested until smoke test #126.
 ## Defaults
 
 - Builders `repo-cavecrew-builder` and the plugin `caveman:cavecrew-builder` edit 1-2 files per run (files touched, new files included); the older local `builder` has no such cap.
-- Reviewer and slop-hunter are read-only.
+- Reviewer and slop-hunter are read-only on source files (Bash enforcement unverified, #126).
 - Model `haiku` for `repo-cavecrew-builder`, `repo-cavecrew-reviewer`, `slop-hunter`. The older local `reviewer.md` is sonnet.
 - Main session runs git, builds, tests. `repo-cavecrew-builder` has no shell (the older local `builder.md` has Bash).
-- slop-hunter Bash is exact strings only; filtered runs (e.g. `--kind`, `--limit`, `--file-pattern`, `--path`, `--min-lines`) are run by the main session.
+- slop-hunter Bash is meant to be exact strings only (enforcement unverified, #126); filtered runs (e.g. `--kind`, `--limit`, `--file-pattern`, `--path`, `--min-lines`) are run by the main session.
 - Refusal/output tokens: `ambiguous. ask:`, `too-big. split:`, `needs-confirm. op:` (also for requests to edit protected or generated files), `ESCALATE to human`, `No issues.`, `No slop found.`
 
 ## Handover
@@ -31,7 +31,7 @@ Text rules for repo cavecrew agents. Untested until smoke test #126.
 
 - Generated files: `lib/balance_core/balance_gains_generated.h`, `test/test_balance_parity/vectors_generated.inc`, `wokwi/chips/wokwi-ttl-servo.bg.h`. Not edited by agents; the main session or owner regenerates them (`make wokwi-bg` for the bg.h file; the Python exporter in the freecad-workspace repo for the gains header and vectors). The `protect-files.sh` hook blocks Edit/Write on them (tested for the main session; subagents untested until #126; Bash writes are not covered).
 - `.claude/settings.json`, `.claude/settings.local.json`, `CLAUDE.md`: not edited by agents; the `protect-files.sh` hook blocks them (and the generated files and the hook script itself): verified for the main session; subagents expected, untested until #126. A linked issue that authorises such a change means the owner applies it outside Claude Code or removes the hook entry temporarily. `settings.json` edits are batched into one PR the owner reviews in full.
-- The guard covers only the Edit and Write tools: Bash writes, NotebookEdit and MultiEdit are not covered (a speed bump, not a boundary). jq is a hard requirement for both hooks: without it the guard allows everything and the SubagentStart hook silently injects nothing. The path match is case-sensitive (a differently-cased name on a case-insensitive filesystem would slip through). If protect-files.sh fails to parse (for example CRLF line endings), bash exits 2 and blocks every Edit/Write until the settings.json wrapper (bash -n first, fails open with a stderr warning) is applied; .gitattributes keeps *.sh in LF. A clone that already has a CRLF protect-files.sh stays blocked after merge: repair it with `sed -i 's/\r$//' .claude/hooks/protect-files.sh` (keeps local edits); the wrapper only turns that block into a fail-open.
+- The guard matches `Edit|MultiEdit|Write` (settings.json matcher); Bash writes and NotebookEdit are not covered (a speed bump, not a boundary). jq is a hard requirement for both hooks: without it the guard allows everything and the SubagentStart hook silently injects nothing. The path match is case-sensitive (a differently-cased name on a case-insensitive filesystem would slip through). If protect-files.sh fails to parse (for example CRLF line endings), bash exits 2 and blocks every Edit/Write until the settings.json wrapper (bash -n first, fails open with a stderr warning) is applied; .gitattributes keeps *.sh in LF. A clone that already has a CRLF protect-files.sh stays blocked after merge: repair it with `sed -i 's/\r$//' .claude/hooks/protect-files.sh` (keeps local edits); the wrapper only turns that block into a fail-open.
 - No weakening of kill paths or the torque-off-first order.
 - Safety constants in `programs/balance/config.h` need a design issue.
 - `lib/` headers must be C++11-valid (single-return `constexpr`, no `switch` in `constexpr`).
