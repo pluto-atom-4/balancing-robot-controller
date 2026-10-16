@@ -10,6 +10,7 @@ Text rules for repo cavecrew agents. Untested until smoke test #126.
 - `slop-hunter`: haiku. Read-only dead-code and doc-slop reporter. Bash intended only (enforcement unverified, #126): `code-review-graph dead-code`, `code-review-graph dead-code --json`, `code-review-graph architecture`, `code-review-graph large-functions`.
 - For a pasted diff, `repo-cavecrew-reviewer` skips `detect_changes_tool` and `get_review_context_tool` entirely.
 - Plugin agents `caveman:cavecrew-builder` and `caveman:cavecrew-reviewer` are separate agents. Project files do not extend them. CLAUDE.md only points to this file; the SubagentStart hook in `.claude/settings.json` is what injects it (a probe showed the hook injects the rules into both reviewers: `repo-cavecrew-reviewer` and `caveman:cavecrew-reviewer` each quoted the injected text; the builders and slop-hunter are untested until smoke test #126).
+- Plugin agent `caveman:cavecrew-investigator` is not in the SubagentStart matcher in `.claude/settings.json`, so it gets no injected rules, including the no-graph-update rule. Its own definition lives in the plugin, outside this repo; on the maintainer's machine it listed Bash (git log/grep/find by instruction), not re-checked by the repo. Widening the matcher is an owner edit (settings.json is protected).
 - Older local agents `builder`, `reviewer`, `investigator` still exist and are separate.
 
 ## Defaults
@@ -17,7 +18,7 @@ Text rules for repo cavecrew agents. Untested until smoke test #126.
 - Builders `repo-cavecrew-builder` and the plugin `caveman:cavecrew-builder` edit 1-2 files per run (files touched, new files included); the older local `builder` has no such cap.
 - Reviewer and slop-hunter are read-only on source files (Bash enforcement unverified, #126).
 - Model `haiku` for `repo-cavecrew-builder`, `repo-cavecrew-reviewer`, `slop-hunter`. The older local `reviewer.md` is sonnet.
-- Main session runs git, builds, tests. `repo-cavecrew-builder` has no shell (the older local `builder.md` has Bash).
+- Main session runs git, builds, tests and `graphify update .` after code changes; the older local `builder`, `reviewer` and `investigator` are instructed never to run graph updates; `repo-cavecrew-builder` and `repo-cavecrew-reviewer` have no Bash (the older local `builder.md` has Bash), `slop-hunter` has only exact-string Bash with no update form, and the plugin `caveman:cavecrew-investigator` gets no injection (its body is outside the repo; on the maintainer's machine it had no such instruction, unverified here) (the project allow list permits `graphify update *` and `code-review-graph update *`; whether `tools:` Bash entries restrict a subagent is unverified, #126).
 - slop-hunter Bash is meant to be exact strings only (enforcement unverified, #126); filtered runs (e.g. `--kind`, `--limit`, `--file-pattern`, `--path`, `--min-lines`) are run by the main session.
 - Refusal/output tokens: `ambiguous. ask:`, `too-big. split:`, `needs-confirm. op:` (also for requests to edit protected or generated files), `ESCALATE to human`, `No issues.`, `No slop found.`
 
