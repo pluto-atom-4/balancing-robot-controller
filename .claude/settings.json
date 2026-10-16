@@ -9,7 +9,11 @@
       "Bash(code-review-graph query *)",
       "Bash(code-review-graph impact *)",
       "Bash(code-review-graph detect-changes *)",
-      "Bash(code-review-graph update *)"
+      "Bash(code-review-graph update *)",
+      "Bash(code-review-graph dead-code)",
+      "Bash(code-review-graph dead-code --json)",
+      "Bash(code-review-graph architecture)",
+      "Bash(code-review-graph large-functions)"
     ],
     "ask": [
       "Bash(git commit *)",
@@ -48,6 +52,18 @@
         ]
       }
     ],
+    "SubagentStart": [
+      {
+        "matcher": "^(repo-cavecrew-builder|repo-cavecrew-reviewer|slop-hunter|caveman:cavecrew-builder|caveman:cavecrew-reviewer)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"${CLAUDE_PROJECT_DIR:-.}/.claude/rules/cavecrew-rules.md\"; cat >/dev/null; [ -f \"$f\" ] && command -v jq >/dev/null 2>&1 && jq -n --rawfile c \"$f\" '{hookSpecificOutput:{hookEventName:\"SubagentStart\",additionalContext:$c}}'; exit 0",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Bash|Grep",
@@ -64,6 +80,15 @@
           {
             "type": "command",
             "command": "if command -v graphify >/dev/null 2>&1; then graphify hook-guard read; fi"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/protect-files.sh\""
           }
         ]
       }
