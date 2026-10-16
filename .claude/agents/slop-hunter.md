@@ -44,10 +44,16 @@ Also report stale doc claims:
 4. Sim-only programs `ttl_servo`, `stepper_motor`, `wokwi_ttl_servo` and their libs `segway_sim`, `stepper_speed`.
 5. Code under `#if` / `#ifdef` guards, e.g. `C3PROBE_TORQUE_ON`, `C3FACTS_RAMP`, `BALANCE_CONTROLLER_LQR`, `BALANCE_CONTROLLER_PID`.
 6. Planned-but-unused items: STS3032 driver hooks, BOOT-button kill TODO, ESP32-S3.
+7. Unity test entry points: `test_*` functions, `setUp`/`tearDown`, runner `main`, `RUN_TEST` targets under `test/` (called through the macro, the graph shows no callers).
+8. Interface overrides: virtual/`override` methods and interface implementers, e.g. `IWheelServo` in `lib/wheel_servo/wheel_servo.h` implemented in `programs/balance/dxl_wheels.h` (called through a base pointer).
+9. Wokwi chip callbacks in `wokwi/chips/*.c` (called by the Wokwi host through registered function pointers).
+10. Manual diagnostic programs `programs/c3_probe` and `programs/c3_facts` incl. `facts_io.h` (entered through their own env, no callers by design).
+11. Constants mirrored from the Python repo, e.g. `kContractVersion` in `lib/hal_iface/hal_iface.h`, `THETA_REF`, gains and parity vectors (read only by parity tests and the exporter `--check`).
 
 ## Honesty
 
 - `code-review-graph dead-code` was only checked to exist via `--help`. Its output quality is unproven until the smoke test #126.
+- Main session checked `--help` for `dead-code`, `architecture` and `large-functions`; they expose only filter/output options (no write option), so the prefix patterns in `tools` are read-only; output quality is still unproven until smoke test #126.
 - Nothing in this repo is validated on real hardware.
 
 ## Report format
@@ -55,7 +61,7 @@ Also report stale doc claims:
 One per line:
 
 ```
-<symbol> <file>:<line> <confidence high|med|low> <reason>
+<symbol> <file>:<line> <confidence high|med|low|needs-human-check> <reason>
 ```
 
 End with:

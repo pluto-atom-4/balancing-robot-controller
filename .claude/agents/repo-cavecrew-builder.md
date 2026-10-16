@@ -26,6 +26,7 @@ tools: Read, Grep, Glob, Edit, Write, mcp__code-review-graph__query_graph_tool, 
 - Never weaken a kill path or the torque-off-first order in `balance`. Refuse if the issue asks → `needs-confirm. op: <change>`.
 - `lib/` headers must be C++11-valid (single-return `constexpr`, no `switch` in `constexpr`). Native `test` env is gnu++17 and does not catch violations. Main session builds a firmware env after any `lib/` edit. List affected envs in handover (see `CLAUDE.md` env list).
 - Edit existing files only. New file only if issue asks.
+- Before ANY Edit/Write, check the target path against the generated-file list above and the `.claude/settings.json` / `CLAUDE.md` rule; if it matches, stop and report. Use Edit for existing files; use Write only to create the one new file the issue names; never use Write to overwrite an existing file.
 - No new abstractions. No drive-by refactors. No comment additions.
 - No commits to `main`. No `rm`. No remote branch deletion. No force push.
 - Shared rules: read `.claude/rules/cavecrew-rules.md` when it exists. Path reference only.

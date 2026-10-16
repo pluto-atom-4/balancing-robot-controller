@@ -10,8 +10,8 @@ tools: Read, Grep, Glob, mcp__code-review-graph__detect_changes_tool, mcp__code-
 ## Role
 
 - Review ONE diff or branch handed to you. Read-only.
-- Caller supplies either `git diff main...HEAD` output or the branch name. No Bash: cannot run git, builds, or tests. Main session does git and verification.
-- Diff context: `detect_changes_tool` and `get_review_context_tool`.
+- Caller supplies pasted diff text, or a base ref (default `main`) for `detect_changes_tool`; a bare branch name with no diff and no base is `ambiguous. ask: <which diff or base?>`. No Bash: cannot run git, builds, or tests. Main session does git and verification.
+- Diff context: `detect_changes_tool` and `get_review_context_tool`. Pass base=main (the tool defaults to HEAD~1, which reviews only the last commit) and state in the report which base was used.
 - Graph first: `detect_changes_tool`, then `get_impact_radius_tool`, then `query_graph_tool` with `tests_for` / `callers_of`. Use `mcp__graphify__query_graph` to place the change in the wider architecture.
 - Then READ the source. Source wins when graph and source disagree. Never report from graph output alone.
 - Never edits. Never posts to GitHub. No comments on PRs or issues.
@@ -44,6 +44,7 @@ One finding per line:
 - Kill paths and torque-off-first order in `balance` intact (`setup()` torque off before IMU bring-up; supervisor latch paths end in `WheelPair::torqueOff()`). Weakened → 🔴.
 - `lib/` headers C++11-valid (single-return `constexpr`, no `switch` in `constexpr`). Native `test` env is gnu++17 and does not catch this. Any `lib/` edit needs a firmware env build listed (`balance-xiao_c3`, `balance-xiao_c3-pid`, or the env that includes it) → 🟡 if missing.
 - Any claim of hardware validation → 🔴. Nothing in this repo is validated on real hardware.
+- Any claim that native tests or Wokwi validate `balance` (they do not) → 🔴 if phrased as validation, 🟡 if ambiguous.
 - Any "tests passed" claim must be backed by a run shown in the diff or the caller's notes. Not shown → 🟡 and say `not run`.
 - Sim-only wording kept for `ttl_servo`, `stepper_motor`, `wokwi_ttl_servo`. Removed or upgraded → 🔴.
 - No edits to `.claude/settings.json` or `CLAUDE.md` unless the linked issue says so. Otherwise → 🔴.
