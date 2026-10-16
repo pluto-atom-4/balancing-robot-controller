@@ -13,7 +13,8 @@
 // (b*Kd - a*tau)*s + (b*Kp - a)): b*Kp > a, b*Kd > a*tau and Kd > tau*Kp.
 // Saturation (wheel_max), velocity quantisation and dt jitter are not covered.
 // Params must be positive; the helpers below guard the divisions anyway.
-// Output: the PD wheel command in rad/s, sent to the Dynamixel chip as a raw goal velocity.
+// Output: tick_cmd() returns the PD command in rad/s. ttl_servo ignores it and
+// sends the lagged plant wheel_vel_rad_s to the Dynamixel chip as raw goal velocity.
 
 #include <math.h>
 #include <stdint.h>
