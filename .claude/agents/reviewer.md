@@ -35,24 +35,26 @@ Review code changes for defects, security gaps, and noncompliance with project c
 Graph before grep/read. Macro to micro. Do not query both engines in same reasoning step.
 1. **Graphify (macro):** `mcp__graphify__query_graph` (or Bash `graphify query "<question>"`), `shortest_path`, `get_node`, `get_neighbors` to place changed area in architecture.
 2. **code-review-graph (micro):**
-   - `detect_changes_tool`: risk-scored analysis of the diff. Start here for any review.
+   - `detect_changes_tool`: risk-scored analysis of the diff. Start here for any review. Pass the base explicitly; never rely on its HEAD~1 default (it reviews only the last commit).
    - `get_review_context_tool`: source snippets for changed code, cheaper than reading whole files.
    - `get_impact_radius_tool` / `get_affected_flows_tool`: blast radius. Flag every program/env a `lib/` change touches.
    - `query_graph_tool` (`callers_of`, `callees_of`, `tests_for`): check callers and test coverage. Untested changed function = finding.
    - `semantic_search_nodes_tool`: find related code by name or keyword.
 3. **Verify in source:** graph narrows scope only. Read exact lines before reporting a finding. Graph and source disagree → source wins.
 4. **Fallback:** graph errors, empty, or stale (check `head_matches_build`) → narrow targeted Grep. Empty may mean "not indexed". Do not retry same query on other engine.
-5. Read-only. Never run `graphify update`, `code-review-graph build`, or refactor tools.
+5. No source edits (the `pio test` tool writes build output). The Bash allowlist is a speed bump, not a boundary (e.g. `git diff --output=<file>` can write); do not use it to write. Never run `graphify update`, `code-review-graph build`, or refactor tools.
 
 ## Project Checklist
 - `lib/` change: flag every env that includes it; must compile for all of them. Uno/ATtiny85 have tiny RAM (2KB/512B).
 - Board-specific code needs guard (`ARDUINO_ARCH_AVR`, `ARDUINO_ARCH_ESP32`, `ARDUINO_ARCH_RENESAS_UNO`, `__AVR_ATtiny85__`) or `lib_ignore`.
-- `balance` must not build for `uno`, `uno_r4_wifi`, `attiny85`. ATtiny85 has no Serial.
+- `balance` must not build for `uno`, `uno_r4_wifi`, `attiny85`, `xiao_s3`, `esp32dev`. ATtiny85 has no Serial.
 - Env naming `<program>-<board>`; `build_src_filter = -<*> +<program/>`.
-- Servo: ID 1-2, position 0-4095, speed 1-2047. Reject out-of-range without clamp/check.
-- Balance loop ~100Hz (10ms). Flag blocking calls, `delay()`, unbounded serial waits.
+- Servo (Dynamixel XL330, velocity mode): flag unchecked conversions and writes outside the wheel limits in `programs/balance/config.h` (see `lib/dxl_units`). The old S3-plan figures (position 0-4095, speed 1-2047) are unverified and not used; do not check against them.
+- Balance loop is 50 Hz nominal (`kLoopUs` = 20000 us, `programs/balance/config.h`); the real C3 rate is unmeasured. Flag blocking calls, `delay()`, unbounded serial waits.
 - Serial logs use `[tag] message`.
 - Changed function without test in `test/` = finding.
+- Repo hard gates: check these `.claude/rules/cavecrew-rules.md` Gates (the rules file lists more, e.g. feature branches only, no commit to main, no rm, no remote branch deletion, no force push): (protected files `.claude/settings.json`, `.claude/settings.local.json`, `CLAUDE.md`, `.claude/hooks/protect-files.sh`; generated files untouched; kill paths and torque-off-first intact; safety constants in `programs/balance/config.h` need a design issue; `lib/` headers C++11-valid). You cannot run `pio run`: a firmware env build that is not shown in the diff or the caller's notes is a finding ("not shown", High, reported at `PR text, line n/a`), not an assumption. Claim of hardware validation = Critical. Claim that native tests or Wokwi validate `balance` = Critical if phrased as validation, High if ambiguous.
+- The iteration cap (`iteration: N`, `ESCALATE to human`) and the `base:` input rule belong to `repo-cavecrew-reviewer`; this older reviewer keeps its own Critical/High/Medium/Low scale and PASS / FIX THIS verdict.
 
 ## Responsibilities
 - **Inspect:** Examine code changes made by `Builder` to spot syntax traps, security holes, and memory leaks.
