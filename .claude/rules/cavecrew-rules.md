@@ -9,7 +9,7 @@ Text rules for repo cavecrew agents. Untested until smoke test #126.
 - `repo-cavecrew-reviewer`: haiku. Read-only diff review. Input: `base: <ref>` label or pasted diff; anything else is ambiguous.
 - `slop-hunter`: haiku. Read-only dead-code and doc-slop reporter. Bash only: `code-review-graph dead-code`, `code-review-graph dead-code --json`, `code-review-graph architecture`, `code-review-graph large-functions`.
 - For a pasted diff, `repo-cavecrew-reviewer` skips `detect_changes_tool` and `get_review_context_tool` entirely.
-- Plugin agents `caveman:cavecrew-builder` and `caveman:cavecrew-reviewer` are separate agents. Project files do not extend them; these rules reach them through CLAUDE.md and the SubagentStart hook in `.claude/settings.json` (a probe showed the hook injects the rules into `repo-cavecrew-reviewer`; the other agents and the plugin agents are untested until smoke test #126).
+- Plugin agents `caveman:cavecrew-builder` and `caveman:cavecrew-reviewer` are separate agents. Project files do not extend them. CLAUDE.md only points to this file; the SubagentStart hook in `.claude/settings.json` is what injects it (a probe showed the hook injects the rules into both reviewers: `repo-cavecrew-reviewer` and `caveman:cavecrew-reviewer` each quoted the injected text; the builders and slop-hunter are untested until smoke test #126).
 - Older local agents `builder`, `reviewer`, `investigator` still exist and are separate.
 
 ## Defaults
@@ -30,8 +30,8 @@ Text rules for repo cavecrew agents. Untested until smoke test #126.
 ## Gates
 
 - Generated files: `lib/balance_core/balance_gains_generated.h`, `test/test_balance_parity/vectors_generated.inc`, `wokwi/chips/wokwi-ttl-servo.bg.h`. Not edited; regenerate (`make wokwi-bg` for the bg.h file, the Python exporter for the gains header and vectors). The hook blocks edits.
-- `.claude/settings.json`, `.claude/settings.local.json`, `CLAUDE.md`: not edited by agents; the `protect-files.sh` hook blocks them (and the generated files and the hook script itself) for every agent and the main session. A linked issue that authorises such a change means the owner applies it outside Claude Code or removes the hook entry temporarily. `settings.json` edits are batched into one PR the owner reviews in full.
-- The guard covers only the Edit and Write tools: Bash writes, NotebookEdit and MultiEdit are not covered (a speed bump, not a boundary). jq is a hard requirement for both hooks (they fail open without it).
+- `.claude/settings.json`, `.claude/settings.local.json`, `CLAUDE.md`: not edited by agents; the `protect-files.sh` hook blocks them (and the generated files and the hook script itself): verified for the main session; subagents expected, untested until #126. A linked issue that authorises such a change means the owner applies it outside Claude Code or removes the hook entry temporarily. `settings.json` edits are batched into one PR the owner reviews in full.
+- The guard covers only the Edit and Write tools: Bash writes, NotebookEdit and MultiEdit are not covered (a speed bump, not a boundary). jq is a hard requirement for both hooks (they fail open without it). The path match is case-sensitive (a differently-cased name on a case-insensitive filesystem would slip through).
 - No weakening of kill paths or the torque-off-first order.
 - Safety constants in `programs/balance/config.h` need a design issue.
 - `lib/` headers must be C++11-valid (single-return `constexpr`, no `switch` in `constexpr`).
