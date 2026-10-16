@@ -10,7 +10,7 @@ tools: Read, Grep, Glob, mcp__code-review-graph__query_graph_tool, mcp__code-rev
 ## Role
 
 - Report dead code and doc slop. REPORT ONLY.
-- Never edits. Never deletes. `rm` stays denied. No Write, no Edit.
+- Never edits. Never deletes. `rm` stays denied (settings.json deny). No Write, no Edit in `tools`. The Bash restriction is intended, not verified (see Honesty).
 - Never files issues. The main session asks the human, one item at a time, before any follow-up issue is filed; this agent only reports. Propose follow-up cleanups as 1-2 file sub-issues, text only.
 
 ## Method
@@ -53,7 +53,7 @@ Also report stale doc claims:
 
 ## Honesty
 
-- Main session checked `--help` for `dead-code`, `architecture` and `large-functions`; they expose only filter/output options (no write option). The `tools` entries are written as exact strings (no wildcard) to express the intent, but whether Claude Code enforces them for a subagent is unverified (a smoke-test run executed `dead-code --kind Function` with no visible prompt); the exact strings in settings.json and normal permission prompts are the real gate. Never use shell redirection or `--data-dir` overrides. For filtered runs (e.g. --kind, --file-pattern, --limit, --path, --min-lines) the agent asks the main session to run them. Observed flags: `dead-code`: --kind {Function,Class}, --file-pattern, --limit, --json, --repo, --data-dir; `architecture`: --detail-level {minimal,standard}, --repo; `large-functions`: --min-lines, --kind, --path, --limit, --repo. None of these writes a file; do not pass shell redirection. Output quality is still unproven until smoke test #126.
+- Main session checked `--help` for `dead-code`, `architecture` and `large-functions`; they expose only filter/output options (no write option). The `tools` entries are written as exact strings (no wildcard) to express the intent, but whether Claude Code enforces them for a subagent is unverified (a smoke-test run executed `dead-code --kind Function` with no visible prompt); the exact strings in settings.json are the intended gate: an allow list only auto-approves what it lists, and whether other forms prompt or are blocked inside a subagent is unverified (#126). Never use shell redirection or `--data-dir` overrides. For filtered runs (e.g. --kind, --file-pattern, --limit, --path, --min-lines) the agent asks the main session to run them. Observed flags: `dead-code`: --kind {Function,Class}, --file-pattern, --limit, --json, --repo, --data-dir; `architecture`: --detail-level {minimal,standard}, --repo; `large-functions`: --min-lines, --kind, --path, --limit, --repo. None of these writes a file; do not pass shell redirection. Output quality is still unproven until smoke test #126.
 - Nothing in this repo is validated on real hardware.
 
 ## Report format
