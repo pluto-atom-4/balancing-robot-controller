@@ -82,6 +82,15 @@
             "command": "if command -v graphify >/dev/null 2>&1; then graphify hook-guard read; fi"
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/protect-files.sh\""
+          }
+        ]
       }
     ]
   }
