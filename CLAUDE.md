@@ -181,6 +181,7 @@ The STS3032 is the planned servo for the final robot; its C3 driver does not exi
 - **Shared lib change**: Edits in `lib/` affect all programs; rebuild each env
 - **Balance safety limits** (`kTiltCutoffRad`, lean gate, `kStallUs`, fail counts): in `programs/balance/config.h`; change only with a design issue (see Balance safety design).
 - **Safety-critical ramp logic**: `lib/ramp_guard/ramp_guard.h` (cap percent, profile, abort rules, GO parser). Change only with a design issue; the native test `test/test_ramp_guard` has hand-computed cases.
+- **Cavecrew agent rules**: see `.claude/rules/cavecrew-rules.md`.
 
 ## Shared libraries (lib/)
 
