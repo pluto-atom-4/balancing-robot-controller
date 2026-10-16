@@ -15,7 +15,7 @@
 // Fall: zero-velocity stop (3 tries, torque off if all fail), then hold 1 s and restart.
 // 3 failed writes in a row: the firmware first stops the chip (velocity 0 with 3 tries,
 // torque off if needed), then latches bus_down (no Dynamixel calls; reset the board to retry).
-// The same stop-then-latch runs after a failed bring-up.
+// A failed bring-up also stops then latches, and always forces torque off.
 // -D TTL_SERVO_HORN_SELFTEST: after gyro calibration, 2 s forward + 2 s reverse at 90 deg/s, then 0.
 // -D TTL_SERVO_FALL_TEST: low gains (kp=2 kd=1) so the frame falls within seconds.
 #include <Arduino.h>
@@ -106,7 +106,7 @@ static bool stop_chip_best_effort(const char* why, bool force_torque_off = false
     if (!force_torque_off) return true;
   }
   bool off = false;
-  // Torque-off transactions are not counted in tx_ok/tx_fail/max_us (stats cover goal-velocity writes and position reads only).
+  // Torque-off transactions are not counted in tx_ok/tx_fail/max_us (stats cover goal-velocity writes and position reads only; horn_selftest reads are not counted and its writes are not timed in max_us).
   for (uint8_t i = 0; i < 3 && !off; ++i) off = dxl.torqueOff(DXL_ID);
   Serial.printf("[safe] torque off %s%s\n", why,
                 off ? "" : " (TORQUE OFF NOT CONFIRMED)");
@@ -372,7 +372,7 @@ void loop() {
     // cmd = last value CONFIRMED written to the chip; stale (non-zero) after a failed stop.
     // With bus=1, cmd=0 before the first loop write is the chip's real goal (bring-up confirmed goal 0);
     // with bus=0 cmd only holds the last confirmed value and says nothing about the chip.
-    // During the post-fall hold the plant is frozen at its fall values; the wheel is stopped, so show 0.
+    // During the post-fall hold the plant is frozen at its fall values; if the stop was confirmed the wheel is stopped, so show 0 (a failed stop keeps the last goal, see cmd).
     float wheel_shown = holding ? 0.0f : segway_sim.wheel_vel_rad_s;
     Serial.printf("[ttl_servo] sim theta=%.3f rate=%.3f wheel=%.2f cmd=%ld pos=%s dpos=%s gyroZ=%.3f bus=%d\n",
                   segway_sim.theta_rad, segway_sim.theta_dot_rad_s,
