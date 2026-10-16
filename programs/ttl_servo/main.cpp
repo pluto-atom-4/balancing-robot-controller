@@ -106,10 +106,8 @@ static bool stop_chip_best_effort(const char* why, bool force_torque_off = false
     if (!force_torque_off) return true;
   }
   bool off = false;
-  // Not counted in tx_ok/tx_fail/max_us: torque-off, bring-up ping/config calls, horn_selftest
-  // reads. Counted: loop and stop zero-write goal-velocity writes (also on the bring-up failure
-  // paths) and telemetry position reads; horn_selftest writes count in tx_ok/tx_fail but are not
-  // timed.
+  // Torque-off transactions are not counted in tx_ok/tx_fail/max_us.
+  // Bring-up ping and config calls are not counted either.
   for (uint8_t i = 0; i < 3 && !off; ++i) off = dxl.torqueOff(DXL_ID);
   Serial.printf("[safe] torque off %s%s\n", why,
                 off ? "" : " (TORQUE OFF NOT CONFIRMED)");
