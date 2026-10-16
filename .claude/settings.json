@@ -58,7 +58,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "f=\"${CLAUDE_PROJECT_DIR:-.}/.claude/rules/cavecrew-rules.md\"; cat >/dev/null; [ -f \"$f\" ] && command -v jq >/dev/null 2>&1 && jq -n --rawfile c \"$f\" '{hookSpecificOutput:{hookEventName:\"SubagentStart\",additionalContext:$c}}'; exit 0",
+            "command": "f=\"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null)}/.claude/rules/cavecrew-rules.md\"; cat >/dev/null; [ -f \"$f\" ] && command -v jq >/dev/null 2>&1 && jq -n --rawfile c \"$f\" '{hookSpecificOutput:{hookEventName:\"SubagentStart\",additionalContext:$c}}'; exit 0",
             "timeout": 10
           }
         ]
@@ -84,11 +84,11 @@
         ]
       },
       {
-        "matcher": "Edit|Write",
+        "matcher": "Edit|MultiEdit|Write",
         "hooks": [
           {
             "type": "command",
-            "command": "s=\"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/protect-files.sh\"; bash -n \"$s\" 2>/dev/null || { echo \"protect-files: script missing or does not parse, guard disabled\" >&2; exit 0; }; exec bash \"$s\""
+            "command": "r=\"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null)}\"; s=\"$r/.claude/hooks/protect-files.sh\"; bash -n \"$s\" 2>/dev/null || { echo \"protect-files: script missing or does not parse, guard disabled\" >&2; exit 0; }; exec bash \"$s\""
           }
         ]
       }
