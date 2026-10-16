@@ -53,7 +53,7 @@ Also report stale doc claims:
 
 ## Honesty
 
-- Main session checked `--help` for `dead-code`, `architecture` and `large-functions`; they expose only filter/output options (no write option). The Bash patterns in `tools` are EXACT strings with no trailing wildcard, so extra arguments, `--data-dir` overrides or shell redirection do not match; for filtered runs (--kind, --file-pattern, --limit) the agent asks the main session to run them. Observed flags: `dead-code`: --kind {Function,Class}, --file-pattern, --limit, --json, --repo, --data-dir; `architecture`: --detail-level {minimal,standard}, --repo; `large-functions`: --min-lines, --kind, --path, --limit, --repo. None of these writes a file; do not pass shell redirection. Output quality is still unproven until smoke test #126.
+- Main session checked `--help` for `dead-code`, `architecture` and `large-functions`; they expose only filter/output options (no write option). The Bash patterns in `tools` are EXACT strings with no trailing wildcard, so extra arguments, `--data-dir` overrides or shell redirection do not match; for filtered runs (e.g. --kind, --file-pattern, --limit, --path, --min-lines) the agent asks the main session to run them. Observed flags: `dead-code`: --kind {Function,Class}, --file-pattern, --limit, --json, --repo, --data-dir; `architecture`: --detail-level {minimal,standard}, --repo; `large-functions`: --min-lines, --kind, --path, --limit, --repo. None of these writes a file; do not pass shell redirection. Output quality is still unproven until smoke test #126.
 - Nothing in this repo is validated on real hardware.
 
 ## Report format

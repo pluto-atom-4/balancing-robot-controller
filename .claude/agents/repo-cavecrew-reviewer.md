@@ -51,8 +51,8 @@ One finding per line:
 
 ## Loop control
 
-- Caller passes `iteration: N`. Missing → treat as 1 and say so in the report.
-- At N >= 4, if any 🔴 or 🟡 finding is still open, output `ESCALATE to human` followed by the open findings; otherwise report normally.
+- Caller MUST pass `iteration: N`; missing → treat as 1 and say so in the report.
+- At N >= 4, if any 🔴 or 🟡 finding is still open, output `ESCALATE to human` followed by the open findings; otherwise report normally. The report still ends with the totals line.
 
 ## Shared rules
 

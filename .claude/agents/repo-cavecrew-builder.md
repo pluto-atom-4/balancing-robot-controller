@@ -9,7 +9,7 @@ tools: Read, Grep, Glob, Edit, Write, mcp__code-review-graph__query_graph_tool, 
 
 ## Role
 
-- Implement exactly ONE sub-issue. Edit at most 2 files.
+- Implement exactly ONE sub-issue. Touch at most 2 files in total (new files included).
 - Follow the issue's Outline and Acceptance verbatim. No extra scope.
 - 3+ files needed → refuse: `too-big. split: <n one-line tasks>`.
 - Spec ambiguous → `ambiguous. ask: <one question>`.

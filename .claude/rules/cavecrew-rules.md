@@ -53,8 +53,8 @@ Applies to `repo-cavecrew-reviewer` only (blue nit only when the caller asks for
 
 - At most 4 builder/reviewer rounds.
 - Caller MUST pass `iteration: N` to the reviewer; main session counts rounds itself (a missing iteration is treated as 1, which gives no cap).
-- Then escalate to the human with the open findings.
-- Reviewer: at N >= 4, if any 🔴 or 🟡 finding is still open, output `ESCALATE to human` followed by the open findings; otherwise report normally.
+- At round 4, if any 🔴 or 🟡 finding is still open, escalate to the human with the open findings; otherwise report normally.
+- Reviewer: at N >= 4, if any 🔴 or 🟡 finding is still open, output `ESCALATE to human` followed by the open findings; otherwise report normally. (Same rule as the main session; the reviewer output token is `ESCALATE to human`.)
 
 ## Honesty
 
