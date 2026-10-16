@@ -52,6 +52,18 @@
         ]
       }
     ],
+    "SubagentStart": [
+      {
+        "matcher": "^(repo-cavecrew-builder|repo-cavecrew-reviewer|slop-hunter|caveman:cavecrew-builder|caveman:cavecrew-reviewer)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"${CLAUDE_PROJECT_DIR:-.}/.claude/rules/cavecrew-rules.md\"; cat >/dev/null; [ -f \"$f\" ] && command -v jq >/dev/null 2>&1 && jq -n --rawfile c \"$f\" '{hookSpecificOutput:{hookEventName:\"SubagentStart\",additionalContext:$c}}'; exit 0",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Bash|Grep",
