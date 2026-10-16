@@ -54,10 +54,10 @@ Use GitHub MCP tools (repo: `pluto-atom-4/balancing-robot-controller`) to track 
 - Put no secrets or tokens in issue text.
 
 ## Delegation
-- Size sub-issues for `repo-cavecrew-builder` (haiku, 1-2 files total, new files included; Read/Edit/Write + graph read tools, no Bash). Each: runnable acceptance commands and a `Blocked by` list. Main session runs git, builds, tests.
-- Issue body template line: `Size, Files, Outline, Acceptance, Blocked by, Honesty note`. For any `lib/` change, put affected envs from `get_impact_radius_tool` in Acceptance.
-- Diffs reviewed by `repo-cavecrew-reviewer` (input: `base: <ref>` or pasted diff). Dead-code and doc-slop audits go to `slop-hunter` (read-only; reports, never deletes).
-- Routing: `repo-cavecrew-*` when graph tools help. Plugin `caveman:cavecrew-*` for plain surgical edits and reviews. Older local `builder` for larger multi-file work (has Bash).
+- Size sub-issues for `repo-cavecrew-builder` (haiku, 1-2 files total, new files included; name any new file explicitly in Files, the builder creates only that file; Read/Grep/Glob/Edit/Write + graph read tools, no Bash). Each: runnable acceptance commands and a `Blocked by` list. Main session runs git, builds, tests.
+- Sub-issue body template (`Size, Files, Outline, Acceptance, Blocked by, Honesty note`); design issues keep the format in the GitHub Issues section. For any `lib/` change, put affected envs from `get_impact_radius_tool` in Acceptance.
+- Diff review is always `repo-cavecrew-reviewer` (input: `base: <ref>` or pasted diff; always pass `iteration: N`); the plugin reviewer does not see the repo checklist. Dead-code and doc-slop audits go to `slop-hunter` (read-only; reports, never deletes).
+- Routing for 1-2 file edits: plain surgical edit with no `lib/`, safety or graph check needed -> plugin `caveman:cavecrew-builder` (builder.md Dispatch Default); `lib/` edit, safety/generated-file neighbourhood, or any task needing graph checks -> `repo-cavecrew-builder`. Larger multi-file work -> older local `builder` (has Bash).
 - Ask human (main session) before any change to `.claude/settings.json`, `.claude/settings.local.json` or `CLAUDE.md`. Never design edits to generated files without explicit issue.
 - Shared rules: `.claude/rules/cavecrew-rules.md`.
 
