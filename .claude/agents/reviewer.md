@@ -35,7 +35,7 @@ Review code changes for defects, security gaps, and noncompliance with project c
 Graph before grep/read. Macro to micro. Do not query both engines in same reasoning step.
 1. **Graphify (macro):** `mcp__graphify__query_graph` (or Bash `graphify query "<question>"`), `shortest_path`, `get_node`, `get_neighbors` to place changed area in architecture.
 2. **code-review-graph (micro):**
-   - `detect_changes_tool`: risk-scored analysis of the diff. Start here for any review.
+   - `detect_changes_tool`: risk-scored analysis of the diff. Start here for any review. For a pasted diff, skip `detect_changes_tool` and `get_review_context_tool` (they default to git HEAD~1 and would pull the wrong context).
    - `get_review_context_tool`: source snippets for changed code, cheaper than reading whole files.
    - `get_impact_radius_tool` / `get_affected_flows_tool`: blast radius. Flag every program/env a `lib/` change touches.
    - `query_graph_tool` (`callers_of`, `callees_of`, `tests_for`): check callers and test coverage. Untested changed function = finding.
@@ -49,8 +49,8 @@ Graph before grep/read. Macro to micro. Do not query both engines in same reason
 - Board-specific code needs guard (`ARDUINO_ARCH_AVR`, `ARDUINO_ARCH_ESP32`, `ARDUINO_ARCH_RENESAS_UNO`, `__AVR_ATtiny85__`) or `lib_ignore`.
 - `balance` must not build for `uno`, `uno_r4_wifi`, `attiny85`. ATtiny85 has no Serial.
 - Env naming `<program>-<board>`; `build_src_filter = -<*> +<program/>`.
-- Servo: ID 1-2, position 0-4095, speed 1-2047. Reject out-of-range without clamp/check.
-- Balance loop ~100Hz (10ms). Flag blocking calls, `delay()`, unbounded serial waits.
+- Servo (Dynamixel XL330, velocity mode): flag unchecked conversions and out-of-range writes. The old S3-plan figures (position 0-4095, speed 1-2047) are unverified and not used; do not check against them.
+- Balance loop is 50 Hz nominal (`kLoopUs` = 20000 us, `programs/balance/config.h`); the real C3 rate is unmeasured. Flag blocking calls, `delay()`, unbounded serial waits.
 - Serial logs use `[tag] message`.
 - Changed function without test in `test/` = finding.
 
