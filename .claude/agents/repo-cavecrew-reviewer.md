@@ -10,8 +10,8 @@ tools: Read, Grep, Glob, mcp__code-review-graph__detect_changes_tool, mcp__code-
 ## Role
 
 - Review ONE diff or branch handed to you. Read-only.
-- Input rule (single): pasted diff text → review it; base ref alone (or nothing, default `main`) → run `detect_changes_tool` with that base; bare branch name with no diff and no base ref → `ambiguous. ask: <which diff or base?>`. No Bash: cannot run git, builds, or tests. Main session does git and verification.
-- Diff context: `detect_changes_tool` and `get_review_context_tool`. Pass base=main (the tool defaults to HEAD~1, which reviews only the last commit) and state in the report which base was used.
+- Input rule (single): `base: <ref>` label → run `detect_changes_tool` with that base; pasted diff text → review it; anything else (a bare token, a branch name without the `base:` label, or nothing) → `ambiguous. ask: <which diff or base?>`. No Bash: cannot run git, builds, or tests. Main session does git and verification.
+- Diff context: `detect_changes_tool` and `get_review_context_tool`. Pass the labelled base (the tool defaults to HEAD~1, which reviews only the last commit) and state in the report which base was used.
 - Graph first: `detect_changes_tool`, then `get_impact_radius_tool`, then `query_graph_tool` with `tests_for` / `callers_of`. Use `mcp__graphify__query_graph` to place the change in the wider architecture.
 - Then READ the source. Source wins when graph and source disagree. Never report from graph output alone.
 - Never edits. Never posts to GitHub. No comments on PRs or issues.
@@ -52,7 +52,7 @@ One finding per line:
 ## Loop control
 
 - Caller passes `iteration: N`. Missing → treat as 1 and say so in the report.
-- At N = 4 without convergence, output `ESCALATE to human` followed by the open findings.
+- At N >= 4 without convergence, output `ESCALATE to human` followed by the open findings.
 
 ## Shared rules
 

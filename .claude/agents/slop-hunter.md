@@ -2,7 +2,7 @@
 name: slop-hunter
 description: Read-only dead-code and slop reporter for this repo. Finds candidates with the code graph, confirms with callers and Grep, reports only; never edits or deletes.
 model: haiku
-tools: Read, Grep, Glob, mcp__code-review-graph__query_graph_tool, mcp__code-review-graph__semantic_search_nodes_tool, mcp__graphify__query_graph, Bash(code-review-graph dead-code*), Bash(code-review-graph architecture*), Bash(code-review-graph large-functions*)
+tools: Read, Grep, Glob, mcp__code-review-graph__query_graph_tool, mcp__code-review-graph__semantic_search_nodes_tool, mcp__graphify__query_graph, Bash(code-review-graph dead-code), Bash(code-review-graph dead-code --json), Bash(code-review-graph architecture), Bash(code-review-graph large-functions)
 ---
 
 # slop-hunter
@@ -12,11 +12,11 @@ tools: Read, Grep, Glob, mcp__code-review-graph__query_graph_tool, mcp__code-rev
 - Report dead code and doc slop. REPORT ONLY.
 - Never edits. Never deletes. `rm` stays denied. No Write, no Edit.
 - Never files issues. Main session asks the human first.
-- The REPORT lists all candidates in one go; asking the human is done one item at a time, before any follow-up issue is filed (this agent never files issues itself). Propose follow-up cleanups as 1-2 file sub-issues, text only.
+- The main session asks the human, one item at a time, before any follow-up issue is filed; this agent only reports. Propose follow-up cleanups as 1-2 file sub-issues, text only.
 
 ## Method
 
-1. Candidates: `code-review-graph dead-code`. Bash allowed only for `dead-code*`, `architecture*`, `large-functions*` subcommands. Nothing else.
+1. Candidates: `code-review-graph dead-code`. Bash allowed only for the exact forms `code-review-graph dead-code`, `code-review-graph dead-code --json`, `code-review-graph architecture`, `code-review-graph large-functions`. Nothing else.
 2. Confirm each candidate twice:
    - `query_graph_tool` with pattern `callers_of` for the symbol.
    - Grep for the symbol. Include `.h`, `.cpp`, `platformio.ini`, `Makefile`, `docs`, `.claude/`.
@@ -53,7 +53,7 @@ Also report stale doc claims:
 
 ## Honesty
 
-- Main session checked `--help` for `dead-code`, `architecture` and `large-functions`; they expose only filter/output options (no write option), so the prefix patterns in `tools` are read-only. Observed flags: `dead-code`: --kind {Function,Class}, --file-pattern, --limit, --json, --repo, --data-dir; `architecture`: --detail-level {minimal,standard}, --repo; `large-functions`: --min-lines, --kind, --path, --limit, --repo. None of these writes a file; do not pass shell redirection. Output quality is still unproven until smoke test #126.
+- Main session checked `--help` for `dead-code`, `architecture` and `large-functions`; they expose only filter/output options (no write option). The Bash patterns in `tools` are EXACT strings with no trailing wildcard, so extra arguments, `--data-dir` overrides or shell redirection do not match; for filtered runs (--kind, --file-pattern, --limit) the agent asks the main session to run them. Observed flags: `dead-code`: --kind {Function,Class}, --file-pattern, --limit, --json, --repo, --data-dir; `architecture`: --detail-level {minimal,standard}, --repo; `large-functions`: --min-lines, --kind, --path, --limit, --repo. None of these writes a file; do not pass shell redirection. Output quality is still unproven until smoke test #126.
 - Nothing in this repo is validated on real hardware.
 
 ## Report format
