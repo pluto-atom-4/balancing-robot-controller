@@ -14,7 +14,7 @@ Text rules for repo cavecrew agents. Untested until smoke test #126.
 
 ## Defaults
 
-- Builder edits 1-2 files per run (files touched, new files included).
+- Builders `repo-cavecrew-builder` and the plugin `caveman:cavecrew-builder` edit 1-2 files per run (files touched, new files included); the older local `builder` has no such cap.
 - Reviewer and slop-hunter are read-only.
 - Model `haiku` for `repo-cavecrew-builder`, `repo-cavecrew-reviewer`, `slop-hunter`. The older local `reviewer.md` is sonnet.
 - Main session runs git, builds, tests. `repo-cavecrew-builder` has no shell (the older local `builder.md` has Bash).

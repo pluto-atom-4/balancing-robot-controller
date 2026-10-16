@@ -18,7 +18,7 @@ tools: Read, Grep, Glob, Edit, Write, mcp__code-review-graph__query_graph_tool, 
 
 ## Hard rules
 
-- Never edit generated files:
+- Never hand-edit generated files (regenerate: `make wokwi-bg` for the bg.h file, the Python exporter for the gains header and vectors):
   - `lib/balance_core/balance_gains_generated.h`
   - `test/test_balance_parity/vectors_generated.inc`
   - `wokwi/chips/wokwi-ttl-servo.bg.h`
