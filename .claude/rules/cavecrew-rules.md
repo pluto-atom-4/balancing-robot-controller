@@ -7,7 +7,7 @@ Text rules for repo cavecrew agents. Untested until smoke test #126.
 - `architect`: plans, files issues. Graph + GitHub tools. No code edits.
 - `repo-cavecrew-builder`: haiku. 1-2 file edits (files touched, new files included). Read/Grep/Glob/Edit/Write + graph MCP read tools. No Bash.
 - `repo-cavecrew-reviewer`: haiku. Read-only diff review. Input: `base: <ref>` label or pasted diff; anything else is ambiguous.
-- `slop-hunter`: haiku. Read-only dead-code and doc-slop reporter. Bash only: `code-review-graph dead-code`, `code-review-graph dead-code --json`, `code-review-graph architecture`, `code-review-graph large-functions`.
+- `slop-hunter`: haiku. Read-only dead-code and doc-slop reporter. Bash intended only (enforcement unverified, #126): `code-review-graph dead-code`, `code-review-graph dead-code --json`, `code-review-graph architecture`, `code-review-graph large-functions`.
 - For a pasted diff, `repo-cavecrew-reviewer` skips `detect_changes_tool` and `get_review_context_tool` entirely.
 - Plugin agents `caveman:cavecrew-builder` and `caveman:cavecrew-reviewer` are separate agents. Project files do not extend them. CLAUDE.md only points to this file; the SubagentStart hook in `.claude/settings.json` is what injects it (a probe showed the hook injects the rules into both reviewers: `repo-cavecrew-reviewer` and `caveman:cavecrew-reviewer` each quoted the injected text; the builders and slop-hunter are untested until smoke test #126).
 - Older local agents `builder`, `reviewer`, `investigator` still exist and are separate.
@@ -18,7 +18,7 @@ Text rules for repo cavecrew agents. Untested until smoke test #126.
 - Reviewer and slop-hunter are read-only.
 - Model `haiku` for `repo-cavecrew-builder`, `repo-cavecrew-reviewer`, `slop-hunter`. The older local `reviewer.md` is sonnet.
 - Main session runs git, builds, tests. `repo-cavecrew-builder` has no shell (the older local `builder.md` has Bash).
-- slop-hunter Bash is exact strings only; filtered runs (e.g. `--kind`, `--limit`, `--file-pattern`, `--path`, `--min-lines`) are run by the main session.
+- slop-hunter Bash is meant to be exact strings only (enforcement unverified, #126); filtered runs (e.g. `--kind`, `--limit`, `--file-pattern`, `--path`, `--min-lines`) are run by the main session.
 - Refusal/output tokens: `ambiguous. ask:`, `too-big. split:`, `needs-confirm. op:` (also for requests to edit protected or generated files), `ESCALATE to human`, `No issues.`, `No slop found.`
 
 ## Handover

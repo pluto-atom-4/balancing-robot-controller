@@ -15,7 +15,7 @@ tools: Read, Grep, Glob, mcp__code-review-graph__query_graph_tool, mcp__code-rev
 
 ## Method
 
-1. Candidates: `code-review-graph dead-code`. Bash allowed only for the exact forms `code-review-graph dead-code`, `code-review-graph dead-code --json`, `code-review-graph architecture`, `code-review-graph large-functions`. Nothing else.
+1. Candidates: `code-review-graph dead-code`. Bash is meant to be limited to the exact forms `code-review-graph dead-code`, `code-review-graph dead-code --json`, `code-review-graph architecture`, `code-review-graph large-functions`. Run nothing else, and do not rely on the `tools` line to stop you: enforcement is unverified (see issue #126).
 2. Confirm each candidate twice:
    - `query_graph_tool` with pattern `callers_of` for the symbol.
    - Grep for the symbol. Include `.h`, `.cpp`, `platformio.ini`, `Makefile`, `docs`, `.claude/`.
@@ -53,7 +53,7 @@ Also report stale doc claims:
 
 ## Honesty
 
-- Main session checked `--help` for `dead-code`, `architecture` and `large-functions`; they expose only filter/output options (no write option). The Bash patterns in `tools` are EXACT strings with no trailing wildcard, so extra arguments, `--data-dir` overrides or shell redirection do not match; for filtered runs (e.g. --kind, --file-pattern, --limit, --path, --min-lines) the agent asks the main session to run them. Observed flags: `dead-code`: --kind {Function,Class}, --file-pattern, --limit, --json, --repo, --data-dir; `architecture`: --detail-level {minimal,standard}, --repo; `large-functions`: --min-lines, --kind, --path, --limit, --repo. None of these writes a file; do not pass shell redirection. Output quality is still unproven until smoke test #126.
+- Main session checked `--help` for `dead-code`, `architecture` and `large-functions`; they expose only filter/output options (no write option). The `tools` entries are written as exact strings (no wildcard) to express the intent, but whether Claude Code enforces them for a subagent is unverified (a smoke-test run executed `dead-code --kind Function` with no visible prompt); the exact strings in settings.json and normal permission prompts are the real gate. Never use shell redirection or `--data-dir` overrides. For filtered runs (e.g. --kind, --file-pattern, --limit, --path, --min-lines) the agent asks the main session to run them. Observed flags: `dead-code`: --kind {Function,Class}, --file-pattern, --limit, --json, --repo, --data-dir; `architecture`: --detail-level {minimal,standard}, --repo; `large-functions`: --min-lines, --kind, --path, --limit, --repo. None of these writes a file; do not pass shell redirection. Output quality is still unproven until smoke test #126.
 - Nothing in this repo is validated on real hardware.
 
 ## Report format
