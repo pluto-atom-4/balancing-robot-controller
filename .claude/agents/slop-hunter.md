@@ -12,7 +12,7 @@ tools: Read, Grep, Glob, mcp__code-review-graph__query_graph_tool, mcp__code-rev
 - Report dead code and doc slop. REPORT ONLY.
 - Never edits. Never deletes. `rm` stays denied. No Write, no Edit.
 - Never files issues. Main session asks the human first.
-- One item at a time. Propose follow-up cleanups as 1-2 file sub-issues, text only.
+- The REPORT lists all candidates in one go; asking the human is done one item at a time, before any follow-up issue is filed (this agent never files issues itself). Propose follow-up cleanups as 1-2 file sub-issues, text only.
 
 ## Method
 
@@ -22,7 +22,7 @@ tools: Read, Grep, Glob, mcp__code-review-graph__query_graph_tool, mcp__code-rev
    - Grep for the symbol. Include `.h`, `.cpp`, `platformio.ini`, `Makefile`, `docs`, `.claude/`.
 3. Report only when graph and Grep agree.
 4. Empty graph result may mean `not indexed` or `not statically visible`. Say so. Do not claim dead.
-5. Unsure → `needs human check`.
+5. Unsure → `needs-human-check`.
 6. Start broad with `code-review-graph architecture` only when orientation is needed.
 7. Source wins. Read the line before reporting it.
 
@@ -49,11 +49,11 @@ Also report stale doc claims:
 9. Wokwi chip callbacks in `wokwi/chips/*.c` (called by the Wokwi host through registered function pointers).
 10. Manual diagnostic programs `programs/c3_probe` and `programs/c3_facts` incl. `facts_io.h` (entered through their own env, no callers by design).
 11. Constants mirrored from the Python repo, e.g. `kContractVersion` in `lib/hal_iface/hal_iface.h`, `THETA_REF`, gains and parity vectors (read only by parity tests and the exporter `--check`).
+12. `lib/ramp_guard` (used only by `programs/c3_facts`) and `wokwi/chips/ttl_servo_slew.h` (used by the sim chip and `test/test_ttl_servo_slew`); the graph may show no callers from firmware.
 
 ## Honesty
 
-- `code-review-graph dead-code` was only checked to exist via `--help`. Its output quality is unproven until the smoke test #126.
-- Main session checked `--help` for `dead-code`, `architecture` and `large-functions`; they expose only filter/output options (no write option), so the prefix patterns in `tools` are read-only; output quality is still unproven until smoke test #126.
+- Main session checked `--help` for `dead-code`, `architecture` and `large-functions`; they expose only filter/output options (no write option), so the prefix patterns in `tools` are read-only. Observed flags: `dead-code`: --kind {Function,Class}, --file-pattern, --limit, --json, --repo, --data-dir; `architecture`: --detail-level {minimal,standard}, --repo; `large-functions`: --min-lines, --kind, --path, --limit, --repo. None of these writes a file; do not pass shell redirection. Output quality is still unproven until smoke test #126.
 - Nothing in this repo is validated on real hardware.
 
 ## Report format
