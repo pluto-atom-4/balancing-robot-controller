@@ -275,7 +275,7 @@ gives you structural context (callers, dependents, test coverage) that file sear
 
 ### Workflow
 
-1. The graph auto-updates on file changes (via hooks).
+1. code-review-graph updates after Edit|Write via a PostToolUse hook; graphify does not auto-update (the main session runs `graphify update .`).
 2. Use `detect_changes_tool` for code review.
 3. Use `get_affected_flows_tool` to understand impact.
 4. Use `query_graph_tool` pattern="tests_for" to check coverage.
@@ -289,7 +289,7 @@ Rules:
 - For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
 - If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
 - Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
-- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
+- After modifying code, the main session runs `graphify update .` (agents are instructed not to run graph updates; see `.claude/rules/cavecrew-rules.md`) to keep the graph current (AST-only, no API cost).
 
 ## Graph tool routing: Graphify vs. code-review-graph
 
@@ -297,4 +297,4 @@ Macro to micro: start with **graphify** (`GRAPH_REPORT.md`, `graphify query/path
 
 - Don't query both engines in the same reasoning step — escalate from Graphify's macro view down to code-review-graph's micro view only once the relevant subsystem is identified.
 - If a graph tool errors, returns empty, or the graph looks stale (`.code-review-graph/graph.db`, `graphify-out/graph.json`), fall back to a narrow, targeted Grep before asking the user — don't retry the same query against the other engine.
-- Both graphs update automatically: code-review-graph via the PostToolUse hook after Edit/Write and the pre-commit hook; graphify via `graphify update .` and the PreToolUse search guard. Run `code-review-graph build` / `graphify update .` by hand after a large structural refactor.
+- code-review-graph updates via the PostToolUse hook after Edit|Write, and via a global pre-commit hook on the maintainer's machine (not in the repo); graphify does not auto-update: the main session runs `graphify update .` (the PreToolUse entry is only a search/read guard). Run `code-review-graph build` / `graphify update .` by hand after a large structural refactor.
