@@ -42,7 +42,7 @@ Graph before grep/read. Macro to micro. Do not query both engines in same reason
    - `get_architecture_overview_tool` / `list_communities_tool` / `get_minimal_context_tool`: layout and cheap first look.
 3. **Verify in source:** graph narrows scope, then Read exact lines. Graph and source disagree → source wins.
 4. **Fallback:** graph errors, empty, or stale → narrow targeted Grep. Empty may mean "not indexed", not "absent". Do not retry same query on other engine.
-5. Read-only. Never run `graphify update`, `code-review-graph build`, or any graph-rebuild/refactor tool.
+5. Read-only. Never run `graphify update`, `code-review-graph update`, `code-review-graph build`, or any other graph update, rebuild or refactor tool.
 
 ## Responsibilities
 - **Locate:** Find exact functions, classes, imports, test coverage using Read, Grep, Glob.

@@ -219,4 +219,4 @@ graphify query "<question>"
 graphify explain "<concept>"
 ```
 
-Both graphs are gitignored (`.code-review-graph/`, `graphify-out/`) and rebuild locally per clone — the `pre-commit` and `PostToolUse`/`PreToolUse` hooks in `.claude/settings.json` keep them incrementally fresh while editing.
+Both graphs are gitignored (`.code-review-graph/`, `graphify-out/`) and rebuild locally per clone. A PostToolUse hook in `.claude/settings.json` runs `code-review-graph update` after Edit|Write; graphify has no auto-update hook, so run `graphify update .` after code changes (the main session does; agents never do). A global pre-commit hook on the maintainer's machine (`core.hooksPath`, outside this repo) also runs the incremental update at commit time; a fresh clone does not have it.

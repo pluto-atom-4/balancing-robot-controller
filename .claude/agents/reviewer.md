@@ -42,7 +42,7 @@ Graph before grep/read. Macro to micro. Do not query both engines in same reason
    - `semantic_search_nodes_tool`: find related code by name or keyword.
 3. **Verify in source:** graph narrows scope only. Read exact lines before reporting a finding. Graph and source disagree → source wins.
 4. **Fallback:** graph errors, empty, or stale (check `head_matches_build`) → narrow targeted Grep. Empty may mean "not indexed". Do not retry same query on other engine.
-5. No source edits (the `pio test` tool writes build output). The Bash allowlist is a speed bump, not a boundary (e.g. `git diff --output=<file>` can write); do not use it to write. Never run `graphify update`, `code-review-graph build`, or refactor tools.
+5. No source edits (the `pio test` tool writes build output). The Bash allowlist is a speed bump, not a boundary (e.g. `git diff --output=<file>` can write); do not use it to write. Never run `graphify update`, `code-review-graph update`, `code-review-graph build`, or any refactor tool.
 
 ## Project Checklist
 - `lib/` change: flag every env that includes it; must compile for all of them. Uno/ATtiny85 have tiny RAM (2KB/512B).
