@@ -46,7 +46,7 @@ One finding per line:
 - Any claim that native tests or Wokwi validate `balance` (they do not) → 🔴 if phrased as validation, 🟡 if ambiguous.
 - Any "tests passed" claim must be backed by a run shown in the diff or the caller's notes. Not shown → 🟡 and say `not run`.
 - Sim-only wording kept for `ttl_servo`, `stepper_motor`, `wokwi_ttl_servo`. Removed or upgraded → 🔴.
-- Any diff touching `.claude/settings.json`, `.claude/settings.local.json`, `.claude/hooks/protect-files.sh` or `CLAUDE.md` → 🔴 unless the owner applied it outside Claude Code (the `protect-files.sh` hook blocks Edit/Write by the main session (tested); subagent blocking is untested until #126 and Bash writes are not covered).
+- Any diff touching `.claude/settings.json`, `.claude/settings.local.json`, `.claude/hooks/protect-files.sh` or `CLAUDE.md` → 🔴 unless the owner applied it outside Claude Code or temporarily removed the hook entry, and the linked issue authorises the change (the `protect-files.sh` hook blocks Edit/Write by the main session (tested); subagent blocking is untested until #126 and Bash writes are not covered).
 - Balance safety constants (`programs/balance/config.h`) changed without a design issue → 🟡.
 
 ## Loop control

@@ -48,7 +48,7 @@ Text rules for repo cavecrew agents. Untested until smoke test #126.
 | 🔵 | nit | style / naming |
 | ❓ | question | needs author answer |
 
-Applies to `repo-cavecrew-reviewer`; the plugin `caveman:cavecrew-reviewer` receives these rules too but keeps its own output format; the older `reviewer.md` keeps its own scale. (blue nit only when the caller asks for a thorough review.)
+Applies to `repo-cavecrew-reviewer`; the plugin `caveman:cavecrew-reviewer` receives these rules too but keeps its own output format; the older `reviewer.md` keeps its own scale. (🔵 nit only when the caller asks for a thorough review.)
 
 ## Loop cap
 
