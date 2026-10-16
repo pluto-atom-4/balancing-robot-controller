@@ -35,7 +35,7 @@ Graph before grep/read. Graphify (`mcp__graphify__query_graph` or Bash `graphify
 - Before editing shared code (`lib/`): `get_impact_radius_tool` + `query_graph_tool` (`callers_of`, `tests_for`). Note every program/env affected.
 - Graph narrows scope only. Read exact source before editing; source wins on disagreement.
 - Graph empty, stale, or errors → narrow targeted Grep. Empty may mean "not indexed".
-- Do not run graph rebuild tools. Graphs auto-update via hooks; after large structural refactor tell user to run `graphify update .` / `code-review-graph build`.
+- Do not run graph update or rebuild tools (`graphify update`, `code-review-graph build`). The main session runs `graphify update .` after code changes (CLAUDE.md); `code-review-graph` updates itself via the PostToolUse hook after Edit/Write. List the files you changed in your report so the main session knows what to refresh; after a large structural refactor say so.
 
 ## Build & Test Commands (PlatformIO)
 Envs are `<program>-<board>`. Default env `balance-xiao_c3`. Native unit tests env `test`.
