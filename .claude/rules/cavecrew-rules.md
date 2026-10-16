@@ -8,28 +8,29 @@ Text rules for repo cavecrew agents. Untested until smoke test #126.
 - `repo-cavecrew-builder`: haiku. 1-2 file edits. Read/Grep/Glob/Edit/Write + graph MCP read tools. No Bash.
 - `repo-cavecrew-reviewer`: haiku. Read-only diff review. Input: `base: <ref>` label or pasted diff; anything else is ambiguous.
 - `slop-hunter`: haiku. Read-only dead-code and doc-slop reporter. Bash only: `code-review-graph dead-code`, `code-review-graph dead-code --json`, `code-review-graph architecture`, `code-review-graph large-functions`.
-- Plugin agents `caveman:cavecrew-builder` and `caveman:cavecrew-reviewer` are separate agents. Project files do not extend them; these rules reach them only through CLAUDE.md and (later) hooks.
+- For a pasted diff, `repo-cavecrew-reviewer` skips `detect_changes_tool` and `get_review_context_tool` unless `changed_files` is supplied.
+- Plugin agents `caveman:cavecrew-builder` and `caveman:cavecrew-reviewer` are separate agents. Project files do not extend them; these rules reach them only through CLAUDE.md and (later) hooks. This is the intended design; it is untested until smoke test #126.
 - Older local agents `builder`, `reviewer`, `investigator` still exist and are separate.
 
 ## Defaults
 
 - Builder edits 1-2 files per run.
 - Reviewer and slop-hunter are read-only.
-- Model `haiku` for builder, reviewer, slop-hunter.
-- Main session runs git, builds, tests. Builders have no shell.
+- Model `haiku` for `repo-cavecrew-builder`, `repo-cavecrew-reviewer`, `slop-hunter`. The older local `reviewer.md` is sonnet.
+- Main session runs git, builds, tests. `repo-cavecrew-builder` has no shell (the older local `builder.md` has Bash).
+- slop-hunter Bash is exact strings only; filtered runs (`--kind`, `--limit`, `--file-pattern`) are run by the main session.
+- Refusal/output tokens: `ambiguous. ask:`, `too-big. split:`, `needs-confirm. op:`, `ESCALATE to human`, `No issues.`, `No slop found.`
 
 ## Handover
 
-- Files changed, with line ranges.
-- Commands run, with real output.
-- Not-run list.
-- Open questions.
+- Builder: files changed with line ranges; affected firmware envs if a `lib/` file changed; acceptance commands for the main session to run; anything not verified.
+- Main session: commands run with real output; not-run list; open questions.
 - Never claim a test passed unless it was run.
 
 ## Gates
 
 - Generated files, not edited: `lib/balance_core/balance_gains_generated.h`, `test/test_balance_parity/vectors_generated.inc`, `wokwi/chips/wokwi-ttl-servo.bg.h`. Edit only if the issue explicitly says so.
-- `.claude/settings.json`, `.claude/settings.local.json`, `CLAUDE.md`: not edited unless the issue explicitly says so. `settings.json` edits only in the single human-reviewed PR.
+- `.claude/settings.json`, `.claude/settings.local.json`, `CLAUDE.md`: not edited unless the linked issue explicitly says so. Such `settings.json` edits are batched into one PR the owner reviews in full.
 - No weakening of kill paths or the torque-off-first order.
 - Safety constants in `programs/balance/config.h` need a design issue.
 - `lib/` headers must be C++11-valid (single-return `constexpr`, no `switch` in `constexpr`).
@@ -46,9 +47,12 @@ Text rules for repo cavecrew agents. Untested until smoke test #126.
 | 🔵 | nit | style / naming |
 | ❓ | question | needs author answer |
 
+Applies to `repo-cavecrew-reviewer` only (blue nit only when the caller asks for a thorough review); the older `reviewer.md` keeps its own scale.
+
 ## Loop cap
 
 - At most 4 builder/reviewer rounds.
+- Caller MUST pass `iteration: N` to the reviewer; main session counts rounds itself (a missing iteration is treated as 1, which gives no cap).
 - Then escalate to the human with the open findings.
 - Reviewer escalates at iteration N >= 4 (`ESCALATE to human`).
 

@@ -39,7 +39,7 @@ One finding per line:
 
 ## Repo checklist
 
-- Generated files untouched: `lib/balance_core/balance_gains_generated.h`, `test/test_balance_parity/vectors_generated.inc`, `wokwi/chips/wokwi-ttl-servo.bg.h`. Any diff to them → 🔴.
+- Generated files untouched: `lib/balance_core/balance_gains_generated.h`, `test/test_balance_parity/vectors_generated.inc`, `wokwi/chips/wokwi-ttl-servo.bg.h`. Any diff to them → 🔴 unless the linked issue explicitly authorises the edit.
 - Kill paths and torque-off-first order in `balance` intact (`setup()` torque off before IMU bring-up; supervisor latch paths end in `WheelPair::torqueOff()`). Weakened → 🔴.
 - `lib/` headers C++11-valid (single-return `constexpr`, no `switch` in `constexpr`). Native `test` env is gnu++17 and does not catch this. Any `lib/` edit needs a firmware env build listed (`balance-xiao_c3`, `balance-xiao_c3-pid`, or the env that includes it) → 🟡 if missing.
 - Any claim of hardware validation → 🔴. Nothing in this repo is validated on real hardware.
