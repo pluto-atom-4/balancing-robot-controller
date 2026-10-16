@@ -3,7 +3,8 @@
 // SIM-ONLY, UNVERIFIED on hardware. The firmware simulates the Segway frame
 // (lib/segway_sim) and balances it with a PD loop. The real MPU6050 gyro Z is
 // a disturbance rate injected into the simulated tilt dynamics (move the
-// Wokwi gyro Z slider to push the frame).
+// Wokwi gyro Z slider to push the frame). The IMU I2C pins GPIO8/9 are a sim-only
+// Wokwi wiring choice (as in stepper_motor), not the hardware pins (tilt_servo/balance use GPIO6/7).
 //
 // Servo bus: Dynamixel XL330 chip host over Serial1, GPIO20 (RX) / GPIO21 (TX),
 // 57600 baud, protocol 2.0, through the FE-URT-1 adapter (direction handled in
@@ -247,6 +248,7 @@ void setup() {
   }
   if (good < GYRO_CAL_SAMPLES / 2) {
     Serial.println("[ttl_servo] gyro calibration failed (IMU reads), halting");
+    if (!bus_down) (void)stop_chip_best_effort("gyro cal failed", true);
     while (1) { delay(10); }
   }
   gyroZ_bias_rad_s = sum / (float)good;
