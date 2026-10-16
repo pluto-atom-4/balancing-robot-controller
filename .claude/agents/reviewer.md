@@ -53,7 +53,8 @@ Graph before grep/read. Macro to micro. Do not query both engines in same reason
 - Balance loop is 50 Hz nominal (`kLoopUs` = 20000 us, `programs/balance/config.h`); the real C3 rate is unmeasured. Flag blocking calls, `delay()`, unbounded serial waits.
 - Serial logs use `[tag] message`.
 - Changed function without test in `test/` = finding.
-- Repo hard gates (CLAUDE.md, `.claude/rules/cavecrew-rules.md` Gates): generated files untouched; kill paths and torque-off-first intact; `lib/` headers C++11-valid with a firmware env build; any claim of hardware validation, or that native tests or Wokwi validate `balance`, is a finding (Critical).
+- Repo hard gates: apply `.claude/rules/cavecrew-rules.md` Gates in full (protected files `.claude/settings.json`, `.claude/settings.local.json`, `CLAUDE.md`, `.claude/hooks/protect-files.sh`; generated files untouched; kill paths and torque-off-first intact; safety constants in `programs/balance/config.h` need a design issue; `lib/` headers C++11-valid). You cannot run `pio run`: a firmware env build that is not shown in the diff or the caller's notes is a finding ("not shown"), not an assumption. Claim of hardware validation = Critical. Claim that native tests or Wokwi validate `balance` = Critical if phrased as validation, High if ambiguous.
+- The iteration cap (`iteration: N`, `ESCALATE to human`) and the `base:` input rule belong to `repo-cavecrew-reviewer`; this older reviewer keeps its own Critical/High/Medium/Low scale and PASS / FIX THIS verdict.
 
 ## Responsibilities
 - **Inspect:** Examine code changes made by `Builder` to spot syntax traps, security holes, and memory leaks.
