@@ -18,7 +18,7 @@ tools: Read, Grep, Glob, Edit, Write, mcp__code-review-graph__query_graph_tool, 
 
 ## Hard rules
 
-- Never edit generated files:
+- Never hand-edit generated files. Regeneration is done by the main session or the owner, not by you (no shell): `make wokwi-bg` for the bg.h file; for the gains header and vectors the Python exporter in the freecad-workspace repo (see CLAUDE.md "Project split and generated files"):
   - `lib/balance_core/balance_gains_generated.h`
   - `test/test_balance_parity/vectors_generated.inc`
   - `wokwi/chips/wokwi-ttl-servo.bg.h`
