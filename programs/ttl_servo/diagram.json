@@ -12,7 +12,8 @@
     },
     { "type": "wokwi-mpu6050", "id": "imu", "top": -120, "left": -150, "attrs": {} },
     { "type": "chip-wokwi-fe-urt-1", "id": "adapter", "top": -200, "left": 280, "attrs": {} },
-    { "type": "chip-wokwi-ttl-servo", "id": "servo1", "top": -200, "left": 480, "attrs": {} }
+    { "type": "chip-wokwi-ttl-servo", "id": "servo1", "top": -200, "left": 480, "attrs": {} },
+    { "type": "wokwi-pushbutton", "id": "kill_btn", "top": 90, "left": 200, "attrs": { "color": "red" } }
   ],
   "connections": [
     [ "esp32:GND.1", "imu:GND", "black", [ "v0" ] ],
@@ -27,7 +28,9 @@
     [ "esp32:GND.1", "adapter:GND", "black", [ "v0" ] ],
     [ "esp32:5V.1", "adapter:VCC", "red", [ "v0" ] ],
     [ "servo1:GND", "esp32:GND.1", "black", [ "v0" ] ],
-    [ "servo1:VCC", "esp32:5V.1", "red", [ "v0" ] ]
+    [ "servo1:VCC", "esp32:5V.1", "red", [ "v0" ] ],
+    [ "esp32:3", "kill_btn:1.l", "green", [ "v0" ] ],
+    [ "kill_btn:2.l", "esp32:GND.1", "black", [ "v0" ] ]
   ],
   "dependencies": {},
   "serialMonitor": {
