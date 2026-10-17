@@ -1,10 +1,14 @@
 # SIM-ONLY disposable POC for #148 (kill pushbutton). Delete with the POC (#151). Not hardware-validated.
-# Run (path relative to programs/ttl_servo): PLATFORMIO_BUILD_FLAGS="-D TTL_SERVO_KILL_POC" make sim-ttl_servo-xiao_c3 WOKWI_ARGS="--scenario scenario_kill.yaml --timeout 20000"
-# Exit 0 = pass. Exit 42 (timeout) = the kill lines did not appear (flag missing or kill broken).
+# Run (path relative to programs/ttl_servo): PLATFORMIO_BUILD_FLAGS="-D TTL_SERVO_KILL_POC"
+#   make sim-ttl_servo-xiao_c3 WOKWI_ARGS="--scenario scenario_kill.yaml --timeout 20000"
+# Exit 0 = pass. Exit 42 (timeout) = the kill lines did not appear (flag missing or kill broken),
+#   or there is no live servo: 'bus down' is printed at boot, before the 'Sim starts' banner,
+#   the kill then prints 'bus already down', and the post-press 'bus down' wait times out.
 # Confirmed in headless wokwi-cli: control name `pressed` and pins `1.l` / `2.l` / `esp32:3` (a press produced
 # '[safe] KILL switch pressed (sim POC)'). GUI click not checked.
 # wait-serial matches the banner printed in programs/ttl_servo/main.cpp setup(); change both together.
-# Self-checking: both 'KILL switch pressed' and 'bus down' must match after the press; a missed match times out (exit 42).
+# Self-checking: 'KILL switch pressed' and 'bus down' must both match after the press;
+#   a missed match times out (exit 42).
 name: ttl_servo kill pushbutton
 version: 1
 steps:

@@ -18,8 +18,8 @@
 // A failed bring-up also stops then latches, and always forces torque off.
 // -D TTL_SERVO_HORN_SELFTEST: after gyro calibration, 2 s forward + 2 s reverse at 90 deg/s, then 0.
 // -D TTL_SERVO_FALL_TEST: low gains (kp=2 kd=1) so the frame falls within seconds.
-// -D TTL_SERVO_KILL_POC: SIM-ONLY disposable kill-switch POC for #148 (GPIO3 pushbutton, active low).
-// Delete with #151. Limits (see kill_poc_poll): a press during boot, gyro cal or HORN_SELFTEST is not seen.
+// -D TTL_SERVO_KILL_POC: SIM-ONLY disposable kill-switch POC for #148 (GPIO3 button, active low).
+// Delete with #151; limits: see kill_poc_poll.
 #include <Arduino.h>
 #include <Wire.h>
 #include <Adafruit_MPU6050.h>
@@ -200,11 +200,14 @@ static void horn_selftest() {
 // Latches bus_down through the existing stop + latch helpers; no new transaction types
 // (the kill path adds call sites that reuse stop_chip_best_effort and latch_bus_down).
 // Limits:
-// - Polled from loop() only: a press during boot, gyro calibration or the blocking
-//   -D TTL_SERVO_HORN_SELFTEST run is not seen.
-// - If bus_down is already latched (for example after 3 failed writes, whose stop does
-//   not force torque off), a press only prints and sends no torque-off, because no
-//   Dynamixel calls are made after the latch.
+// - Polled from loop() only. pinMode(INPUT_PULLUP) runs at the end of setup(), after
+//   gyro calibration and HORN_SELFTEST, so a press released before loop() starts is
+//   missed (including one during boot, calibration or HORN_SELFTEST). A press still
+//   held when loop() starts is seen after KILL_DEBOUNCE_TICKS ticks (about 40 ms).
+// - If bus_down is already latched (for example after 3 failed writes), the stop before
+//   that latch sends velocity 0 and tries torque off only if the zero write fails, so
+//   torque may still be on. A press then only prints; the kill path makes NO
+//   Dynamixel calls at all.
 static void kill_poc_poll() {
   if (kill_latched) return;
   if (digitalRead(KILL_PIN) == LOW) {
