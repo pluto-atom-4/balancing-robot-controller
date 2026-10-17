@@ -201,9 +201,11 @@ static void horn_selftest() {
 // (the kill path adds call sites that reuse stop_chip_best_effort and latch_bus_down).
 // Limits:
 // - Polled from loop() only. pinMode(INPUT_PULLUP) runs at the end of setup(), after
-//   gyro calibration and HORN_SELFTEST, so a press released before loop() starts is
-//   missed (including one during boot, calibration or HORN_SELFTEST). A press still
-//   held when loop() starts is seen after KILL_DEBOUNCE_TICKS ticks (about 40 ms).
+//   gyro calibration and HORN_SELFTEST. A press released before loop() starts polling
+//   is missed (boot, gyro cal, HORN_SELFTEST). A press still held at loop start is
+//   seen after KILL_DEBOUNCE_TICKS ticks (about 40 ms).
+// - A press shorter than the debounce window (KILL_DEBOUNCE_TICKS x LOOP_PERIOD_MS,
+//   about 40 ms) is not guaranteed to be seen, at any time.
 // - If bus_down is already latched (for example after 3 failed writes), the stop before
 //   that latch sends velocity 0 and tries torque off only if the zero write fails, so
 //   torque may still be on. A press then only prints; the kill path makes NO
