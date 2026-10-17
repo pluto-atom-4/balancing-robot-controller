@@ -18,6 +18,7 @@
 // A failed bring-up also stops then latches, and always forces torque off.
 // -D TTL_SERVO_HORN_SELFTEST: after gyro calibration, 2 s forward + 2 s reverse at 90 deg/s, then 0.
 // -D TTL_SERVO_FALL_TEST: low gains (kp=2 kd=1) so the frame falls within seconds.
+// -D TTL_SERVO_KILL_POC: SIM-ONLY disposable kill-switch POC for #148 (GPIO3 pushbutton, active low); delete with #151.
 #include <Arduino.h>
 #include <Wire.h>
 #include <Adafruit_MPU6050.h>
@@ -41,6 +42,10 @@ static constexpr uint32_t PRINT_PERIOD_MS = 100;       // 10 Hz serial output
 static constexpr float    SIM_INIT_THETA_RAD = 0.262f; // start leaning 15 deg
 static constexpr float    GYRO_FILTER_TAU_MS = 50.0f;  // gyro Z low-pass
 static constexpr int      GYRO_CAL_SAMPLES = 100;      // ~1 s at boot, sim at rest
+#ifdef TTL_SERVO_KILL_POC
+static constexpr int      KILL_PIN = 3;                // SIM-ONLY POC kill button (active low)
+static constexpr uint8_t  KILL_DEBOUNCE_TICKS = 2;     // consecutive LOW loop ticks
+#endif
 
 // ===== Globals =====
 Adafruit_MPU6050 mpu;
@@ -61,6 +66,10 @@ static bool bus_down = false;        // latched: no Dynamixel calls until reset
 static uint8_t consec_fail = 0;      // consecutive failed writes (reset on success)
 static bool holding = false;         // true for 1 s after a fall
 static uint32_t hold_until_ms = 0;
+#ifdef TTL_SERVO_KILL_POC
+static uint8_t kill_low_ticks = 0;   // consecutive LOW ticks on KILL_PIN
+static bool kill_latched = false;    // POC kill pressed: no further polling
+#endif
 
 // ===== Helpers =====
 static float ema_update(float prev, float raw, uint32_t dt_ms) {
@@ -185,6 +194,28 @@ static void horn_selftest() {
 }
 #endif
 
+#ifdef TTL_SERVO_KILL_POC
+// SIM-ONLY POC: debounced kill button, polled from loop() only (not setup()).
+// Latches bus_down through the existing stop + latch helpers; no new Dynamixel calls.
+static void kill_poc_poll() {
+  if (kill_latched) return;
+  if (digitalRead(KILL_PIN) == LOW) {
+    if (kill_low_ticks < KILL_DEBOUNCE_TICKS) ++kill_low_ticks;
+  } else {
+    kill_low_ticks = 0;
+  }
+  if (kill_low_ticks < KILL_DEBOUNCE_TICKS) return;
+  kill_latched = true;
+  if (!bus_down) {
+    Serial.println("[safe] KILL switch pressed (sim POC)");
+    (void)stop_chip_best_effort("kill switch", true);
+    latch_bus_down();
+  } else {
+    Serial.println("[safe] KILL switch pressed (bus already down)");
+  }
+}
+#endif
+
 // ===== Arduino entry points =====
 void setup() {
   Serial.begin(115200);
@@ -265,6 +296,9 @@ void setup() {
   segway_sim.params.kd = 1.0f;
   Serial.println("[ttl_servo] FALL TEST: kp=2 kd=1 (expect FELL within ~6 s)");
 #endif
+#ifdef TTL_SERVO_KILL_POC
+  pinMode(KILL_PIN, INPUT_PULLUP);
+#endif
   Serial.println("[ttl_servo] Sim starts at 15 deg; PD should settle to 0. Move gyro Z to push.\n");
 
   lastLoopMs = millis();
@@ -280,6 +314,10 @@ void loop() {
     return;
   }
   lastLoopMs = now_ms;
+
+#ifdef TTL_SERVO_KILL_POC
+  kill_poc_poll();
+#endif
 
   // 1. Real gyro Z (bias removed, filtered) is the disturbance rate.
   sensors_event_t accel, gyro, temp;
