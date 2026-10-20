@@ -469,7 +469,7 @@ void loop() {
   // 1 Hz counters line. Outside the servo_ok [dxl] block, so it prints with no servo.
   // Gated on free TX space (kFramesLineRoom): with less room the print is skipped and the
   // counters and the timer are NOT reset, so it prints at the next tick that has room.
-  // This is not a no-blocking guarantee: the existing unguarded prints can still block (see header).
+  // Not a no-blocking guarantee: unguarded prints can still block (see the imu_frame.h note).
   if (now_ms - lastFramesPrintMs >= FRAMES_PRINT_PERIOD_MS &&
       Serial.availableForWrite() >= kFramesLineRoom) {
     Serial.printf("[frames] sent=%lu dropped=%lu max_emit_us=%lu\n",
