@@ -72,8 +72,9 @@ inline const char* floatText(float v, char* tmp) {
   return tmp;
 }
 
-// Appends ",<value>" for one float. Returns false only on the defensive
-// floatText failure path, which a float cannot reach.
+// Appends ",<value>" for one float. Returns false when the buffer has no room
+// for ",<value>" (the normal failure path), and also on the defensive
+// floatText nullptr path, which a float cannot reach.
 inline bool putFloat(char* out, size_t cap, size_t& pos, float v) {
   char tmp[64];
   const char* txt = floatText(v, tmp);
