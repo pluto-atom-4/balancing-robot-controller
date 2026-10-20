@@ -20,6 +20,14 @@
 // -D TTL_SERVO_FALL_TEST: low gains (kp=2 kd=1) so the frame falls within seconds.
 // -D TTL_SERVO_KILL_POC: SIM-ONLY disposable kill-switch POC for #148 (GPIO3 button, active low).
 // Delete with #151; limits: see kill_poc_poll.
+#include <Arduino.h>
+#include <Wire.h>
+#include <Adafruit_MPU6050.h>
+#include <Adafruit_Sensor.h>
+#include <Dynamixel2Arduino.h>
+#include <math.h>
+#include <segway_sim.h>
+#ifdef TTL_SERVO_IMU_FRAMES
 // -D TTL_SERVO_IMU_FRAMES: SIM-ONLY disposable POC (#160), raw IMU frames on USB CDC.
 //   Delete with the removal issue (#166).
 //   One IMU,<seq>,<t_us>,... frame per loop tick with a good IMU read (format: lib/imu_frame).
@@ -33,14 +41,6 @@
 //   The stream keeps the CDC TX buffer closer to full, so the existing unguarded Serial.printf
 //   lines (10 Hz sim line, 1 Hz [dxl] line) are more likely to block if the host stalls or is
 //   absent. Documented, not fixed: no setTxTimeoutMs is set.
-#include <Arduino.h>
-#include <Wire.h>
-#include <Adafruit_MPU6050.h>
-#include <Adafruit_Sensor.h>
-#include <Dynamixel2Arduino.h>
-#include <math.h>
-#include <segway_sim.h>
-#ifdef TTL_SERVO_IMU_FRAMES
 #include <imu_frame.h>
 #endif
 
