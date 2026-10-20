@@ -90,8 +90,9 @@ static bool kill_latched = false;    // POC kill pressed: no further polling
 
 #ifdef TTL_SERVO_IMU_FRAMES
 static constexpr float    kGravityMs2 = 9.80665f;    // m/s^2 per g (frame accel scale)
-static constexpr float    kRadToDeg = 57.29578f;     // rad/s -> deg/s (frame gyro scale)
 static constexpr uint32_t FRAMES_PRINT_PERIOD_MS = 1000;  // 1 Hz [frames] counters line
+// Free TX bytes needed before the [frames] line is printed (worst case line is 67 bytes).
+static constexpr int      kFramesLineRoom = 80;
 static uint16_t frame_seq = 0;          // advances on every attempted frame, sent or dropped
 static uint32_t frames_sent = 0;
 static uint32_t frames_dropped = 0;
@@ -438,7 +439,7 @@ void loop() {
 #ifdef TTL_SERVO_IMU_FRAMES
   // 4b. SIM-ONLY raw IMU frame (#160, #163). Emitted only when this tick's IMU read succeeded.
   // RAW values: no bias subtraction, no EMA, never from segway theta. Scales: accel is divided
-  // by kGravityMs2 (g); gyro is multiplied by kRadToDeg (deg/s). The gyro range is set to
+  // by kGravityMs2 (g); gyro is multiplied by segway::kRadToDeg (deg/s). The gyro range is set to
   // 250 deg/s in setup(); the accel range is never set here (Adafruit library default, 2 g).
   // tilt_servo uses 500 deg/s and 4 g, so raw scales differ between the two POCs.
   if (imu_ok) {
@@ -447,8 +448,8 @@ void loop() {
     const float a_g[3] = {accel.acceleration.x / kGravityMs2,
                           accel.acceleration.y / kGravityMs2,
                           accel.acceleration.z / kGravityMs2};
-    const float g_dps[3] = {gyro.gyro.x * kRadToDeg, gyro.gyro.y * kRadToDeg,
-                            gyro.gyro.z * kRadToDeg};
+    const float g_dps[3] = {gyro.gyro.x * segway::kRadToDeg, gyro.gyro.y * segway::kRadToDeg,
+                            gyro.gyro.z * segway::kRadToDeg};
     const size_t n = imu_frame::format(frame_buf, sizeof frame_buf, frame_seq, t0, a_g, g_dps);
     // Never block: one write, and only if the whole frame fits in the free CDC TX space.
     // avail is an int: a negative value would convert to a huge size_t and pass the
@@ -466,9 +467,11 @@ void loop() {
   }
 
   // 1 Hz counters line. Outside the servo_ok [dxl] block, so it prints with no servo.
-  // Gated on free TX space: with no room the print is skipped and the counters and the
-  // timer are NOT reset, so it prints at the next tick that has room.
-  if (now_ms - lastFramesPrintMs >= FRAMES_PRINT_PERIOD_MS && Serial.availableForWrite() >= 64) {
+  // Gated on free TX space (kFramesLineRoom): with less room the print is skipped and the
+  // counters and the timer are NOT reset, so it prints at the next tick that has room.
+  // This is not a no-blocking guarantee: the existing unguarded prints can still block (see header).
+  if (now_ms - lastFramesPrintMs >= FRAMES_PRINT_PERIOD_MS &&
+      Serial.availableForWrite() >= kFramesLineRoom) {
     Serial.printf("[frames] sent=%lu dropped=%lu max_emit_us=%lu\n",
                   (unsigned long)frames_sent, (unsigned long)frames_dropped,
                   (unsigned long)frames_max_emit_us);
