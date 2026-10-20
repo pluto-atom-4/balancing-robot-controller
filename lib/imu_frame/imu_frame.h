@@ -15,8 +15,8 @@
 //   - Printed-text -0 rule: a value whose %.6f text is "-0.000000" (or any
 //     "-" followed only by '0' and '.') is printed without the sign, to match
 //     Python's "-0.000000" -> "0.000000" mapping.
-//   - The disposable SIM-ONLY stub that mirrors this header lives in PR #169
-//     (issue #161), not in this PR. The later swap is one include line.
+//   - A disposable SIM-ONLY ttl_servo stub (PR #169, issue #161) mirrored this header.
+//     It was removed in PR #171 when ttl_servo switched to <imu_frame.h>.
 //
 // Pure formatting only. Nothing here is validated on hardware, and this file
 // makes no timing or bandwidth claim.

@@ -20,6 +20,19 @@
 // -D TTL_SERVO_FALL_TEST: low gains (kp=2 kd=1) so the frame falls within seconds.
 // -D TTL_SERVO_KILL_POC: SIM-ONLY disposable kill-switch POC for #148 (GPIO3 button, active low).
 // Delete with #151; limits: see kill_poc_poll.
+// -D TTL_SERVO_IMU_FRAMES: SIM-ONLY disposable POC (#160), raw IMU frames on USB CDC.
+//   Delete with the removal issue (#166).
+//   One IMU,<seq>,<t_us>,... frame per loop tick with a good IMU read (format: lib/imu_frame).
+//   RAW accel (g) and gyro (deg/s): no bias removal, no filter, never from segway theta.
+//   ttl_servo sets the gyro range to 250 deg/s; the accel range is the library default (2 g).
+//   Frame size is an ESTIMATE, not measured: about 65-95 bytes depending on digit counts.
+//   -D TTL_SERVO_HORN_SELFTEST blocks boot, so no frames are sent during the self-test.
+//   The combination with -D TTL_SERVO_KILL_POC is untested.
+//   Non-finite values are NOT checked here: a NaN/inf gyro or accel goes out as 0.000000
+//   with a valid checksum (the formatter maps non-finite to 0; Python dof_frame.py raises).
+//   The stream keeps the CDC TX buffer closer to full, so the existing unguarded Serial.printf
+//   lines (10 Hz sim line, 1 Hz [dxl] line) are more likely to block if the host stalls or is
+//   absent. Documented, not fixed: no setTxTimeoutMs is set.
 #include <Arduino.h>
 #include <Wire.h>
 #include <Adafruit_MPU6050.h>
@@ -27,6 +40,9 @@
 #include <Dynamixel2Arduino.h>
 #include <math.h>
 #include <segway_sim.h>
+#ifdef TTL_SERVO_IMU_FRAMES
+#include <imu_frame.h>
+#endif
 
 // ===== Configuration =====
 static constexpr uint8_t  I2C_SDA = 8;
@@ -70,6 +86,19 @@ static uint32_t hold_until_ms = 0;
 #ifdef TTL_SERVO_KILL_POC
 static uint8_t kill_low_ticks = 0;   // consecutive LOW ticks on KILL_PIN
 static bool kill_latched = false;    // POC kill pressed: no further polling
+#endif
+
+#ifdef TTL_SERVO_IMU_FRAMES
+static constexpr float    kGravityMs2 = 9.80665f;    // m/s^2 per g (frame accel scale)
+static constexpr uint32_t FRAMES_PRINT_PERIOD_MS = 1000;  // 1 Hz [frames] counters line
+// Free TX bytes needed before the [frames] line is printed (worst case line is 67 bytes).
+static constexpr int      kFramesLineRoom = 80;
+static uint16_t frame_seq = 0;          // advances on every attempted frame, sent or dropped
+static uint32_t frames_sent = 0;
+static uint32_t frames_dropped = 0;
+static uint32_t frames_max_emit_us = 0; // worst frame format+write time since the last print
+static uint32_t lastFramesPrintMs = 0;
+static char frame_buf[128];             // one frame, NUL included (about 65-95 bytes used)
 #endif
 
 // ===== Helpers =====
@@ -299,6 +328,9 @@ void setup() {
   gyroZ_bias_rad_s = sum / (float)good;
   Serial.printf("[ttl_servo] gyro Z bias=%.4f rad/s (keep the slider at 0 during boot)\n",
                 gyroZ_bias_rad_s);
+#ifdef TTL_SERVO_IMU_FRAMES
+  Serial.println("[frames] on raw-gyro");
+#endif
 
 #ifdef TTL_SERVO_HORN_SELFTEST
   horn_selftest();
@@ -317,6 +349,9 @@ void setup() {
   lastLoopMs = millis();
   lastPrintMs = lastLoopMs;
   lastBusPrintMs = lastLoopMs;
+#ifdef TTL_SERVO_IMU_FRAMES
+  lastFramesPrintMs = lastLoopMs;
+#endif
 }
 
 void loop() {
@@ -334,8 +369,14 @@ void loop() {
 
   // 1. Real gyro Z (bias removed, filtered) is the disturbance rate.
   sensors_event_t accel, gyro, temp;
+#ifdef TTL_SERVO_IMU_FRAMES
+  bool imu_ok = false;  // this tick's IMU read succeeded (frame block after step 4)
+#endif
   // On a failed read keep the previous filtered value rather than stale data.
   if (mpu.getEvent(&accel, &gyro, &temp)) {
+#ifdef TTL_SERVO_IMU_FRAMES
+    imu_ok = true;
+#endif
     float gz = gyro.gyro.z - gyroZ_bias_rad_s;
     gyroZ_filtered_rad_s = ema_update(gyroZ_filtered_rad_s, gz, dt_ms);
   } else {
@@ -394,6 +435,50 @@ void loop() {
       }
     }
   }
+
+#ifdef TTL_SERVO_IMU_FRAMES
+  // 4b. SIM-ONLY raw IMU frame (#160, #163). Emitted only when this tick's IMU read succeeded.
+  // RAW values: no bias subtraction, no EMA, never from segway theta. Scales: accel is divided
+  // by kGravityMs2 (g); gyro is multiplied by segway::kRadToDeg (deg/s). The gyro range is set to
+  // 250 deg/s in setup(); the accel range is never set here (Adafruit library default, 2 g).
+  // tilt_servo uses 500 deg/s and 4 g, so raw scales differ between the two POCs.
+  if (imu_ok) {
+    // t_us is the emit time (micros at this block), not the IMU sample time.
+    const uint32_t t0 = micros();
+    const float a_g[3] = {accel.acceleration.x / kGravityMs2,
+                          accel.acceleration.y / kGravityMs2,
+                          accel.acceleration.z / kGravityMs2};
+    const float g_dps[3] = {gyro.gyro.x * segway::kRadToDeg, gyro.gyro.y * segway::kRadToDeg,
+                            gyro.gyro.z * segway::kRadToDeg};
+    const size_t n = imu_frame::format(frame_buf, sizeof frame_buf, frame_seq, t0, a_g, g_dps);
+    // Never block: one write, and only if the whole frame fits in the free CDC TX space.
+    // avail is an int: a negative value would convert to a huge size_t and pass the
+    // >= n test, so the avail > 0 guard stays.
+    const int avail = Serial.availableForWrite();
+    if (n > 0 && avail > 0 && static_cast<size_t>(avail) >= n) {
+      Serial.write(reinterpret_cast<const uint8_t*>(frame_buf), n);
+      ++frames_sent;
+    } else {
+      ++frames_dropped;
+    }
+    ++frame_seq;  // every attempted frame advances seq, so a host sees gaps on drops
+    const uint32_t el = micros() - t0;
+    if (el > frames_max_emit_us) frames_max_emit_us = el;
+  }
+
+  // 1 Hz counters line. Outside the servo_ok [dxl] block, so it prints with no servo.
+  // Gated on free TX space (kFramesLineRoom): with less room the print is skipped and the
+  // counters and the timer are NOT reset, so it prints at the next tick that has room.
+  // This is not a no-blocking guarantee: the existing unguarded prints can still block (see header).
+  if (now_ms - lastFramesPrintMs >= FRAMES_PRINT_PERIOD_MS &&
+      Serial.availableForWrite() >= kFramesLineRoom) {
+    Serial.printf("[frames] sent=%lu dropped=%lu max_emit_us=%lu\n",
+                  (unsigned long)frames_sent, (unsigned long)frames_dropped,
+                  (unsigned long)frames_max_emit_us);
+    frames_max_emit_us = 0;
+    lastFramesPrintMs = now_ms;
+  }
+#endif
 
   // 5. Telemetry (10 Hz)
   if (now_ms - lastPrintMs >= PRINT_PERIOD_MS) {
