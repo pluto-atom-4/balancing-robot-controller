@@ -1,0 +1,32 @@
+# SIM-ONLY disposable POC for #160 (raw IMU frame stream, #162-#164). Delete with the removal issue (#166).
+# Not hardware-validated. Makes no timing, bandwidth or sign claim.
+# Run (path relative to programs/ttl_servo):
+#   PLATFORMIO_BUILD_FLAGS="-D TTL_SERVO_IMU_FRAMES" make sim-ttl_servo-xiao_c3 WOKWI_ARGS="--scenario scenario_imu_frames.yaml --timeout 20000"
+# Exit 0 = pass. Exit 42 (timeout) = a wait-serial did not match: the flag is missing (no
+#   '[frames] on raw-gyro' line), no frames were printed ('IMU,'), or no '[frames] sent=' line
+#   appeared (for example the stream never got TX room, or no servo: the sent/dropped counters
+#   still print with no servo).
+# This scenario cannot check the frame checksum or the gyro Z value. The main session checks those
+#   from the captured log (the IMU, lines and the [frames] counters).
+# Step order is fixed by the firmware: setup() prints '[frames] on raw-gyro' BEFORE the
+#   'Sim starts at 15 deg' banner, so that line is waited for first.
+# rotationZ is in deg/s (slider 30 gives gyro Z about 0.524 rad/s). wait-serial matches the
+#   lines printed in programs/ttl_servo/main.cpp setup() and loop(); change both together.
+name: ttl_servo imu frames
+version: 1
+steps:
+  - wait-serial: '[frames] on raw-gyro'
+  - wait-serial: 'Sim starts at 15 deg'
+  - wait-serial: 'IMU,'
+  - delay: 2000ms
+  - set-control:
+      part-id: imu
+      control: rotationZ
+      value: 30
+  - wait-serial: '[frames] sent='
+  - delay: 2000ms
+  - set-control:
+      part-id: imu
+      control: rotationZ
+      value: 0
+  - delay: 1000ms
