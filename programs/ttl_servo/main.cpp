@@ -20,6 +20,8 @@
 // -D TTL_SERVO_FALL_TEST: low gains (kp=2 kd=1) so the frame falls within seconds.
 // -D TTL_SERVO_KILL_POC: SIM-ONLY disposable kill-switch POC for #148 (GPIO3 button, active low).
 // Delete with #151; limits: see kill_poc_poll.
+// -D TTL_SERVO_IMU_FRAMES: SIM-ONLY disposable POC (#160), raw IMU frames on USB CDC.
+//   Delete with the removal issue (#166).
 #include <Arduino.h>
 #include <Wire.h>
 #include <Adafruit_MPU6050.h>
@@ -27,6 +29,9 @@
 #include <Dynamixel2Arduino.h>
 #include <math.h>
 #include <segway_sim.h>
+#ifdef TTL_SERVO_IMU_FRAMES
+#include <imu_frame.h>
+#endif
 
 // ===== Configuration =====
 static constexpr uint8_t  I2C_SDA = 8;
@@ -70,6 +75,17 @@ static uint32_t hold_until_ms = 0;
 #ifdef TTL_SERVO_KILL_POC
 static uint8_t kill_low_ticks = 0;   // consecutive LOW ticks on KILL_PIN
 static bool kill_latched = false;    // POC kill pressed: no further polling
+#endif
+
+#ifdef TTL_SERVO_IMU_FRAMES
+static constexpr float    kGravityMs2 = 9.80665f;    // m/s^2 per g (frame accel scale)
+static constexpr float    kRadToDeg = 57.29578f;     // rad/s -> deg/s (frame gyro scale)
+static constexpr uint32_t FRAMES_PRINT_PERIOD_MS = 1000;  // 1 Hz [frames] counters line
+static uint16_t frame_seq = 0;          // advances on every attempted frame, sent or dropped
+static uint32_t frames_sent = 0;
+static uint32_t frames_dropped = 0;
+static uint32_t frames_max_emit_us = 0; // worst frame format+write time since the last print
+static uint32_t lastFramesPrintMs = 0;
 #endif
 
 // ===== Helpers =====
@@ -299,6 +315,9 @@ void setup() {
   gyroZ_bias_rad_s = sum / (float)good;
   Serial.printf("[ttl_servo] gyro Z bias=%.4f rad/s (keep the slider at 0 during boot)\n",
                 gyroZ_bias_rad_s);
+#ifdef TTL_SERVO_IMU_FRAMES
+  Serial.println("[frames] on raw-gyro");
+#endif
 
 #ifdef TTL_SERVO_HORN_SELFTEST
   horn_selftest();
@@ -317,6 +336,9 @@ void setup() {
   lastLoopMs = millis();
   lastPrintMs = lastLoopMs;
   lastBusPrintMs = lastLoopMs;
+#ifdef TTL_SERVO_IMU_FRAMES
+  lastFramesPrintMs = lastLoopMs;
+#endif
 }
 
 void loop() {
@@ -334,8 +356,14 @@ void loop() {
 
   // 1. Real gyro Z (bias removed, filtered) is the disturbance rate.
   sensors_event_t accel, gyro, temp;
+#ifdef TTL_SERVO_IMU_FRAMES
+  bool imu_ok = false;  // this tick's IMU read succeeded (frame block after step 4)
+#endif
   // On a failed read keep the previous filtered value rather than stale data.
   if (mpu.getEvent(&accel, &gyro, &temp)) {
+#ifdef TTL_SERVO_IMU_FRAMES
+    imu_ok = true;
+#endif
     float gz = gyro.gyro.z - gyroZ_bias_rad_s;
     gyroZ_filtered_rad_s = ema_update(gyroZ_filtered_rad_s, gz, dt_ms);
   } else {
