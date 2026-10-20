@@ -15,8 +15,8 @@
 //   - Printed-text -0 rule: a value whose %.6f text is "-0.000000" (or any
 //     "-" followed only by '0' and '.') is printed without the sign, to match
 //     Python's "-0.000000" -> "0.000000" mapping.
-//   - programs/ttl_servo/imu_frame_stub.h (issue #161) is a disposable mirror
-//     of this header, so the later swap is one include line.
+//   - The disposable SIM-ONLY stub that mirrors this header lives in PR #169
+//     (issue #161), not in this PR. The later swap is one include line.
 //
 // Pure formatting only. Nothing here is validated on hardware, and this file
 // makes no timing or bandwidth claim.
@@ -51,8 +51,10 @@ inline bool put(char* out, size_t cap, size_t& pos, const char* str) {
   return true;
 }
 
-// Formats v as %.6f into tmp (64 bytes; FLT_MAX needs about 47). Non-finite
-// input becomes 0.0f. Returns the text to print, or nullptr on failure.
+// Formats v as %.6f into tmp (64 bytes). FLT_MAX prints 46 characters and
+// -FLT_MAX prints 47, plus the NUL, so tmp[64] is enough. Non-finite input
+// becomes 0.0f. Returns the text to print. The nullptr return is a defensive
+// guard and is unreachable for a float; it is kept on purpose.
 inline const char* floatText(float v, char* tmp) {
   if (!std::isfinite(v)) v = 0.0f;
   const int n = std::snprintf(tmp, 64, "%.6f", static_cast<double>(v));
@@ -70,7 +72,8 @@ inline const char* floatText(float v, char* tmp) {
   return tmp;
 }
 
-// Appends ",<value>" for one float.
+// Appends ",<value>" for one float. Returns false only on the defensive
+// floatText failure path, which a float cannot reach.
 inline bool putFloat(char* out, size_t cap, size_t& pos, float v) {
   char tmp[64];
   const char* txt = floatText(v, tmp);
@@ -85,8 +88,8 @@ inline bool putFloat(char* out, size_t cap, size_t& pos, float v) {
 // NUL; out[L] == '\0' and L + 1 <= cap. Returns 0 on failure: cap too small,
 // snprintf error, out == nullptr, cap == 0, or accel_g/gyro_dps == nullptr.
 // On failure with cap > 0 and out != nullptr, out[0] = '\0'. Nothing is
-// written at or beyond out[cap - 1] + 1, and cap == 0 or out == nullptr
-// writes nothing.
+// written at or beyond out[cap], and cap == 0 or out == nullptr writes
+// nothing.
 inline size_t format(char* out, size_t cap, uint16_t seq, uint32_t t_us,
                      const float accel_g[3], const float gyro_dps[3]) {
   if (out == nullptr || cap == 0) return 0;

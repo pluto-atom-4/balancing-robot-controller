@@ -82,13 +82,13 @@ void test_negative_zero_is_normalized(void) {
   TEST_ASSERT_EQUAL_STRING(kG0, buf);
 }
 
-// Test 8: tiny negatives whose %.6f text is all zeros print without sign
-void test_tiny_negatives_normalize_to_zero(void) {
-  const float tiny[3] = {-1e-9f, -4e-7f, 1e-9f};
+// Test 8: near-zero values (two negative, one positive) whose %.6f text is all zeros print without sign
+void test_near_zero_normalize_to_zero(void) {
+  const float near_zero[3] = {-1e-9f, -4e-7f, 1e-9f};
   char buf[256];
   for (int i = 0; i < 3; i++) {
     float accel[3] = {0.0f, 0.0f, 0.0f};
-    accel[0] = tiny[i];
+    accel[0] = near_zero[i];
     size_t n = imu_frame::format(buf, sizeof buf, 0, 0, accel, kZero);
     TEST_ASSERT_EQUAL_UINT(65, n);
     TEST_ASSERT_EQUAL_STRING(kG0, buf);
@@ -227,7 +227,7 @@ int main(int argc, char **argv) {
   RUN_TEST(test_checksum_empty_and_null);
   RUN_TEST(test_checksum_G0_body);
   RUN_TEST(test_negative_zero_is_normalized);
-  RUN_TEST(test_tiny_negatives_normalize_to_zero);
+  RUN_TEST(test_near_zero_normalize_to_zero);
   RUN_TEST(test_minus_six_e7_keeps_sign);
   RUN_TEST(test_nonfinite_becomes_zero);
   RUN_TEST(test_cap_just_fits);
