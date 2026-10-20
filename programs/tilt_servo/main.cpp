@@ -11,13 +11,16 @@
 // Opt-in raw IMU frame stream. Build with:
 //   PLATFORMIO_BUILD_FLAGS="-D TILT_SERVO_IMU_FRAMES" pio run -e tilt_servo-xiao_c3
 // Frames (format in lib/imu_frame) carry RAW accel (g) and gyro (deg/s) with NO boot-time
-// bias removal and no filter. tilt_servo's gyro range is 500 dps with DLPF 21 Hz; the Python
-// POC firmware esp32_dof.ino uses its own bias calibration and DLPF 44 Hz, so raw scales differ.
+// bias removal and no filter. Ranges: accel +-4 g (same as the Python POC esp32_dof.ino),
+// gyro +-500 dps. DLPF is 21 Hz here; the POC uses 44 Hz and also runs a boot-time gyro bias
+// calibration, which this stream does not, so raw scales and noise differ from the POC.
 // NaN/inf in any field become 0 in the formatter (Python dof_frame.py raises instead).
 // t_us is the loop `now` (micros at loop start), not the IMU sample time.
-// Frame budget is an ESTIMATE, not measured: about 81-95 bytes per frame, about 4-4.8 KB/s at 50 Hz.
-// Risk (documented, not fixed): the existing unguarded text prints and the 1 Hz [frames] line
-// can block if the USB host stalls. No setTxTimeoutMs is set.
+// Frame size is an ESTIMATE, not measured: about 65-95 bytes per frame depending on digit
+// counts (a zero frame is 65 bytes), roughly 3.3-4.8 KB/s at 50 Hz.
+// Risk (documented, not fixed): the stream keeps the CDC TX buffer closer to full, so the
+// existing unguarded Serial.printf lines (10 Hz [imu]) are more likely to block if the host
+// stalls or is absent. The 1 Hz [frames] line is gated on free TX space. No setTxTimeoutMs.
 #include <imu_frame.h>
 #endif
 
@@ -80,6 +83,7 @@ static uint8_t dxlFail = 0;
 
 #ifdef TILT_SERVO_IMU_FRAMES
 static constexpr uint32_t kFramesPrintUs = 1000000;  // 1 Hz [frames] stats line
+static constexpr float kGravityMs2 = 9.80665f;       // Adafruit_Sensor accel is m/s^2
 static uint16_t frameSeq = 0;         // advances on every frame, sent or dropped (host sees gaps)
 static uint32_t framesSent = 0;
 static uint32_t framesDropped = 0;
@@ -264,15 +268,18 @@ void loop() {
   }
 
 #ifdef TILT_SERVO_IMU_FRAMES
-  // Only reached when the IMU read and the finite checks passed. Raw values: no bias, no filter.
+  // Reached only when the IMU read succeeded and the accel x/y/z and gyro.y finite checks passed.
+  // A NaN/inf in gyro.x or gyro.z is NOT caught here: it goes out as 0.000000 with a valid
+  // checksum (the formatter maps non-finite to 0). Raw values: no bias, no filter.
   // Adafruit_Sensor gives accel in m/s^2 and gyro in rad/s.
   const uint32_t e0 = micros();
-  const float acc_g[3] = {a.acceleration.x / 9.80665f, a.acceleration.y / 9.80665f,
-                          a.acceleration.z / 9.80665f};
+  const float acc_g[3] = {a.acceleration.x / kGravityMs2, a.acceleration.y / kGravityMs2,
+                          a.acceleration.z / kGravityMs2};
   const float gyr_dps[3] = {g.gyro.x * tilt::kRadToDeg, g.gyro.y * tilt::kRadToDeg,
                             g.gyro.z * tilt::kRadToDeg};
   const size_t n = imu_frame::format(frameBuf, sizeof frameBuf, frameSeq, now, acc_g, gyr_dps);
   // Never block: send only if the whole frame fits in the free USB CDC TX space.
+  // avail > 0 is required: a negative int would convert to a huge size_t and pass the >= n test.
   const int avail = Serial.availableForWrite();
   if (n > 0 && avail > 0 && static_cast<size_t>(avail) >= n &&
       Serial.write(reinterpret_cast<const uint8_t*>(frameBuf), n) == n) {
@@ -283,10 +290,12 @@ void loop() {
   ++frameSeq;  // always advance so the host sees gaps on drops
   const uint32_t emitUs = micros() - e0;
   if (emitUs > frameMaxEmitUs) frameMaxEmitUs = emitUs;
-  if (now - lastFramesPrintUs >= kFramesPrintUs) {
+  // Print only when the TX buffer has room; otherwise keep counting and retry on a later frame.
+  if (now - lastFramesPrintUs >= kFramesPrintUs && Serial.availableForWrite() >= 64) {
     lastFramesPrintUs = now;
     Serial.printf("[frames] sent=%lu dropped=%lu max_emit_us=%lu\n",
-                  static_cast<unsigned long>(framesSent), static_cast<unsigned long>(framesDropped),
+                  static_cast<unsigned long>(framesSent),
+                  static_cast<unsigned long>(framesDropped),
                   static_cast<unsigned long>(frameMaxEmitUs));
     frameMaxEmitUs = 0;
   }
