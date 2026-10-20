@@ -84,6 +84,8 @@ static uint8_t dxlFail = 0;
 #ifdef TILT_SERVO_IMU_FRAMES
 static constexpr uint32_t kFramesPrintUs = 1000000;  // 1 Hz [frames] stats line
 static constexpr float kGravityMs2 = 9.80665f;       // Adafruit_Sensor accel is m/s^2
+// Free TX bytes needed before the [frames] line is printed (worst case line is 67 bytes).
+static constexpr int kFramesLineRoom = 80;
 static uint16_t frameSeq = 0;         // advances on every frame, sent or dropped (host sees gaps)
 static uint32_t framesSent = 0;
 static uint32_t framesDropped = 0;
@@ -290,8 +292,9 @@ void loop() {
   ++frameSeq;  // always advance so the host sees gaps on drops
   const uint32_t emitUs = micros() - e0;
   if (emitUs > frameMaxEmitUs) frameMaxEmitUs = emitUs;
-  // Print only when the TX buffer has room; otherwise keep counting and retry on a later frame.
-  if (now - lastFramesPrintUs >= kFramesPrintUs && Serial.availableForWrite() >= 64) {
+  // Print only when kFramesLineRoom bytes are free; otherwise keep counting and retry on a later
+  // frame. Not a no-blocking guarantee: the unguarded [imu] printf can still block (see header).
+  if (now - lastFramesPrintUs >= kFramesPrintUs && Serial.availableForWrite() >= kFramesLineRoom) {
     lastFramesPrintUs = now;
     Serial.printf("[frames] sent=%lu dropped=%lu max_emit_us=%lu\n",
                   static_cast<unsigned long>(framesSent),
