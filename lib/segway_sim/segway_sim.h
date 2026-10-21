@@ -114,7 +114,8 @@ class SegwaySim {
   }
 };
 
-// Radians to degrees (used by the ttl_servo velocity self-test).
+// Radians to degrees. Used by the ttl_servo velocity self-test (TTL_SERVO_HORN_SELFTEST) and,
+// under -D TTL_SERVO_IMU_FRAMES, to convert the IMU frame gyro from rad/s to deg/s.
 constexpr float kRadToDeg = 57.29578f;
 
 }  // namespace segway
