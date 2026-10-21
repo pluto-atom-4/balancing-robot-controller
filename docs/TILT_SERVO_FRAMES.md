@@ -5,7 +5,13 @@
 > are for the ttl_servo POC stream only, never the tilt_servo stream.
 >
 > Written against `balancing-robot-controller` `main` 8e9d698 and the freecad-workspace (FW)
-> merge `ab3c4f4` (PR #382). The FW docs may change: FW #376 is open.
+> merge `ab3c4f4` (PR #382). FW #376 was CLOSED on 2026-10-21 by FW PR #386 (board -> wheel
+> display chain docs); FW PR #385 (SerialImuHal test gaps and arm() docstring) also merged, and
+> FW main is now `9e96c4d`. This page was NOT re-read against the new FW chain docs
+> (`poc/esp32-dof/README.md` and `poc/servo-wheel-dof/README.md` changed in PR #386). The FW
+> README section names this page cites ("Frame protocol", "Monitor", "Wheel bridge
+> (dof_wheel_bridge, #375)", labels "Two CSV formats" and "Behaviour") were re-checked and still
+> exist at `9e96c4d`. Prefer the current FW docs where they differ.
 
 Nothing on this page is a balance result. Every command below is marked **RUN** (executed for
 this page, with the result stated) or **NOT run**.
@@ -29,7 +35,7 @@ replay in the "Capture and replay" section.
 
 Related tracking:
 
-- FW #376: docs, open.
+- FW #376: docs, CLOSED on 2026-10-21 by FW PR #386 (see the banner).
 - FW #377: human GUI check, open.
 - FW #387: optional bridge option to echo or log text lines, open.
 - Local format source: `lib/imu_frame/imu_frame.h`.
@@ -102,11 +108,13 @@ Checked against `programs/tilt_servo/main.cpp`:
   return with no frame.
 - `kFailMax` consecutive failed IMU reads call `failSafe("imu read failed")`.
 - `kFailMax` consecutive failed `setGoalPosition` calls call `failSafe("dxl lost")`.
-- Each `failSafe` turns the servo torque OFF (up to 3 tries) and LATCHES it until reset. The
-  code comment says "Latched: torque off, stays off until reset". On a bench run, one NaN or
-  a run of failed servo writes therefore drops torque for the rest of the run. A
-  `[safe] torque off ...` line is printed. The `[safe]` line is printed only when torque was
-  on. UNVERIFIED on hardware.
+- Each `failSafe` latches the firmware (torque on is not re-enabled until reset), prints
+  `[safe] torque off <reason>`, and TRIES to turn the servo torque OFF (up to 3 tries). The
+  code comment says "Latched: torque off, stays off until reset", but that holds only when
+  torque off was confirmed. If the line ends with `(TORQUE OFF NOT CONFIRMED)`, the servo may
+  still be live: treat it as live (power it down, keep clear). A NaN or a run of failed servo
+  writes therefore latches the firmware for the rest of the run. The `[safe]` line is printed
+  only when torque was on. UNVERIFIED on hardware.
 - After a latch, the loop keeps running, but only servo writes stop. The frame block is NOT
   gated on torque. So frames and the `[frames]` lines KEEP going out after a failSafe latch.
 
@@ -119,9 +127,10 @@ Checked against `programs/tilt_servo/main.cpp`:
   `dropped` counts it.
 - `seq` advances on every attempted frame, sent or dropped, so a gap in `seq` shows drops.
 - A skipped IMU read (early return) leaves no `seq` gap. It shows only as a gap in `t_us`.
-- Frame size: the 65-95 B figure is an ESTIMATE, not a measurement. The computed maximum is
-  about 90 B (5-digit seq, 10-digit t_us, values up to +-4 g and +-500 dps), so 95 B is a
-  loose bound. The derived upper rate is about 4.5 KB/s at 50 Hz. The 3.3-4.8 KB/s range is
+- Frame size: the 65-95 B figure (excluding the newline) is an ESTIMATE, not a measurement.
+  The zero frame is 65 B and the computed maximum is about 90 B (5-digit seq, 10-digit t_us,
+  values up to +-4 g and +-500 dps), both excluding the newline (66 B and 91 B with it), so
+  95 B is a loose bound. The derived upper rate is about 4.5 KB/s at 50 Hz. The 3.3-4.8 KB/s range is
   also derived from the estimate and is NOT measured. The 71-74 B frame sizes seen in the
   ttl_servo Wokwi run are quoted from #160 (simulator output only), NOT re-run here.
 - Wrap: `seq` is uint16 and wraps after 65536 frames (about 22 min at 50 Hz).
@@ -130,7 +139,8 @@ Checked against `programs/tilt_servo/main.cpp`:
   The FW has mock tests for a `t_us` wrap (`test_still_seq_and_t_us_wrap`), NOT run here. How
   the host treats a real wrap on a long run is UNVERIFIED. No host behaviour is claimed here.
 - The 1 Hz line `[frames] sent=.. dropped=.. max_emit_us=..` prints only when
-  `kFramesLineRoom` (80 bytes) of TX space is free. The worst case line is 67 bytes. If there
+  `kFramesLineRoom` (80 bytes) of TX space is free. The worst case line is 67 bytes (including
+  its newline). If there
   is no room, the counters keep accumulating and the line is retried later.
 - `max_emit_us` is a firmware-clock measure of format plus write time. No real-C3 value
   exists.
@@ -148,9 +158,12 @@ Checked against `programs/tilt_servo/main.cpp`:
   `fused=`. Use two runs: first `pio device monitor` with `tee` for the counters and `fused=`.
   Then close it and run the bridge with `--record`.
 - Per the FW README, opening the port toggles DTR/RTS and resets the ESP32. On `tilt_servo`,
-  that re-runs `setup()` and `servoStart()` (torque on, goal = present position clamped to
-  SERVO_MIN_TICKS 1707 .. SERVO_MAX_TICKS 2389). UNVERIFIED for this firmware. Keep the servo
-  secured or absent.
+  that re-runs `setup()` and `servoStart()`. `servoStart()` sets the goal to the present
+  position clamped to SERVO_MIN_TICKS 1707 .. SERVO_MAX_TICKS 2389, then turns torque on only
+  if every bring-up step succeeds (ping, torque off, operating mode, both profile writes, the
+  present-position read, the goal write, torque on). With no servo it stays read-only. If the
+  present position is outside the clamp window, the horn MOVES to the clamp edge as torque
+  comes on. UNVERIFIED for this firmware. Keep the servo secured or absent.
 
 ## Host side (from the FW code)
 
@@ -223,13 +236,15 @@ Pass criteria live in #159 and FW #377. This is a short ordered list only.
 
 1. Run during the same bench session as the #84 checks. #84 is the open human issue on
    FE-URT-1 + XL330 hardware parity.
-2. Keep the servo secured or absent (see "Sharing the port"). A `[safe]` line means torque is
-   off until reset.
+2. Keep the servo secured or absent (see "Sharing the port"). A `[safe]` line means the
+   firmware latched and TRIED to turn torque off. If it says `TORQUE OFF NOT CONFIRMED`, treat
+   the servo as still live: power it down and keep clear.
 3. Build and upload with the flag (see "Flag and build commands"). NOT run here.
 4. `pio device monitor -e tilt_servo-xiao_c3 | tee capture.log` (NOT run). Only one process
    can hold the port; opening it resets the board; see "Sharing the port". After the reset,
    the boot lines (`[tilt] boot`, `[imu] ready`, `[dxl] ...`, `[frames] on raw-gyro`) appear.
-   During the run, only `[imu]` (10 Hz) and `[frames]` (1 Hz) lines are expected. Record
+   During the run, only `[imu]` (10 Hz) and `[frames]` (1 Hz) lines are expected, plus the
+   `IMU,` frame lines at about 50 Hz, which are the capture. Record
    `max_emit_us` and `dropped`. If any `[safe]` line appears, record it.
 5. Close the monitor.
 6. Run the bridge with `--record` (see the FW README "Wheel bridge" section). NOT run here.
