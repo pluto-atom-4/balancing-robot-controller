@@ -18,8 +18,8 @@ below name the FW README sections. The "Host side" and "Capture and replay" sect
 
 - Frame shape: section "Frame protocol".
 - Arming, bias/tare ownership, `yaw` always 0.0, text-line handling: section "Wheel bridge
-  (dof_wheel_bridge, #375)", subsection "Behaviour".
-- Replay CSV header: section "Wheel bridge (dof_wheel_bridge, #375)", subsection "Two CSV formats".
+  (dof_wheel_bridge, #375)", label "Behaviour".
+- Replay CSV header: section "Wheel bridge (dof_wheel_bridge, #375)", label "Two CSV formats".
 - Monitor: section "Monitor".
 
 The FW-side facts on this page (arm window, bias and tare ownership, text-line handling, `yaw`
@@ -55,10 +55,10 @@ PLATFORMIO_BUILD_FLAGS="-D TILT_SERVO_IMU_FRAMES" pio run -e tilt_servo-xiao_c3 
 pio device monitor -e tilt_servo-xiao_c3                                          # NOT run
 ```
 
-Build flags come from the environment of each command. Changing them rebuilds the firmware.
-This was observed for builds on 8e9d698. The upload with the flag was NOT run. So the flag must
-be set on the upload command too. Without it, the upload uses whatever build the environment
-selects. Expected inference, NOT run: no frames appear in that case.
+Build flags come from the environment of each command. Changing them rebuilds the firmware
+(RUN, main session, 8e9d698). The upload with the flag was NOT run. So the flag must be set on
+the upload command too. Without it, the upload uses whatever build the environment selects.
+Expected inference, NOT run: no frames appear in that case.
 
 Bridge commands: the live bridge run (`--port`) is described in the FW README section "Wheel
 bridge". NOT run for `tilt_servo`. Only the replay commands in "Capture and replay" are given
@@ -83,8 +83,8 @@ Checked against `programs/tilt_servo/main.cpp`:
 
 - The values are RAW. Accel is sent in g and gyro in deg/s, converted from the Adafruit
   library units before formatting.
-- Ranges: accel +-4 g, gyro +-500 dps. DLPF is 21 Hz.
-- No boot-time bias removal and no filter.
+- Ranges: accel +-4 g, gyro +-500 dps. No software filter; the DLPF is a sensor setting,
+  21 Hz. No boot-time bias removal.
 - The firmware sign `GYRO_PITCH_SIGN` is NOT applied to the raw gyro y value in the frame.
 - `t_us` is the loop-start `micros()` value, not the IMU sample time.
 - Compared with the POC firmware `esp32_dof.ino`, the ranges match (accel +-4 g, gyro
@@ -122,8 +122,8 @@ Checked against `programs/tilt_servo/main.cpp`:
 - Frame size: the 65-95 B figure is an ESTIMATE, not a measurement. The computed maximum is
   about 90 B (5-digit seq, 10-digit t_us, values up to +-4 g and +-500 dps), so 95 B is a
   loose bound. The derived upper rate is about 4.5 KB/s at 50 Hz. The 3.3-4.8 KB/s range is
-  also derived from the estimate and is NOT measured. The ttl_servo Wokwi run saw 71-74 B
-  frames (simulator output only; see #160 RESULTS).
+  also derived from the estimate and is NOT measured. The 71-74 B frame sizes seen in the
+  ttl_servo Wokwi run are quoted from #160 (simulator output only), NOT re-run here.
 - Wrap: `seq` is uint16 and wraps after 65536 frames (about 22 min at 50 Hz).
 - Wrap: `t_us` is a 32-bit unsigned `micros()` value and wraps after about 71.6 min. The FW
   README "Frame protocol" text says `t_us` is capped at 2^32-1. These two statements differ.
@@ -148,8 +148,9 @@ Checked against `programs/tilt_servo/main.cpp`:
   `fused=`. Use two runs: first `pio device monitor` with `tee` for the counters and `fused=`.
   Then close it and run the bridge with `--record`.
 - Per the FW README, opening the port toggles DTR/RTS and resets the ESP32. On `tilt_servo`,
-  that re-runs `setup()` and `servoStart()` (torque on, goal = present position). UNVERIFIED
-  for this firmware. Keep the servo secured or absent.
+  that re-runs `setup()` and `servoStart()` (torque on, goal = present position clamped to
+  SERVO_MIN_TICKS 1707 .. SERVO_MAX_TICKS 2389). UNVERIFIED for this firmware. Keep the servo
+  secured or absent.
 
 ## Host side (from the FW code)
 
@@ -159,8 +160,9 @@ from the merged file, not re-run.
 
 - The bridge (`SerialImuHal`) arms on about 1 s (50 frames) of stillness, with a gyro span of
   5 dps or less. It then owns the bias (mean gyro) and the tare (mean fused pitch).
-- `tilt_servo` sends RAW values, so a RAW stream is the right input. There is no double bias
-  correction.
+- `tilt_servo` sends RAW values. RAW is the intended input for this bridge, so there is no
+  double bias correction by design. Bridge behaviour with a real `tilt_servo` stream is
+  UNVERIFIED.
 - The host never writes to the board.
 - `yaw` is always 0.0 in the bridge output, by design.
 
@@ -183,16 +185,18 @@ sed -n 's/^IMU,\([^*]*\)\*[0-9A-F][0-9A-F]\r\?$/\1/p' capture.log >> raw.csv    
 
 - The one-liner does NOT verify checksums, because the replay recomputes them. To check a
   capture, parse it with the FW `dof_frame.parse_line`.
-- Result of the ttl_servo capture conversion (RUN): 299 rows from the 300 captured frames. The
-  main session observed that the converted CSV's first row has `seq` 1. #160 RESULTS record
-  that one of the 300 frames is split in the capture by the Wokwi CLI's own log lines. #160
-  does not name `seq` 0.
+- Result of the ttl_servo capture conversion (RUN): 299 rows from 300 captured frames. One
+  frame in the capture is split by the Wokwi CLI's own log lines (#160 RESULTS). The regex
+  drops that split frame. The main session observed that the first converted row has
+  `seq` 1. No other claim is made here about which `seq` the split frame has.
 - Bridge replay, RUN on the ttl_servo capture, with the context below. Both runs exited 0 with
   0 faults. Each run gave 250 armed ticks, 250 UDP datagrams on loopback port 5101 and 250
   record rows. 49 rows were consumed before arming. The FW README says the arm window is about
   50 frames (about 1 s). Replay result, checked by the main session: `roll`, `pitch`, `yaw`,
-  `wheel_angle` and `cmd_rad_s` are exactly 0.0 in all 250 rows of both record files. `seq`
-  runs 0..249 and `t_us` is non-zero. That stream only moves gz.
+  `wheel_angle` and `cmd_rad_s` are exactly 0.0 in all 250 rows of both record files. The
+  record's `seq` column is the bridge's own armed-tick counter, starting at 0 and ending at 249.
+  It is NOT the firmware frame `seq`. The record's `t_us` is the bridge's own HAL time, starting
+  at 0. That stream only moves gz.
 
 Context for the replay runs (RUN with adjusted paths): the main session ran these from an
 export (`git archive`) of freecad-workspace `origin/main` at `ab3c4f4`, placed in a scratch
@@ -210,7 +214,8 @@ This checks parse, arm and UDP plumbing only. It says nothing about motion, dire
 signs. The sim and replay results on this page are for the ttl_servo POC stream only, never
 the tilt_servo stream.
 
-NOT run: `--port` (serial), port 5006, Webots, and any `tilt_servo` stream.
+NOT run: `--port` (serial), port 5006 (the bridge's default UDP port for the Webots wheel
+display, per the FW README), Webots, and any `tilt_servo` stream.
 
 ## Human run steps
 
@@ -218,18 +223,18 @@ Pass criteria live in #159 and FW #377. This is a short ordered list only.
 
 1. Run during the same bench session as the #84 checks. #84 is the open human issue on
    FE-URT-1 + XL330 hardware parity.
-2. Keep the servo secured or absent. A `[safe]` line means torque is off until reset.
-3. Build and upload with the flag. The upload command must carry the flag too. NOT run here.
+2. Keep the servo secured or absent (see "Sharing the port"). A `[safe]` line means torque is
+   off until reset.
+3. Build and upload with the flag (see "Flag and build commands"). NOT run here.
 4. `pio device monitor -e tilt_servo-xiao_c3 | tee capture.log` (NOT run). Only one process
-   can hold the USB port, and opening the port resets the board (per the FW README;
-   UNVERIFIED for this firmware, so keep the servo secured or absent). Record `max_emit_us`
-   and `dropped`. Confirm the `[imu]` and `[dxl]` lines still appear. If any `[safe]` line
-   appears, record it.
+   can hold the port; opening it resets the board; see "Sharing the port". After the reset,
+   the boot lines (`[tilt] boot`, `[imu] ready`, `[dxl] ...`, `[frames] on raw-gyro`) appear.
+   During the run, only `[imu]` (10 Hz) and `[frames]` (1 Hz) lines are expected. Record
+   `max_emit_us` and `dropped`. If any `[safe]` line appears, record it.
 5. Close the monitor.
 6. Run the bridge with `--record` (see the FW README "Wheel bridge" section). NOT run here.
-   Only one process can hold the USB port, so the monitor must be closed first. Opening the
-   port resets the board again (UNVERIFIED for this firmware; keep the servo secured or
-   absent).
+   Only one process can hold the port; opening it resets the board; see "Sharing the port".
+   Close the monitor first.
 7. Compare pitch deltas, not absolute values, with `fused=`. Note any sign flip. Do NOT fix
    anything during the run.
 8. Post RESULTS on #159. State what was not checked.
@@ -253,9 +258,10 @@ Pass criteria live in #159 and FW #377. This is a short ordered list only.
   is kept for now (#166).
 - Its gyro range is +-250 dps. The accel range is the library default, 2 g.
 - Scenario: `programs/ttl_servo/scenario_imu_frames.yaml`.
-- The S5 result is quoted from #160 and was NOT re-run here. It reports 300 frames, all
-  checksums valid under the real FW `parse_line`, `seq` 0..299, gz 0 to 30 deg/s, and
-  `dropped=0`. The fall-test and replay addenda are on #160.
-- That stream only moves gz. In the replay through the bridge, `roll`, `pitch`, `yaw`,
-  `wheel_angle` and `cmd_rad_s` are exactly 0.0 in all 250 rows of both record files (checked
-  by the main session); `seq` runs 0..249 and `t_us` is non-zero.
+- The S5 result is quoted from #160 and was NOT re-run here. The S5 check parsed all 300
+  frames after reassembling the one split frame. It reports all checksums valid under the real
+  FW `parse_line`, firmware `seq` 0..299, gz 0 to 30 deg/s, and `dropped=0`. The sed
+  conversion above cannot reassemble the split frame (see "Capture and replay"). The fall-test
+  and replay addenda are on #160.
+- Its replay result is the same stream's result in "Capture and replay" (gz only, all-zero
+  output columns).
