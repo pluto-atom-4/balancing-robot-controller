@@ -1,6 +1,6 @@
 # Cavecrew rules
 
-Text rules for repo cavecrew agents. Untested until smoke test #126.
+Text rules for repo cavecrew agents. Untested until smoke test #126 (#126 ran in part; see the last Honesty bullet).
 
 ## Agents
 
@@ -9,7 +9,7 @@ Text rules for repo cavecrew agents. Untested until smoke test #126.
 - `repo-cavecrew-reviewer`: haiku. Read-only diff review. Input: `base: <ref>` label or pasted diff; anything else is ambiguous.
 - `slop-hunter`: haiku. Read-only dead-code and doc-slop reporter. Bash intended only (enforcement unverified, #126): `code-review-graph dead-code`, `code-review-graph dead-code --json`, `code-review-graph architecture`, `code-review-graph large-functions`.
 - For a pasted diff, `repo-cavecrew-reviewer` skips `detect_changes_tool` and `get_review_context_tool` entirely.
-- Plugin agents `caveman:cavecrew-builder` and `caveman:cavecrew-reviewer` are separate agents. Project files do not extend them. CLAUDE.md only points to this file; the SubagentStart hook in `.claude/settings.json` is what injects it (a probe showed the hook injects the rules into both reviewers: `repo-cavecrew-reviewer` and `caveman:cavecrew-reviewer` each quoted the injected text; the builders and slop-hunter are untested until smoke test #126).
+- Plugin agents `caveman:cavecrew-builder` and `caveman:cavecrew-reviewer` are separate agents. Project files do not extend them. CLAUDE.md only points to this file; the SubagentStart hook in `.claude/settings.json` is what injects it (a probe showed the hook injects the rules into both reviewers: `repo-cavecrew-reviewer` and `caveman:cavecrew-reviewer` each quoted the injected text; the builders and slop-hunter are untested until smoke test #126 (#126 ran in part; see the last Honesty bullet)).
 - Plugin agent `caveman:cavecrew-investigator` is not in the SubagentStart matcher in `.claude/settings.json`, so it gets no injected rules, including the no-graph-update rule. Its own definition lives in the plugin, outside this repo; on the maintainer's machine it listed Bash (git log/grep/find by instruction), not re-checked by the repo. Widening the matcher is an owner edit (settings.json is protected).
 - Older local agents `builder`, `reviewer`, `investigator` still exist and are separate.
 
@@ -63,6 +63,6 @@ Applies to `repo-cavecrew-reviewer`; the plugin `caveman:cavecrew-reviewer` rece
 - Nothing in this repo is validated on real hardware.
 - Native tests and Wokwi do not validate `balance`.
 - Sim-only programs `ttl_servo`, `stepper_motor`, `wokwi_ttl_servo` stay sim-only.
-- These agents and rules are text, untested until smoke test #126.
+- These agents and rules are text, untested until smoke test #126 (#126 ran in part; see the last Honesty bullet).
 - The hooks (SubagentStart injection, protect-files guard) exist but are only partly tested; see smoke test #126.
-- slop-hunter Bash enforcement is still unverified (#126, #154). Evidence as of 2026-10-21, pasted or self-reported, none of it settling enforcement: the owner's global settings use `defaultMode: auto`; in one owner session with the status bar `manual mode on` (label meaning unconfirmed), one permission prompt appeared on the owner's screen for a non-listed `git show --stat HEAD` run by slop-hunter, which suggests the permission layer can act on non-listed forms in a subagent, but the cause (mode, allow list or other) is unverified; an agent or model reporting "no prompt" is not evidence, only the owner's screen is; the #126 smoke run reported `dead-code --kind Function` running with no visible prompt (self-reported) and had the agent run that filtered form itself, which belongs to the main session. Not tested: write or destructive commands through slop-hunter, and whether deny rules reach subagents. The 'untested until smoke test #126' lines elsewhere in this file predate these runs; #126 ran in part and did not cover the slop-hunter Bash gate, write commands or deny rules.
+- slop-hunter Bash enforcement is still unverified (#126, #154). Evidence as of 2026-10-21, pasted or self-reported, none of it settling enforcement: the owner's global settings use `defaultMode: auto` (read from the owner's file; the repo cannot check it); in one owner session with the status bar `manual mode on` (label meaning unconfirmed), one permission prompt appeared on the owner's screen for a non-listed `git show --stat HEAD` run by slop-hunter, whether the subagent gate or something else caused that prompt is unknown (mode, allow list or other); an agent or model reporting "no prompt" is not evidence, only the owner's screen is; the #126 smoke run reported `dead-code --kind Function` running with no visible prompt (self-reported, logged but not evidence) and had the agent run that filtered form itself, which belongs to the main session. Not tested: write or destructive commands through slop-hunter, and whether deny rules reach subagents. The 'untested until smoke test #126' lines elsewhere in this file predate these runs; #126 ran in part and did not cover the slop-hunter Bash gate, write commands or deny rules.
