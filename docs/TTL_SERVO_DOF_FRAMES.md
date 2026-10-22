@@ -5,10 +5,10 @@
 > synthesised from the Segway sim state, not measured. The sign map is derived and UNVERIFIED
 > (#185).
 >
-> As of 2026-10-22: PRs #194, #195, #196 and #197 are NOT merged. This page is on PR #197,
-> stacked on #196 -> #195 -> #194, and commands refer to that stack until they merge. Issues
-> #166 and #191 are OPEN. Base: `feat/189-dof-capture-script` at 03db189; the S1 test commit
-> is 9503d49.
+> As of 2026-10-22: PRs #194 (S1+S2), #195 (S3) and #196 (S4) are merged into main (merge
+> commits 173c2aa, a13e14e, 5ea6bbc); this page is PR #197 (S5). #166, #191 and #192 are OPEN.
+> The S1 test run (272/272) was at commit 9503d49. The commands marked RUN were run on the stack
+> branches before those merges.
 >
 > The main session executed the commands marked RUN on 2026-10-22. A line marked "builder run
 > (self-reported)" was run by the builder agent, not the main session. Each command line is
@@ -130,7 +130,7 @@ make sim-ttl_servo-xiao_c3 WOKWI_ARGS="--scenario scenario_dof_frames.yaml --tim
 - The DOF run gave 399 `IMU,` lines. The `[frames]` counter line is CUMULATIVE, printed once
   per second. It read `sent=50,100,150,200,250,300,350` with `dropped=0` on every line.
   `max_emit_us` was between 1649 and 2298. All of these are on the SIMULATED clock, not
-  real-C3 values.
+  real-C3 values, and nothing here is measured on a C3.
 - No fall. A 30 deg/s gyro Z push gave a maximum sampled sim theta of 0.071 rad (about 4 deg),
   from the 79 `[ttl_servo] sim theta=` lines at 10 Hz. That agrees with `max |ax|` 0.071 g in
   the capture.
@@ -172,9 +172,10 @@ cd <FW> && mamba run -n esp32-dof python3 poc/esp32-dof/monitor/dof_wheel_bridge
 
 ## Known UNVERIFIED items
 
-- The Wokwi GUI gyro Z push direction (#185 item 4).
-- Real-C3 frame timing and `max_emit_us`: none measured. The values above are simulator values.
-- `PITCH_SIGN`, `WHEEL_DISPLAY_SIGN` and the wheel direction on Webots (FW #377, FW #359).
+- Sign map: see "What is sent".
+- `PITCH_SIGN`, `WHEEL_DISPLAY_SIGN` and the wheel direction on Webots: see "FW side" (FW #377,
+  FW #359).
+- Wokwi GUI gyro Z push direction: see "Wokwi headless run".
 
 ## Cross-links
 
@@ -182,6 +183,6 @@ cd <FW> && mamba run -n esp32-dof python3 poc/esp32-dof/monitor/dof_wheel_bridge
   constants).
 - BRC #160 (ttl_servo POC), #166 (POC removal, OPEN), #184 (epic), #185 (sign table),
   #186 (`lib/segway_imu`), #187 (DOF block), #188 (scenario), #189 (capture script),
-  #190 (this doc), #191 (human replay through the bridge, OPEN).
+  #190 (this doc), #191 (human replay through the bridge, OPEN), #192 (OPEN).
 - PRs #194 (`lib/segway_imu`), #195 (scenario), #196 (capture script), #197 (this doc).
-- `docs/TILT_SERVO_FRAMES.md` (the `tilt_servo` stream, a different program).
+- `docs/TILT_SERVO_FRAMES.md`.
