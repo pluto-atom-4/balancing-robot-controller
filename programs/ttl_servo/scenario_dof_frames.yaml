@@ -1,0 +1,36 @@
+# SIM-ONLY headless scenario for the DOF frame stream (#188, epic #184). Not hardware-validated.
+# Checks: the '[frames] on dof-sim' banner appears (the firmware is built with TTL_SERVO_DOF_FRAMES),
+#   'IMU,' frame lines appear after boot, and the 1 Hz '[frames] sent=' counter line appears
+#   after a 30 deg/s gyro Z push.
+# Does NOT check: frame checksums, the sign of any axis, wheel motion, or the Wokwi GUI. The main
+#   session checks the captured log by hand if it needs those.
+# Run (path relative to programs/ttl_servo; needs WOKWI_CLI_TOKEN):
+#   PLATFORMIO_BUILD_FLAGS="-D TTL_SERVO_DOF_FRAMES" make sim-ttl_servo-xiao_c3 WOKWI_ARGS="--scenario scenario_dof_frames.yaml --timeout 20000"
+# Exit 0 = scenario passed. wokwi-cli exits 42 on timeout / no match (for example the flag is
+#   missing, so there is no '[frames] on dof-sim' line); make prints Error 42 and exits 2.
+# Negative control: expected to FAIL (timeout). Run once by the main session on the default
+#   build (no -D TTL_SERVO_DOF_FRAMES): exit 2 / Error 42 observed.
+# No '[frames] stopped (fall)' wait: the push is meant to keep the body upright (no fall).
+# rotationZ is in deg/s (slider 30 gives gyro Z about 0.524 rad/s). wait-serial matches the
+#   lines printed in programs/ttl_servo/main.cpp setup() and loop(); change both together.
+# Timing: the 3500 ms delay is measured from the first 'IMU,' line seen. The 3 s rest phase
+#   (kDofRestTicks = 150 ticks) counts from firmware start, so 3500 ms leaves a margin of at
+#   least 0.5 s after the first frame. The 3000 ms hold is long enough for the 1 Hz
+#   '[frames] sent=' line to print at least once.
+name: ttl_servo dof frames
+version: 1
+steps:
+  - wait-serial: '[frames] on dof-sim'
+  - wait-serial: 'IMU,'
+  - delay: 3500ms
+  - set-control:
+      part-id: imu
+      control: rotationZ
+      value: 30
+  - delay: 3000ms
+  - wait-serial: '[frames] sent='
+  - set-control:
+      part-id: imu
+      control: rotationZ
+      value: 0
+  - delay: 1000ms
