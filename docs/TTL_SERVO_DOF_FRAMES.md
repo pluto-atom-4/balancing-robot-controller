@@ -90,21 +90,24 @@ Convention: nose = +X, `theta > 0` = lean forward, `theta = 0` upright.
 2. **PD sim and stimulus.** After rest, `SegwaySim` runs its PD from `theta = 0`. The stimulus
    is the Wokwi MPU gyro Z (`rotationZ`, deg/s), averaged at boot and then fed to the sim as a
    disturbance. It moves the body only; it never reaches the frame `gz`.
-3. **Fall, stream latched off.** On a fall the firmware prints `[ttl_servo] FELL ...`, then
+3. **Fall, stream latched off.** NOT run (code read only; read from `programs/ttl_servo/main.cpp`).
+   On a fall the firmware prints `[ttl_servo] FELL ...`, then
    `[frames] stopped (fall)` once. The DOF stream stays off until the board is reset. The chip
    stop path is unchanged: zero velocity, up to 3 tries, torque off if all fail. After the 1 s
    hold, the chip restart resets SegwaySim to the 15 deg start angle
    (`SIM_INIT_THETA_RAD = 0.262 rad`), and no frames resume.
-   The fall path with the DOF flag on is NOT run; it is from reading `programs/ttl_servo/main.cpp`
-   only. The scenario has no fall.
+   The scenario has no fall, so the fall path with the DOF flag on was not exercised.
 
 ## Capture script
 
 The script runs `wokwi-cli` headless on `programs/ttl_servo` and converts the serial log to the
 raw bridge CSV (header `seq,t_us,ax,ay,az,gx,gy,gz`). Its `-h` text is the authority for the
-options. It never builds firmware.
+options. It never builds firmware. It reads whatever is in the build directory, so the DOF
+build must be made first (the script's `-h` "Build first" step). A stale or default build gives
+the wrong log. Afterwards restore the default build, because `.pio` is shared.
 
 ```bash
+PLATFORMIO_BUILD_FLAGS="-D TTL_SERVO_DOF_FRAMES" pio run -e ttl_servo-xiao_c3   # RUN (see Flag and build commands)
 make wokwi-chips                                                                   # RUN (prerequisite of the capture run)
 WOKWI_CLI_TOKEN=<token> tools/ttl_servo_dof_capture.sh -o /abs/path/ttl_servo_dof_raw.csv   # RUN: exit 0, 399 rows (default scenario and timeout)
 tools/ttl_servo_dof_capture.sh -c /abs/path/existing.log -o /abs/path/out.csv      # NOT run (convert-only mode)
@@ -150,8 +153,8 @@ cd <FW>/poc/servo-wheel-dof && SWD_UDP_PORT=5006 ./run_demo.sh --gui            
 cd <FW> && mamba run -n esp32-dof python3 poc/esp32-dof/monitor/dof_wheel_bridge.py --replay /abs/path/ttl_servo_dof_raw.csv --core lqr --udp-port 5006   # NOT run
 ```
 
-- The capture CSV has the header and more than 50 frames, which `--replay` needs. The bridge
-  arm was NOT run on this CSV.
+- The capture CSV has the header and more than 50 frames. Per the FW README / FW code, not checked
+  in BRC, `--replay` needs both. The bridge arm was NOT run on this CSV.
 - Owner-reported (2026-10-22, #185 comments; not independently checked; conditions not
   recorded): in Webots, a nose-down +20 deg replay leaned the model forward. The LQR wheel
   turned toward the lean and the PID wheel turned away.
