@@ -20,6 +20,10 @@
 // -D TTL_SERVO_FALL_TEST: low gains (kp=2 kd=1) so the frame falls within seconds.
 // -D TTL_SERVO_KILL_POC: SIM-ONLY disposable kill-switch POC for #148 (GPIO3 button, active low).
 // Delete with #151; limits: see kill_poc_poll.
+// -D TTL_SERVO_DOF_FRAMES: SIM-ONLY synthetic IMU frame stream (#187, epic #184). Gravity-only
+// accel and pitch-rate gyro from SegwaySim theta (lib/segway_imu, signs UNVERIFIED per #185),
+// not hardware-validated. Frames are the sim state, never the chip's accel or gyro. The body
+// rests upright for kDofRestTicks ticks, then the PD sim runs. The stream stops on a fall.
 #include <Arduino.h>
 #include <Wire.h>
 #include <Adafruit_MPU6050.h>
@@ -27,7 +31,12 @@
 #include <Dynamixel2Arduino.h>
 #include <math.h>
 #include <segway_sim.h>
-#ifdef TTL_SERVO_IMU_FRAMES
+#if defined(TTL_SERVO_DOF_FRAMES) && defined(TTL_SERVO_IMU_FRAMES)
+#error "TTL_SERVO_DOF_FRAMES and TTL_SERVO_IMU_FRAMES are mutually exclusive: define only one"
+#endif
+#if defined(TTL_SERVO_IMU_FRAMES) || defined(TTL_SERVO_DOF_FRAMES)
+// Shared frame block: POC raw-gyro frames (TTL_SERVO_IMU_FRAMES) and the DOF sim stream
+// (TTL_SERVO_DOF_FRAMES). The POC-only text below is the TTL_SERVO_IMU_FRAMES note.
 // -D TTL_SERVO_IMU_FRAMES: SIM-ONLY disposable POC (#160), raw IMU frames on USB CDC.
 //   Delete with the removal issue (#166).
 //   One IMU,<seq>,<t_us>,... frame per loop tick with a good IMU read (format: lib/imu_frame).
@@ -42,6 +51,9 @@
 //   lines (10 Hz sim line, 1 Hz [dxl] line) are more likely to block if the host stalls or is
 //   absent. Documented, not fixed: no setTxTimeoutMs is set.
 #include <imu_frame.h>
+#endif
+#ifdef TTL_SERVO_DOF_FRAMES
+#include <segway_imu.h>  // SIM-ONLY DOF stream synthesis (#186), signs UNVERIFIED (#185)
 #endif
 
 // ===== Configuration =====
@@ -88,8 +100,10 @@ static uint8_t kill_low_ticks = 0;   // consecutive LOW ticks on KILL_PIN
 static bool kill_latched = false;    // POC kill pressed: no further polling
 #endif
 
+#if defined(TTL_SERVO_IMU_FRAMES) || defined(TTL_SERVO_DOF_FRAMES)
 #ifdef TTL_SERVO_IMU_FRAMES
 static constexpr float    kGravityMs2 = 9.80665f;    // m/s^2 per g (frame accel scale)
+#endif
 static constexpr uint32_t FRAMES_PRINT_PERIOD_MS = 1000;  // 1 Hz [frames] counters line
 // Free TX bytes needed before the [frames] line is printed (worst case line is 67 bytes).
 static constexpr int      kFramesLineRoom = 80;
@@ -99,6 +113,11 @@ static uint32_t frames_dropped = 0;
 static uint32_t frames_max_emit_us = 0; // worst frame format+write time since the last print
 static uint32_t lastFramesPrintMs = 0;
 static char frame_buf[128];             // one frame, NUL included (about 65-95 bytes used)
+#endif
+#ifdef TTL_SERVO_DOF_FRAMES
+static constexpr int      kDofRestTicks = 150;  // 3 s at 50 Hz, counted in loop ticks (not ms)
+static int dof_rest_ticks = 0;          // physics frozen while below kDofRestTicks
+static bool dof_stream_stopped = false; // latched on a fall: no more DOF frames until reset
 #endif
 
 // ===== Helpers =====
@@ -115,6 +134,27 @@ static float clamp_dt_s(uint32_t dt_ms) {
   if (dt > 0.1f) dt = 0.1f;
   return dt;
 }
+
+#if defined(TTL_SERVO_IMU_FRAMES) || defined(TTL_SERVO_DOF_FRAMES)
+// Formats one frame from a_g/g_dps and writes it only if the whole frame fits in the free
+// CDC TX space (one write, no blocking). seq advances on every attempt, sent or dropped.
+static void frames_emit(const float a_g[3], const float g_dps[3]) {
+  const uint32_t t0 = micros();
+  const size_t n = imu_frame::format(frame_buf, sizeof frame_buf, frame_seq, t0, a_g, g_dps);
+  // avail is an int: a negative value would convert to a huge size_t and pass the
+  // >= n test, so the avail > 0 guard stays.
+  const int avail = Serial.availableForWrite();
+  if (n > 0 && avail > 0 && static_cast<size_t>(avail) >= n) {
+    Serial.write(reinterpret_cast<const uint8_t*>(frame_buf), n);
+    ++frames_sent;
+  } else {
+    ++frames_dropped;
+  }
+  ++frame_seq;  // every attempted frame advances seq, so a host sees gaps on drops
+  const uint32_t el = micros() - t0;
+  if (el > frames_max_emit_us) frames_max_emit_us = el;
+}
+#endif
 
 // Goal velocity 0, up to 3 attempts. Each attempt is timed and counted.
 static bool write_vel_zero_with_retries() {
@@ -331,11 +371,18 @@ void setup() {
 #ifdef TTL_SERVO_IMU_FRAMES
   Serial.println("[frames] on raw-gyro");
 #endif
+#ifdef TTL_SERVO_DOF_FRAMES
+  Serial.println("[frames] on dof-sim");
+#endif
 
 #ifdef TTL_SERVO_HORN_SELFTEST
   horn_selftest();
 #endif
+#ifdef TTL_SERVO_DOF_FRAMES
+  segway_sim.reset(0.0f);  // DOF: start upright for the rest phase
+#else
   segway_sim.reset(SIM_INIT_THETA_RAD);
+#endif
 #ifdef TTL_SERVO_FALL_TEST
   segway_sim.params.kp = 2.0f;
   segway_sim.params.kd = 1.0f;
@@ -344,12 +391,16 @@ void setup() {
 #ifdef TTL_SERVO_KILL_POC
   pinMode(KILL_PIN, INPUT_PULLUP);
 #endif
+#ifdef TTL_SERVO_DOF_FRAMES
+  Serial.println("[ttl_servo] Sim starts upright at 0 deg for the DOF rest phase (~3 s), then PD. Move gyro Z to push.\n");
+#else
   Serial.println("[ttl_servo] Sim starts at 15 deg; PD should settle to 0. Move gyro Z to push.\n");
+#endif
 
   lastLoopMs = millis();
   lastPrintMs = lastLoopMs;
   lastBusPrintMs = lastLoopMs;
-#ifdef TTL_SERVO_IMU_FRAMES
+#if defined(TTL_SERVO_IMU_FRAMES) || defined(TTL_SERVO_DOF_FRAMES)
   lastFramesPrintMs = lastLoopMs;
 #endif
 }
@@ -398,11 +449,24 @@ void loop() {
     // 3. PD -> physics, same code the native tests exercise. The returned PD
     // command is ignored: the chip gets the plant's lagged wheel velocity.
     float dt_s = clamp_dt_s(dt_ms);
-    (void)segway_sim.tick_cmd(gyroZ_filtered_rad_s, dt_s);
+#ifdef TTL_SERVO_DOF_FRAMES
+    // DOF rest phase: physics frozen at theta 0 with the wheel at 0 (no servo write).
+    const bool dof_rest = dof_rest_ticks < kDofRestTicks;
+    if (dof_rest) ++dof_rest_ticks;
+#else
+    const bool dof_rest = false;
+#endif
+    if (!dof_rest) (void)segway_sim.tick_cmd(gyroZ_filtered_rad_s, dt_s);
 
     if (segway_sim.has_fallen) {
       // 4. Fall first, so a fall tick never writes the lagged velocity.
       Serial.printf("[ttl_servo] FELL theta=%.3f\n", segway_sim.theta_rad);
+#ifdef TTL_SERVO_DOF_FRAMES
+      if (!dof_stream_stopped) {
+        dof_stream_stopped = true;
+        Serial.println("[frames] stopped (fall)");
+      }
+#endif
       if (servo_ok) {
         if (!stop_chip_best_effort("after fall")) latch_bus_down();
       }
@@ -443,29 +507,27 @@ void loop() {
   // 250 deg/s in setup(); the accel range is never set here (Adafruit library default, 2 g).
   // tilt_servo uses 500 deg/s and 4 g, so raw scales differ between the two POCs.
   if (imu_ok) {
-    // t_us is the emit time (micros at this block), not the IMU sample time.
-    const uint32_t t0 = micros();
     const float a_g[3] = {accel.acceleration.x / kGravityMs2,
                           accel.acceleration.y / kGravityMs2,
                           accel.acceleration.z / kGravityMs2};
     const float g_dps[3] = {gyro.gyro.x * segway::kRadToDeg, gyro.gyro.y * segway::kRadToDeg,
                             gyro.gyro.z * segway::kRadToDeg};
-    const size_t n = imu_frame::format(frame_buf, sizeof frame_buf, frame_seq, t0, a_g, g_dps);
-    // Never block: one write, and only if the whole frame fits in the free CDC TX space.
-    // avail is an int: a negative value would convert to a huge size_t and pass the
-    // >= n test, so the avail > 0 guard stays.
-    const int avail = Serial.availableForWrite();
-    if (n > 0 && avail > 0 && static_cast<size_t>(avail) >= n) {
-      Serial.write(reinterpret_cast<const uint8_t*>(frame_buf), n);
-      ++frames_sent;
-    } else {
-      ++frames_dropped;
-    }
-    ++frame_seq;  // every attempted frame advances seq, so a host sees gaps on drops
-    const uint32_t el = micros() - t0;
-    if (el > frames_max_emit_us) frames_max_emit_us = el;
+    frames_emit(a_g, g_dps);  // t_us is the emit time, not the IMU sample time
   }
+#endif
+#ifdef TTL_SERVO_DOF_FRAMES
+  // 4c. SIM-ONLY synthetic DOF stream (#187, #186). Built from SegwaySim state after the step,
+  // never from the chip's or the MPU's accel/gyro (gz comes out 0). Not on a fall tick
+  // (holding is set there), not while holding, not after the stream is stopped by a fall.
+  // Signs UNVERIFIED (#185); not hardware-validated.
+  if (!holding && !dof_stream_stopped) {
+    float a_g[3], g_dps[3];
+    segway_imu::from_state(segway_sim.theta_rad, segway_sim.theta_dot_rad_s, a_g, g_dps);
+    frames_emit(a_g, g_dps);
+  }
+#endif
 
+#if defined(TTL_SERVO_IMU_FRAMES) || defined(TTL_SERVO_DOF_FRAMES)
   // 1 Hz counters line. Outside the servo_ok [dxl] block, so it prints with no servo.
   // Gated on free TX space (kFramesLineRoom): with less room the print is skipped and the
   // counters and the timer are NOT reset, so it prints at the next tick that has room.
