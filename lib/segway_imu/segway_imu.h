@@ -12,9 +12,10 @@
 //   gx = 0                  gy = theta_dot * 57.29578 deg/s  gz = 0 (yaw, never a pitch input)
 //
 // Input sanitising: a non-finite theta or theta_dot is treated as 0, so a NaN
-// theta gives the rest vector (0, 0, 1). Output clamps: gyro to +-250 deg/s
-// (ttl_servo MPU range), accel to +-2 g. Outputs are normalised so that no
-// component is -0.0f. The arrays feed imu_frame::format directly.
+// theta gives the rest vector (0, 0, 1). Gyro is clamped to +-250 deg/s
+// (ttl_servo MPU range). Accel needs no clamp: it is bounded by construction
+// (|a| = 1 g for finite input). Outputs are normalised so that no component is
+// -0.0f. The arrays feed imu_frame::format directly.
 
 #include <cmath>
 
@@ -22,7 +23,6 @@ namespace segway_imu {
 
 constexpr float kRadToDeg = 57.29578f;
 constexpr float kGyroMaxDps = 250.0f;
-constexpr float kAccelMaxG = 2.0f;
 
 namespace detail {
 
@@ -45,11 +45,10 @@ inline void from_state(float theta_rad, float theta_dot_rad_s, float accel_g[3],
   const float theta = detail::finiteOrZero(theta_rad);
   const float theta_dot = detail::finiteOrZero(theta_dot_rad_s);
 
-  const float ax = detail::clampTo(-std::sin(theta), -kAccelMaxG, kAccelMaxG);
-  const float az = detail::clampTo(std::cos(theta), -kAccelMaxG, kAccelMaxG);
-  accel_g[0] = detail::noNegZero(ax);
+  // Bounded by construction: sin^2 + cos^2 = 1, so no clamp is needed.
+  accel_g[0] = detail::noNegZero(-std::sin(theta));
   accel_g[1] = 0.0f;
-  accel_g[2] = detail::noNegZero(az);
+  accel_g[2] = detail::noNegZero(std::cos(theta));
 
   const float gy = detail::clampTo(theta_dot * kRadToDeg, -kGyroMaxDps, kGyroMaxDps);
   gyro_dps[0] = 0.0f;
