@@ -12,7 +12,7 @@
 >
 > The main session executed the commands marked RUN on 2026-10-22. A line marked "builder run
 > (self-reported)" was run by the builder agent, not the main session. Each command line is
-> marked RUN or NOT run.
+> marked RUN (main session), builder run (self-reported), or NOT run.
 
 FW is freecad-workspace, the Python sim repo (Webots, bridge). BRC is this repo.
 
@@ -157,7 +157,9 @@ cd <FW> && mamba run -n esp32-dof python3 poc/esp32-dof/monitor/dof_wheel_bridge
   in BRC, `--replay` needs both. The bridge arm was NOT run on this CSV.
 - Owner-reported (2026-10-22, #185 comments; not independently checked; conditions not
   recorded): in Webots, a nose-down +20 deg replay leaned the model forward. The LQR wheel
-  turned toward the lean and the PID wheel turned away.
+  turned toward the lean and the PID wheel turned away. This result is NOT tied to this capture
+  CSV or this build (the owner's replay conditions were not recorded); a replay of this stream
+  is #191 (OPEN).
 
 ## What this is NOT
 
