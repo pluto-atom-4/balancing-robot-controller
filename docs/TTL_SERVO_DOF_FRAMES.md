@@ -7,8 +7,8 @@
 >
 > As of 2026-10-22: PRs #194 (S1+S2), #195 (S3) and #196 (S4) are merged into main (merge
 > commits 173c2aa, a13e14e, 5ea6bbc); this page is PR #197 (S5). #166, #191 and #192 are OPEN.
-> The S1 test run (272/272) was at commit 9503d49. The commands marked RUN were run on the stack
-> branches before those merges.
+> The S1 test run (272/272) was at commit 9503d49. The commands marked RUN were run before the
+> merges, on the branch commits that #194-#196 then merged.
 >
 > The main session executed the commands marked RUN on 2026-10-22. A line marked "builder run
 > (self-reported)" was run by the builder agent, not the main session. Each command line is
@@ -175,7 +175,7 @@ cd <FW> && mamba run -n esp32-dof python3 poc/esp32-dof/monitor/dof_wheel_bridge
 - Sign map: see "What is sent".
 - `PITCH_SIGN`, `WHEEL_DISPLAY_SIGN` and the wheel direction on Webots: see "FW side" (FW #377,
   FW #359).
-- Wokwi GUI gyro Z push direction: see "Wokwi headless run".
+- GUI gyro-Z push direction: see "Wokwi headless run".
 
 ## Cross-links
 
@@ -183,6 +183,6 @@ cd <FW> && mamba run -n esp32-dof python3 poc/esp32-dof/monitor/dof_wheel_bridge
   constants).
 - BRC #160 (ttl_servo POC), #166 (POC removal, OPEN), #184 (epic), #185 (sign table),
   #186 (`lib/segway_imu`), #187 (DOF block), #188 (scenario), #189 (capture script),
-  #190 (this doc), #191 (human replay through the bridge, OPEN), #192 (OPEN).
-- PRs #194 (`lib/segway_imu`), #195 (scenario), #196 (capture script), #197 (this doc).
+  #190 (this doc), #191 (human replay through the bridge, OPEN), #192 (OPEN, owner: CLAUDE.md pointer).
+- PRs #194 (`lib/segway_imu` and the DOF block), #195 (scenario), #196 (capture script), #197 (this doc).
 - `docs/TILT_SERVO_FRAMES.md`.
