@@ -1,42 +1,9 @@
 #!/usr/bin/env bash
 # tools/ttl_servo_dof_capture.sh
 #
-# SIM-ONLY helper for the ttl_servo DOF frame stream (epic #184, S4 #189).
-# Not hardware-validated. Nothing here runs on a robot.
-#
-# WHAT IT DOES
-#   1. Capture mode (default): runs wokwi-cli headless on programs/ttl_servo with a scenario
-#      (default scenario_dof_frames.yaml), writes the serial log to LOG, then converts it.
-#   2. Convert-only mode (-c EXISTING.log): skips wokwi-cli and converts an existing serial log.
-#   3. Conversion: keeps only complete 'IMU,' frame lines (CR stripped, shape checked by a
-#      regex), strips the 'IMU,' prefix and the '*HH' suffix, and writes OUT.csv with the header
-#      seq,t_us,ax,ay,az,gx,gy,gz. That is the RAW CSV the FW dof_wheel_bridge --replay reads.
-#   4. Prints rows kept, rows dropped, first and last seq to stderr. If fewer than 50 rows are
-#      kept it warns and exits 3 (the bridge needs 50 frames to arm; 49 exits 2).
-#
-# WHAT IT DOES NOT DO
-#   - It does NOT build firmware. The caller builds first (see the sequence below). Capture mode
-#     uses whatever is in .pio/build/ttl_servo-xiao_c3, so a build without the flag gives no
-#     'IMU,' lines and the scenario times out.
-#   - It does NOT verify checksums. The *HH suffix is stripped, not checked. To check a capture,
-#     parse it with the FW dof_frame.parse_line (freecad-workspace, poc/esp32-dof).
-#   - It does NOT run Webots or the FW bridge.
-#   - A frame split by wokwi-cli's own log lines fails the regex and is dropped. The summary
-#     counts it as dropped (prefix 'IMU,' lines minus kept rows).
-#
-# COMMAND SEQUENCE
-#   a. export WOKWI_CLI_TOKEN=...          (capture mode only)
-#   b. PLATFORMIO_BUILD_FLAGS="-D TTL_SERVO_DOF_FRAMES" pio run -e ttl_servo-xiao_c3
-#   c. tools/ttl_servo_dof_capture.sh -o /abs/path/ttl_servo_dof_raw.csv
-#   d. In the FW repo (freecad-workspace), NOT run by this script and not verified here:
-#        SWD_UDP_PORT=5006 ./run_demo.sh      (in poc/servo-wheel-dof; starts Webots)
-#        mamba run -n esp32-dof python3 poc/esp32-dof/monitor/dof_wheel_bridge.py \
-#          --replay /abs/path/ttl_servo_dof_raw.csv --core lqr --udp-port 5006
-#   e. Shared build dir: .pio/build/ttl_servo-xiao_c3 now holds the DOF build. Rebuild it
-#      without the flag (pio run -e ttl_servo-xiao_c3) before any normal sim, and rebuild the
-#      default env (pio run) when you are done.
-#
-# Usage and exit codes: run with -h.
+# SIM-ONLY, not hardware-validated. Converts the serial log of a headless Wokwi run of
+# programs/ttl_servo (DOF frame stream) to the raw CSV the FW bridge --replay reads.
+# No firmware build, no checksum check, no Webots. See -h for usage and exit codes.
 
 set -u
 
@@ -44,32 +11,41 @@ usage() {
   cat <<'EOF'
 Usage: tools/ttl_servo_dof_capture.sh [-o OUT.csv] [-s SCENARIO.yaml] [-t TIMEOUT_MS] [-l LOG] [-c EXISTING.log]
 
-  -o OUT.csv        raw bridge CSV to write (default: ttl_servo_dof_raw.csv)
-  -s SCENARIO.yaml  scenario file; relative paths are looked up in programs/ttl_servo first,
-                    then in the current directory (default: scenario_dof_frames.yaml)
-  -t TIMEOUT_MS     wokwi-cli timeout in milliseconds (default: 20000)
-  -l LOG            serial log written by wokwi-cli (default: OUT.csv with .log appended)
-  -c EXISTING.log   convert-only mode: skip wokwi-cli, convert this serial log.
-                    -s, -t and -l are ignored in this mode.
+Runs wokwi-cli headless on programs/ttl_servo and converts its serial log to a raw bridge CSV
+(header seq,t_us,ax,ay,az,gx,gy,gz). With -c, converts an existing serial log instead.
+
+  -o OUT.csv        CSV to write (default: ttl_servo_dof_raw.csv)
+  -s SCENARIO.yaml  scenario; relative paths are looked up in programs/ttl_servo first, then in
+                    the current directory (default: scenario_dof_frames.yaml)
+  -t TIMEOUT_MS     capture mode only: wokwi-cli timeout in ms (default: 20000)
+  -l LOG            capture mode only: serial log path (default: OUT.csv with .log appended).
+                    An existing LOG is moved to LOG.prev before the run.
+  -c EXISTING.log   convert-only mode: skip wokwi-cli and the chip check; -s, -t, -l are ignored
   -h                show this help
 
-Capture mode needs WOKWI_CLI_TOKEN set, and the firmware already built with
-PLATFORMIO_BUILD_FLAGS="-D TTL_SERVO_DOF_FRAMES" pio run -e ttl_servo-xiao_c3.
-The wokwi-cli binary is taken from $WOKWI_CLI, else wokwi-cli on PATH.
+Capture mode, in order:
+  1. Build first: PLATFORMIO_BUILD_FLAGS="-D TTL_SERVO_DOF_FRAMES" pio run -e ttl_servo-xiao_c3
+  2. make wokwi-chips   (only if the chip .wasm files are missing; needs network on first run)
+  3. WOKWI_CLI_TOKEN=... tools/ttl_servo_dof_capture.sh -o OUT.csv
+  Afterwards rebuild without the flag: pio run -e ttl_servo-xiao_c3 (shared .pio build dir).
 
-Exit codes:
-  0  capture passed (wokwi-cli exit 0) and at least 50 rows
-  3  fewer than 50 rows (bridge would not arm)
-  1  usage, input or environment error
-  N  wokwi-cli's own nonzero exit code (for example 42 on timeout); the log is still converted
+The script never builds firmware. WOKWI_CLI selects the wokwi-cli binary (default: wokwi-cli on PATH).
+
+Exit codes. wokwi-cli's own exit codes (for example 1 or 3) can collide with the codes below.
+  0  capture passed (wokwi-cli exit 0) and at least 50 rows; convert-only: at least 50 rows
+  3  fewer than 50 rows
+  1  usage, input or environment error, missing chip .wasm, or the CSV could not be written
+  N  wokwi-cli's own nonzero exit code (for example 42 on timeout); the log is still converted.
+     If the CSV then cannot be written, the script exits 1 and says that wokwi-cli exited N.
 EOF
 }
 
-# Frame shape: seq, t_us, six decimal values (ax ay az gx gy gz), then '*HH' (two hex digits).
-# Checksums are not verified here.
+# Frame shape: seq, t_us, six decimal values (ax ay az gx gy gz), then '*HH' (two uppercase hex
+# digits). Checksums are not verified here.
 FRAME_RE='^IMU,[0-9]+,[0-9]+,(-?[0-9]+\.[0-9]+,){5}-?[0-9]+\.[0-9]+\*[0-9A-F]{2}$'
 HEADER='seq,t_us,ax,ay,az,gx,gy,gz'
 MIN_ROWS=50
+CHIP_WASMS='wokwi-fe-urt-1.chip.wasm wokwi-ttl-servo.chip.wasm'
 
 OUT="ttl_servo_dof_raw.csv"
 SCEN="scenario_dof_frames.yaml"
@@ -104,67 +80,80 @@ abspath() {
   esac
 }
 
+# same_file A B: true when both names are the same path (or hard links to one existing file).
+same_file() {
+  [ "$1" = "$2" ] && return 0
+  [ -e "$2" ] && [ "$1" -ef "$2" ]
+}
+
 OUT=$(abspath "$OUT")
-if [ -z "$LOG" ]; then
-  LOG="$OUT.log"
-fi
-LOG=$(abspath "$LOG")
-
-case "$TMO" in
-  ''|*[!0-9]*) echo "error: -t needs a whole number of milliseconds, got '$TMO'" >&2; exit 1 ;;
-esac
-
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO=$(cd "$SCRIPT_DIR/.." && pwd)
 PROJ="$REPO/programs/ttl_servo"
 
-# convert SRC DST: sets KEPT, prints the summary to stderr. Returns 1 on a write error.
 KEPT=0
+CONV_TMP=""
+
+# convert SRC: writes the CSV to a temp file next to OUT, prints the summary, then moves the temp
+# to OUT. The temp is left in place (and its path printed) if a write or the move fails.
 convert() {
-  local src=$1 dst=$2 prefix dropped first last
+  local src=$1 prefix dropped first last
   prefix=$(tr -d '\r' < "$src" | grep -c '^IMU,')
+
+  CONV_TMP=$(mktemp "$OUT.XXXXXX") || { echo "error: cannot create a temp file next to $OUT" >&2; return 1; }
   {
     printf '%s\n' "$HEADER"
     tr -d '\r' < "$src" | grep -E "$FRAME_RE" \
       | sed -e 's/^IMU,//' -e 's/\*[0-9A-F][0-9A-F]$//'
-  } > "$dst" || return 1
+  } > "$CONV_TMP" || { echo "error: write failed; temp file left at $CONV_TMP" >&2; return 1; }
 
-  KEPT=$(( $(wc -l < "$dst") - 1 ))
+  KEPT=$(( $(wc -l < "$CONV_TMP") - 1 ))
   if [ "$KEPT" -gt 0 ]; then
-    first=$(sed -n '2p' "$dst" | cut -d, -f1)
-    last=$(tail -n 1 "$dst" | cut -d, -f1)
+    first=$(sed -n '2p' "$CONV_TMP" | cut -d, -f1)
+    last=$(tail -n 1 "$CONV_TMP" | cut -d, -f1)
   else
     first="-"
     last="-"
   fi
   dropped=$(( prefix - KEPT ))
 
-  echo "convert: $src -> $dst" >&2
+  echo "convert: $src -> $OUT" >&2
   echo "  rows kept:    $KEPT (header excluded)" >&2
-  echo "  rows dropped: $dropped ('IMU,' lines that failed the frame shape)" >&2
+  echo "  IMU lines dropped: at least $dropped (IMU-prefixed lines that failed the frame shape;" >&2
+  echo "                tail fragments of split frames are not counted)" >&2
   echo "  first seq:    $first" >&2
   echo "  last seq:     $last" >&2
-  return 0
+
+  chmod 644 "$CONV_TMP" 2>/dev/null
+  if mv -f "$CONV_TMP" "$OUT"; then
+    echo "wrote: $OUT" >&2
+    return 0
+  fi
+  echo "error: could not move the CSV into place; temp file left at $CONV_TMP" >&2
+  return 1
 }
 
 check_rows() {
   if [ "$1" -lt "$MIN_ROWS" ]; then
-    echo "WARNING: only $1 rows. The FW bridge --replay needs at least $MIN_ROWS frames to arm (49 exits 2)." >&2
+    echo "WARNING: only $1 rows. The FW bridge needs $MIN_ROWS frames to arm (per its README; not verified here)." >&2
     return 3
   fi
   return 0
 }
 
-# Convert-only mode: no wokwi-cli, no token.
+# Convert-only mode: no wokwi-cli, no token, no chip check.
 if [ -n "$SRC_LOG" ]; then
   SRC_LOG=$(abspath "$SRC_LOG")
   if [ ! -r "$SRC_LOG" ]; then
     echo "error: cannot read serial log: $SRC_LOG" >&2
     exit 1
   fi
+  if same_file "$SRC_LOG" "$OUT"; then
+    echo "error: -c and -o name the same file ($OUT); refusing to overwrite the input" >&2
+    exit 1
+  fi
   echo "convert-only mode: wokwi-cli is not run" >&2
-  if ! convert "$SRC_LOG" "$OUT"; then
-    echo "error: cannot write $OUT" >&2
+  if ! convert "$SRC_LOG"; then
     exit 1
   fi
   check_rows "$KEPT"
@@ -177,9 +166,30 @@ if [ -z "${WOKWI_CLI_TOKEN:-}" ]; then
   exit 1
 fi
 
+case "$TMO" in
+  ''|*[!0-9]*) echo "error: -t needs a whole number of milliseconds, got '$TMO'" >&2; exit 1 ;;
+esac
+
 WOKWI="${WOKWI_CLI:-wokwi-cli}"
 if ! command -v "$WOKWI" >/dev/null 2>&1; then
   echo "error: $WOKWI not found (put wokwi-cli on PATH or set WOKWI_CLI)" >&2
+  exit 1
+fi
+
+for w in $CHIP_WASMS; do
+  if [ ! -r "$REPO/wokwi/chips/$w" ]; then
+    echo "error: chip WASM missing: wokwi/chips/$w" >&2
+    echo "run: make wokwi-chips" >&2
+    exit 1
+  fi
+done
+
+if [ -z "$LOG" ]; then
+  LOG="$OUT.log"
+fi
+LOG=$(abspath "$LOG")
+if same_file "$LOG" "$OUT"; then
+  echo "error: -l and -o name the same file ($OUT); refusing to overwrite the CSV with the log" >&2
   exit 1
 fi
 
@@ -198,6 +208,15 @@ if [ ! -r "$SCEN_ABS" ]; then
   exit 1
 fi
 
+# Never convert a stale log as a fresh capture: move any old one aside first.
+if [ -e "$LOG" ]; then
+  if ! mv -f "$LOG" "$LOG.prev"; then
+    echo "error: could not move the old log aside: $LOG" >&2
+    exit 1
+  fi
+  echo "moved the old log to $LOG.prev" >&2
+fi
+
 echo "capture: wokwi-cli --timeout $TMO --scenario $SCEN_ABS --serial-log-file $LOG $PROJ" >&2
 ( cd "$REPO" && "$WOKWI" --timeout "$TMO" --scenario "$SCEN_ABS" --serial-log-file "$LOG" "$PROJ" )
 RC=$?
@@ -205,7 +224,7 @@ RC=$?
 if [ "$RC" -eq 0 ]; then
   echo "wokwi-cli: scenario passed (exit 0)" >&2
 else
-  echo "wokwi-cli: exit $RC (42 = timeout or no match; check the flag and the scenario). Converting the log anyway." >&2
+  echo "wokwi-cli: exit $RC (42 = timeout: the scenario did not finish). Converting the log anyway." >&2
 fi
 
 if [ ! -r "$LOG" ]; then
@@ -214,8 +233,10 @@ if [ ! -r "$LOG" ]; then
   exit 1
 fi
 
-if ! convert "$LOG" "$OUT"; then
-  echo "error: cannot write $OUT" >&2
+if ! convert "$LOG"; then
+  if [ "$RC" -ne 0 ]; then
+    echo "error: the CSV could not be written, and wokwi-cli had exited $RC" >&2
+  fi
   exit 1
 fi
 check_rows "$KEPT"
