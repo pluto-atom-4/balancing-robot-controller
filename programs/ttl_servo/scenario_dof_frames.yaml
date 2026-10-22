@@ -6,14 +6,17 @@
 #   session checks the captured log by hand if it needs those.
 # Run (path relative to programs/ttl_servo; needs WOKWI_CLI_TOKEN):
 #   PLATFORMIO_BUILD_FLAGS="-D TTL_SERVO_DOF_FRAMES" make sim-ttl_servo-xiao_c3 WOKWI_ARGS="--scenario scenario_dof_frames.yaml --timeout 20000"
-# Exit 0 = scenario passed. Exit 42 = timeout, a wait-serial did not match (for example the
-#   flag is missing, so there is no '[frames] on dof-sim' line).
-# Negative control: the default build (no -D TTL_SERVO_DOF_FRAMES) must FAIL this scenario,
-#   because the banner never prints. Run it without PLATFORMIO_BUILD_FLAGS to confirm exit 42.
-# No '[frames] stopped (fall)' wait: the push is meant to keep the body upright (about 4 deg).
+# Exit 0 = scenario passed. wokwi-cli exits 42 on timeout / no match (for example the flag is
+#   missing, so there is no '[frames] on dof-sim' line); make prints Error 42 and exits 2.
+# Negative control: expected to FAIL (timeout). Run once by the main session on the default
+#   build (no -D TTL_SERVO_DOF_FRAMES): exit 2 / Error 42 observed.
+# No '[frames] stopped (fall)' wait: the push is meant to keep the body upright (no fall).
 # rotationZ is in deg/s (slider 30 gives gyro Z about 0.524 rad/s). wait-serial matches the
 #   lines printed in programs/ttl_servo/main.cpp setup() and loop(); change both together.
-# Timing: 3500 ms passes the 3 s (kDofRestTicks = 150) rest phase before the push.
+# Timing: the 3500 ms delay is measured from the first 'IMU,' line seen. The 3 s rest phase
+#   (kDofRestTicks = 150 ticks) counts from firmware start, so 3500 ms leaves a margin of at
+#   least 0.5 s after the first frame. The 3000 ms hold is long enough for the 1 Hz
+#   '[frames] sent=' line to print at least once.
 name: ttl_servo dof frames
 version: 1
 steps:
