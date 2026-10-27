@@ -333,19 +333,21 @@ real rest pitch is outside that band, the LQR does not arm: record `did not arm`
 **Precondition.** Step 3 done (gyro calibrated). Wheels off the ground (G1). Record the number of servos
 connected (one or two).
 
-**Why the window start matters.** The `[loop]` statistics are cumulative since calibration end, and they add
-EVERY control tick, whatever the state [programs/balance/main.cpp:101-104 reset in onCalibrated; main.cpp:182
-adds every tick]. Ticks in `WaitingForLean` and `Idle` write nothing to the servos and can be faster. So the
-numbers represent servo load only if the state was `Running` continuously from calibration end through the
-reading. With the current firmware, `Running` needs `kLeanGateHoldTicks` = 25 ticks in the gate first
-[config.h:41-42], so the robot cannot reach `Running` on the first tick after calibration, and those early ticks
-are in the statistics. Unless the window rule is changed (no change is made here), this step is NOT CHECKED.
+**Step 7 rule: owner decision 2026-10-27.** The `[loop]` statistics are cumulative since calibration end and
+include every control tick, including the lean-gate ticks before arming [programs/balance/main.cpp:101-104
+reset; main.cpp:182 adds every tick]. Those pre-arm ticks write nothing to the servos and are faster. The owner
+decided to ALLOW them and to RECORD the dilution. The gate holds `kLeanGateHoldTicks` = 25 ticks (0.5 s at 50 Hz)
+before arming [programs/balance/config.h:42]. At about 1500 samples that is about 1.7 percent of the samples,
+so the mean may be slightly optimistic.
 
-**Action.** Run the balance env (the step 6 session is fine). Read the first `[loop]` line printed at least about
-30 s after calibration end. Calibration end is the `[bal] ... waiting for lean gate` line [main.cpp:109].
-`[loop]` prints once per second [main.cpp:44, 190-197]. The `[bal]` lines (10 Hz) show `state=`; it must read
-`Running` on every `[bal]` line from the lean-gate line through the reading [main.cpp:184-189]. Record `n` from
-that `[loop]` line. Pick the window by time, not by line count.
+**Action.** Run the balance env (the step 6 session is fine). Arm promptly: hold the robot in the gate so that
+`[bal] ... ARMED` follows the lean-gate line without a long wait. Once `state=Running`, leave it running at least
+about 30 s. Then read the first `[loop]` line printed at least 30 s after arming. `[loop]` prints once per second
+[main.cpp:44, 190-197]. The `[bal]` lines (10 Hz) show `state=` [main.cpp:184-189]; check that they read `Running`
+on every line from arming through the reading. Record `n` from that `[loop]` line.
+- If the robot was not Running continuously after arming (a re-arm, a latch, or a long wait in `WaitingForLean`
+  before arming), the result is NOT CHECKED. Long pre-arm waits dilute the statistics much more than 25 ticks.
+- Restart: reset the board, then arm promptly and take the window again from the new arming.
 - Line format: `[loop] min=<us> mean=<us> max=<us> over=<n> n=<n> us`.
 
 **Pass criteria** (exactly as in the 2026-10-07 comment of `pluto-atom-4/balancing-robot-controller#34`):
@@ -361,11 +363,14 @@ that `[loop]` line. Pick the window by time, not by line count.
 different checks. A loop steadily at 22 ms gives over = 0 and still fails the mean check. The 29000 us
 value is 20 ms nominal plus 9 ms jitter; the repo marks that derivation TODO(human) [config.h:32-33].
 
-**Record.** Servos connected: 1 / 2. `state=Running` on every `[bal]` line from calibration end through the
-reading: yes / no. Latched during the run: yes / no. min ____ us, mean ____ us, max ____ us, over ____, n ____.
-- `PASS` Running continuously from calibration end through the reading, mean at most 21500 AND over = 0.
-- `FAIL` Running continuously, and either limit fails (write which).
-- `NOT CHECKED` any tick before Running is inside the window (write when Running began), or the run latched.
+**Record.** Servos connected: 1 / 2. Arming time: ____. `n` ____. min ____ us, mean ____ us, max ____ us,
+over ____. Latched during the run: yes / no. Running on every `[bal]` line: yes / no.
+The record MUST state: includes ~25 pre-arm ticks (about 1.7%); mean may be slightly optimistic.
+- `PASS` Running on every `[bal]` line from arming through the reading, reading taken at least 30 s after arming,
+  mean at most 21500 us AND over = 0.
+- `FAIL` Running throughout, and either limit fails (write which).
+- `NOT CHECKED` not Running continuously after arming (re-arm, latch, or long pre-arm wait), or the reading was
+  taken less than 30 s after arming.
 
 **Notes.** The retry bound on a latched run is a CODE bound, not a measurement. Per torque-off call, WheelPair
 `offConfirmed()` calls `torqueOff` for both IDs [lib/wheel_servo/wheel_servo.h:116-121]. Each `torqueOff` makes
@@ -461,8 +466,7 @@ Post the filled template as a results comment (see "Where results go"). Do not f
   commit 17436fe): ____
 - Servos connected: 1 / 2. Baud that answered (4b): ____. Supply limit (1a): ____
 - Per step, one line each, with `PASS` / `FAIL` / `NOT CHECKED`. `DEFERRED` appears ONLY for step 5 and the
-  sign-off block: 1a, 1b, 2, 3, 4a, 4b, 4c, 5 (FAIL / NOT CHECKED / DEFERRED only; no PASS), 6, 7 (PASS only if
-  Running continuously from calibration end), 8.1, 8.2, 8.3,
+  sign-off block: 1a, 1b, 2, 3, 4a, 4b, 4c, 5 (FAIL / NOT CHECKED / DEFERRED only; no PASS), 6, 7 (PASS only per the step 7 owner-decision rule: Running from arming, reading at least 30 s after arming), 8.1, 8.2, 8.3,
   8b (items 1 to 6, status OPTIONAL-PENDING-OWNER), 9.
 - NOT CHECKED list (every step or sub-step not run, and why): ____
 
