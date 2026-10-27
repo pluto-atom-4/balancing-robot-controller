@@ -74,6 +74,8 @@ Commands (from `CLAUDE.md`, "Development Commands" and "Serial Debugging"): the 
 
 ## Step 1. Safety setup and minimal kill check
 
+Note: step 1b runs in the step 2 session, after the firmware exists (see step 2).
+
 **Precondition.** Gates G1 to G9 read.
 
 **1a. Physical setup (before power).** Record G1 (wheels off the ground), G2 (servo supply
@@ -267,8 +269,8 @@ pio device monitor -e balance-xiao_c3-pid | tee pid_lean.log
 
 **Centre and arming.** The PID centre is 0 [programs/balance/main.cpp:40]. The lean gate is
 `|pitch| <= 0.100 rad` for 25 ticks [config.h:41-42]. If the rest pitch is outside +/-0.1 rad of 0, the
-PID does NOT arm, and step 5 cannot finish. Record `did not arm` as a result, with the pitch value
-(from `[bal] pitch=` lines, 10 Hz).
+PID does NOT arm, and step 5 cannot finish. Record NOT CHECKED with the note `did not arm` and the observed pitch
+value (from `[bal] pitch=` lines, 10 Hz).
 
 **Action (if armed).** Once `[bal] PID ARMED (UNVERIFIED sign, wheels off ground)` appears, tilt the robot
 slightly forward by hand, note which way the wheels turn, return upright, and tilt slightly back. Keep the
@@ -307,7 +309,7 @@ forward and back [programs/balance/main.cpp:184-189].
 
 **Centre and arming.** The LQR centre is `kThetaRefRad` = -0.1086 rad (`balance_gains_generated.h:10`,
 a SIM plant value). The lean gate is `|pitch - THETA_REF| <= 0.1` [main.cpp:35, config.h:41]. If the
-real rest pitch is outside that band, the LQR does not arm: record `did not arm` with the pitch.
+real rest pitch is outside that band, the LQR does not arm: record NOT CHECKED with the note `did not arm` and the observed pitch.
 
 **Expected.**
 - The issue `pluto-atom-4/balancing-robot-controller#34` step 6 asks for command "proportional to tilt and
@@ -335,7 +337,7 @@ connected (one or two).
 
 **Step 7 rule: owner decision 2026-10-27.** The `[loop]` statistics are cumulative since calibration end and
 include every control tick, including the lean-gate ticks before arming [programs/balance/main.cpp:101-104
-reset; main.cpp:182 adds every tick]. Those pre-arm ticks write nothing to the servos and are faster. The owner
+reset; main.cpp:182 adds every tick]. Those pre-arm ticks write nothing to the servos (UNVERIFIED that they run at a different period: the period is not logged per state). The owner
 decided to ALLOW them and to RECORD the dilution. The gate holds `kLeanGateHoldTicks` = 25 ticks (0.5 s at 50 Hz)
 before arming [programs/balance/config.h:42]. At about 1500 samples that is about 1.7 percent of the samples,
 so the mean may be slightly optimistic.
@@ -353,9 +355,9 @@ on every line from arming through the reading. Record `n` from that `[loop]` lin
 **Pass criteria** (exactly as in the 2026-10-07 comment of `pluto-atom-4/balancing-robot-controller#34`):
 1. `mean` at most 21500 us. This is the sustained-mean limit from `pluto-atom-4/freecad-workspace#345`
    (the F.6 numbers, from the `hal/jitter_budget.py` docstring in `pluto-atom-4/freecad-workspace#345`,
-   file `inverted-pendulum-project/07_Simulation/hal/jitter_budget.py`). The `programs/balance/config.h:29-30`
-   citation and the jitter_budget.py numbers (20 ms nominal, 21.5 ms sustained mean, +/-9 ms jitter, 3 missed
-   updates) were checked by a reviewer on 2026-10-27. This is a sim-model tolerance, not a C3 measurement.This is a sim-model tolerance, not a C3 measurement.
+   file `inverted-pendulum-project/07_Simulation/hal/jitter_budget.py` in `pluto-atom-4/freecad-workspace`).
+   The `programs/balance/config.h:29-30` citation gives the same set of sim-model numbers (nominal 20 ms,
+   sustained mean 21.5 ms, +/-9 ms jitter, 3 consecutive missed updates). This is a sim-model tolerance, not a C3 measurement.
 2. `over` = 0. `over` counts single periods above `kJitterBudgetUs` = 29000 us [config.h:34].
 3. Sanity only, not a gate: `n` about 1500 after about 30 s at 50 Hz.
 
@@ -384,10 +386,11 @@ a timing result. Real C3 numbers come from `pluto-atom-4/balancing-robot-control
 
 ## Step 8. Full kill-switch set
 
-**Precondition.** The robot is armed, wheels off the ground (G1), robot on the stand. After each latch, reset the board and re-arm (wait for `ARMED`) before the next sub-check. The serial `x` check is NOT repeated here: it is step 1b (one result, not two).
+**Precondition.** The robot is armed, wheels off the ground (G1), robot on the stand. After each latch, reset the board and re-arm (wait for `ARMED`) before the next sub-check. The serial `x` check is NOT repeated here: it is step 1b (one result, not two; the `pluto-atom-4/balancing-robot-controller#34` body places the full kill set at step 8, see open decision (a)).
 
-**8.1 Tilt cutoff.** Env: `balance-xiao_c3` (LQR), run as in step 6 (`pio run -e balance-xiao_c3 -t upload`;
-monitor per `CLAUDE.md`, "Serial Debugging"). Tilt the robot past 0.5 rad from the centre (`kTiltCutoffRad`,
+**8.1 Tilt cutoff.** Env: `balance-xiao_c3` (LQR), run as in step 6. Flash only if the board does not already run this env: `pio run -e balance-xiao_c3 -t upload`.
+Monitor: `pio device monitor -e balance-xiao_c3 | tee tilt_cutoff.log` (forms from `CLAUDE.md`, "Development Commands"
+and "Serial Debugging"). Tilt the robot past 0.5 rad from the centre (`kTiltCutoffRad`,
 `config.h:38`), where the centre is THETA_REF for LQR and 0 for PID [main.cpp:35, 40]. Expected:
 `[safe] LATCHED cause=tilt`, then `[safe] torque off confirmed`. Record both lines. `PASS` / `FAIL` / `NOT CHECKED`.
 
@@ -446,8 +449,8 @@ kill path or `config.h` constant changes on this test's strength.
 
 **No written procedure exists.** Human-supervised only. Skip unless the owner adds one.
 
-**Precondition (if run).** Steps 1 to 8 PASS, except step 5, which may be DEFERRED or NOT CHECKED (observed direction
-recorded). If any other step is not PASS, do not run this step. A
+**Precondition (if run).** Steps 1 to 8 are PASS, except step 5, which follows its own step 5 result rule (see step 5).
+If any other step is not PASS, do not run this step. A
 written kill plan (serial `x`, tilt cutoff, servo supply OFF as the last resort). A human present for the whole run.
 
 **Record.** `PASS` / `FAIL` / `NOT CHECKED`. Notes: ____. No repo number defines a successful free balance.
@@ -500,9 +503,9 @@ Explicit deferral: if DEFERRED, list the steps not run and why, on the next line
 
 ---
 
-## Open decisions for the owner (not decided here)
+## Open decisions for the owner
 
-Each item is a question. Nothing here is decided by this file.
+Decided items are marked DECIDED; the rest are open.
 
 - (a) **Kill-switch order.** `pluto-atom-4/freecad-workspace#352` says test the kill switch first.
   `pluto-atom-4/balancing-robot-controller#34` puts the full set at step 8. This file does the minimal
@@ -521,10 +524,11 @@ Each item is a question. Nothing here is decided by this file.
   TODO(human): decide whether and when a human runs a 2,000,000 test.
 - (e) **Firmware boot-time EEPROM write.** The balance firmware writes Operating Mode (register 11) at bring-up,
   up to two times (one per servo ID), each only when that servo is not already in velocity mode
-  [programs/balance/dxl_wheels.h:81-87]. It is not logged. TODO(human): does the owner accept this write, given
-  G5 forbids agent and probe EEPROM writes?
+  [programs/balance/dxl_wheels.h:81-87]. It is not logged. DECIDED 2026-10-27: accepted by running step 2. G5 still forbids agent and probe EEPROM writes.
 - (f) **Is step 8b required for sign-off?** It was requested by the owner's answer to
   `pluto-atom-4/balancing-robot-controller#148` Q3 and is marked OPTIONAL-PENDING-OWNER. TODO(human): decide.
+- (g) **Step 7 rule: DECIDED 2026-10-27 (see step 7).** Pre-arm lean-gate ticks are allowed in the `[loop]`
+  statistics; the dilution (about 1.7 percent) is recorded in the result.
 
 ---
 
