@@ -86,7 +86,7 @@ Type `x` in the monitor.
 **Expected.** The log shows `[safe] LATCHED cause=serial` then `[safe] torque off confirmed`
 (`bsup::name` prints `serial` for SerialKill [lib/balance_supervisor/balance_supervisor.h:158];
 [programs/balance/main.cpp:122-127]). The latch is terminal: reset the board to re-arm (there is no
-re-arm command). If `[safe] TORQUE OFF NOT CONFIRMED` appears, power the servo supply OFF at once and record it.
+re-arm command). If `[safe] TORQUE OFF NOT CONFIRMED` appears, power the servo supply OFF at once (this checklist's proposal, pending open decision (b)) and record it.
 
 **Record.** 1a: `PASS` / `FAIL` / `NOT CHECKED`, notes: ____.
 1b: `PASS` / `FAIL` / `NOT CHECKED`, paste the latch and torque lines: ____.
@@ -98,6 +98,9 @@ re-arm command). If `[safe] TORQUE OFF NOT CONFIRMED` appears, power the servo s
 ## Step 2. Flash the firmware and capture the boot log
 
 **Precondition.** Step 1a PASS. Wheels off the ground (G1). Servo supply ON, current-limited. Robot still.
+**Owner decision (e) is accepted by running this step.** At bring-up the firmware writes Operating Mode
+(register 11) on each servo ID: up to two conditional EEPROM writes [programs/balance/dxl_wheels.h:81-87].
+Running this step is the acceptance; see open decision (e).
 
 **Action.**
 ```bash
@@ -131,7 +134,7 @@ the same step 2 session (a new monitor session is fine), then reset the board.
 **Expected EEPROM write (not printed).** Up to two Operating Mode (register 11) writes happen at bring-up,
 one per servo ID, each only if that servo is not already in velocity mode [programs/balance/dxl_wheels.h:81-87].
 No log line shows them. Operating Mode is NOT read before step 2 in this checklist (4a runs once, after
-step 2), so whether the write happened is NOT CHECKED; record the Operating Mode read in 4a. This is open decision (e).
+step 3), so whether the write happened is NOT CHECKED; record the Operating Mode read in 4a. This is open decision (e).
 
 **Record.** Paste the boot lines. ID 1 answered / not answered / unknown. ID 2 answered / not answered /
 unknown. Gyro bias y: ____ rad/s.
@@ -176,8 +179,8 @@ If the IMU was never found at boot, the first boot prints `[imu] MPU6050 not fou
 
 ## Step 4. Wheel servo facts
 
-**Precondition.** G1b: servo OFF the robot, HELD DOWN, NO wheel attached, for 4a and 4c. Step 3 done.
-**Order (fixed): 4a runs ONCE, after step 2.** 4c runs after 4a, and only when Operating Mode is velocity.
+**Precondition.** G1b: servo OFF the robot, HELD DOWN, NO wheel attached, for 4a and 4c. Steps 1, 2 and 3 done.
+**Order (fixed): steps 1, 2 and 3, then 4a ONCE.** 4c runs after 4a, and only when Operating Mode is velocity.
 
 **4a. Read the device (no motion).**
 ```bash
@@ -216,7 +219,7 @@ manual Dynamixel Wizard EEPROM change, which this checklist does not do (open de
   [programs/c3_facts/main.cpp:332-357; lib/ramp_guard]: the servo pings; the model reads 1190
   (XL330-M077); the Velocity Limit is read from the device; Operating Mode is already velocity (the
   mode-write flag is forbidden here, G5); the host is connected; torque off is confirmed by read-back.
-  Normally Operating Mode is velocity only after step 2's boot write, so 4c runs after step 2.
+  Normally Operating Mode is velocity only after step 2's boot write, so 4c runs after 4a (which follows steps 2 and 3).
 - If it runs: the ramp switches torque ON (c3_facts `runRamp` calls `enableVelocityMode`
   [programs/c3_facts/main.cpp:287]). That is safe only with the servo held down. The cap is 20 percent of the
   device-read Velocity Limit, positive only, about 15 s, 20 s hard timeout. It needs a typed `GO` and Enter
@@ -272,8 +275,7 @@ slightly forward by hand, note which way the wheels turn, return upright, and ti
 tilt small: the latch is above `kTiltCutoffRad` = 0.5 rad from the centre [config.h:38].
 
 **Expected.** Record the observed direction of the wheels for a known forward lean. The two controllers
-are documented to give OPPOSITE signs for the same tilt [programs/balance/config.h:44-45;
-`pluto-atom-4/freecad-workspace#359`]. The body of `pluto-atom-4/balancing-robot-controller#34` step 5 said
+are documented to give OPPOSITE signs for the same tilt (UNVERIFIED; `pluto-atom-4/freecad-workspace#359`; `programs/balance/config.h:44-45`). The body of `pluto-atom-4/balancing-robot-controller#34` step 5 said
 "wheels must drive toward the lean"; that expectation was intentionally removed from this file, pending the
 owner's decision on the sign (`pluto-atom-4/freecad-workspace#359`). So the expected sign is not decided here,
 and the observed direction is NOT CHECKED against any expectation.
@@ -282,7 +284,7 @@ and the observed direction is NOT CHECKED against any expectation.
 - `NOT CHECKED` sign vs expectation (the normal result until `pluto-atom-4/freecad-workspace#359` is decided), with the observed direction recorded.
 - `FAIL` if the wheels do not respond at all, or the latch trips at a small lean (write the pitch).
 - `DEFERRED` (reason: ____). Deferral is allowed for this step.
-- `PASS` on the sign is not available until the expected sign is decided (`pluto-atom-4/freecad-workspace#359`).
+- `PASS` is NOT an allowed result for this step until the expected sign is decided (`pluto-atom-4/freecad-workspace#359`). Step 5 allows only FAIL, NOT CHECKED or DEFERRED.
 
 **Unverified.** The PID sign, the PID gains (`kPidKp` = 1.0, `kPidKi` = 0.1, `kPidKd` = 0.05,
 `lib/balance_core/balance_gains_generated.h:12`), and PID stability (`pluto-atom-4/freecad-workspace#338`
@@ -312,8 +314,7 @@ real rest pitch is outside that band, the LQR does not arm: record `did not arm`
   gyro". This file checks the TILT part only: the command magnitude grows with the tilt magnitude. That is the PASS check.
   The GYRO part is moved to NOT CHECKED (see below).
 - The command sign for a known forward lean is observed and recorded. Its expected sign is NOT decided
-  here: the LQR and PID are documented to give opposite signs for the same tilt [config.h:44-45;
-  `pluto-atom-4/freecad-workspace#359`]. Record, and mark the sign NOT CHECKED against any expectation.
+  here: the LQR and PID are documented to give opposite signs for the same tilt (UNVERIFIED; `pluto-atom-4/freecad-workspace#359`; `programs/balance/config.h:44-45`). Record, and mark the sign NOT CHECKED against any expectation.
 - The robot settles near an equilibrium. Record the rest pitch. Compare it with -0.1086; do not assume equality.
 - Gyro: the `[bal]` line does NOT print the gyro rate, so the gyro part cannot be checked from this log.
   It stays NOT CHECKED unless a human adds a print (no code change in this checklist).
@@ -332,25 +333,27 @@ real rest pitch is outside that band, the LQR does not arm: record `did not arm`
 **Precondition.** Step 3 done (gyro calibrated). Wheels off the ground (G1). Record the number of servos
 connected (one or two).
 
-**Running state is required.** Control writes to the servos happen only in the `Running` state
-[programs/balance/main.cpp:166-176: Idle writes nothing]. A window taken in `WaitingForLean` has no servo
-writes, so it is NOT a timing result for the servo load. The `[bal] ... state=` line (10 Hz) must read
-`Running` for the whole 30 s window. If it does not, this step is NOT CHECKED.
+**Why the window start matters.** The `[loop]` statistics are cumulative since calibration end, and they add
+EVERY control tick, whatever the state [programs/balance/main.cpp:101-104 reset in onCalibrated; main.cpp:182
+adds every tick]. Ticks in `WaitingForLean` and `Idle` write nothing to the servos and can be faster. So the
+numbers represent servo load only if the state was `Running` continuously from calibration end through the
+reading. With the current firmware, `Running` needs `kLeanGateHoldTicks` = 25 ticks in the gate first
+[config.h:41-42], so the robot cannot reach `Running` on the first tick after calibration, and those early ticks
+are in the statistics. Unless the window rule is changed (no change is made here), this step is NOT CHECKED.
 
-**Action.** Run the balance env (the step 6 session is fine). Once the robot is armed and `state=Running`,
-leave it running about 30 s. Then read the `[loop]` line about 30 s later.
-- `[loop]` prints once per second [main.cpp:44, 190-197]. Take the 30th `[loop]` line after the window
-  starts. Skip the `[bal]` lines (10 Hz) except to confirm `state=Running`.
-- The statistics reset when the gyro calibration finishes [main.cpp:101-104]. Record whether the state
-  was Running from the start of the 30 s window.
+**Action.** Run the balance env (the step 6 session is fine). Read the first `[loop]` line printed at least about
+30 s after calibration end. Calibration end is the `[bal] ... waiting for lean gate` line [main.cpp:109].
+`[loop]` prints once per second [main.cpp:44, 190-197]. The `[bal]` lines (10 Hz) show `state=`; it must read
+`Running` on every `[bal]` line from the lean-gate line through the reading [main.cpp:184-189]. Record `n` from
+that `[loop]` line. Pick the window by time, not by line count.
 - Line format: `[loop] min=<us> mean=<us> max=<us> over=<n> n=<n> us`.
 
 **Pass criteria** (exactly as in the 2026-10-07 comment of `pluto-atom-4/balancing-robot-controller#34`):
 1. `mean` at most 21500 us. This is the sustained-mean limit from `pluto-atom-4/freecad-workspace#345`
-   (the F.6 numbers; the reference is the `hal/jitter_budget.py` docstring in that repo,
-   `inverted-pendulum-project/07_Simulation/hal/jitter_budget.py`, not re-checked here). The sim-model
-   parameters behind it are in `programs/balance/config.h:29-30`: nominal 20 ms, sustained mean 21.5 ms,
-   iid jitter +/-9 ms, at most 3 consecutive missed updates. This is a sim-model tolerance, not a C3 measurement.
+   (the F.6 numbers, from the `hal/jitter_budget.py` docstring in `pluto-atom-4/freecad-workspace#345`,
+   file `inverted-pendulum-project/07_Simulation/hal/jitter_budget.py`). The `programs/balance/config.h:29-30`
+   citation and the jitter_budget.py numbers (20 ms nominal, 21.5 ms sustained mean, +/-9 ms jitter, 3 missed
+   updates) were checked by a reviewer on 2026-10-27. This is a sim-model tolerance, not a C3 measurement.This is a sim-model tolerance, not a C3 measurement.
 2. `over` = 0. `over` counts single periods above `kJitterBudgetUs` = 29000 us [config.h:34].
 3. Sanity only, not a gate: `n` about 1500 after about 30 s at 50 Hz.
 
@@ -358,11 +361,11 @@ leave it running about 30 s. Then read the `[loop]` line about 30 s later.
 different checks. A loop steadily at 22 ms gives over = 0 and still fails the mean check. The 29000 us
 value is 20 ms nominal plus 9 ms jitter; the repo marks that derivation TODO(human) [config.h:32-33].
 
-**Record.** Servos connected: 1 / 2. State Running for the whole window: yes / no.
-Latched during the run: yes / no. min ____ us, mean ____ us, max ____ us, over ____, n ____.
-- `PASS` state Running for the window, mean at most 21500 AND over = 0.
-- `FAIL` the state is Running and either limit fails (write which).
-- `NOT CHECKED` if the state was not Running for the window, or the run latched.
+**Record.** Servos connected: 1 / 2. `state=Running` on every `[bal]` line from calibration end through the
+reading: yes / no. Latched during the run: yes / no. min ____ us, mean ____ us, max ____ us, over ____, n ____.
+- `PASS` Running continuously from calibration end through the reading, mean at most 21500 AND over = 0.
+- `FAIL` Running continuously, and either limit fails (write which).
+- `NOT CHECKED` any tick before Running is inside the window (write when Running began), or the run latched.
 
 **Notes.** The retry bound on a latched run is a CODE bound, not a measurement. Per torque-off call, WheelPair
 `offConfirmed()` calls `torqueOff` for both IDs [lib/wheel_servo/wheel_servo.h:116-121]. Each `torqueOff` makes
@@ -376,19 +379,23 @@ a timing result. Real C3 numbers come from `pluto-atom-4/balancing-robot-control
 
 ## Step 8. Full kill-switch set
 
-**Precondition.** The robot is armed, wheels off the ground (G1), robot on the stand. After every latch, reset
-the board. The serial `x` check is NOT repeated here: it is step 1b (one result, not two).
+**Precondition.** The robot is armed, wheels off the ground (G1), robot on the stand. After each latch, reset the board and re-arm (wait for `ARMED`) before the next sub-check. The serial `x` check is NOT repeated here: it is step 1b (one result, not two).
 
 **8.1 Tilt cutoff.** Env: `balance-xiao_c3` (LQR), run as in step 6 (`pio run -e balance-xiao_c3 -t upload`;
 monitor per `CLAUDE.md`, "Serial Debugging"). Tilt the robot past 0.5 rad from the centre (`kTiltCutoffRad`,
 `config.h:38`), where the centre is THETA_REF for LQR and 0 for PID [main.cpp:35, 40]. Expected:
 `[safe] LATCHED cause=tilt`, then `[safe] torque off confirmed`. Record both lines. `PASS` / `FAIL` / `NOT CHECKED`.
 
-**8.2 IMU unplug.** Env: `balance-xiao_c3` (LQR), same command as 8.1. Disconnect the MPU-6050 (SDA D4,
+**8.2 IMU unplug.** Env: `balance-xiao_c3` (LQR). Flash only if the board does not already run this env:
+`pio run -e balance-xiao_c3 -t upload`. Monitor: `pio device monitor -e balance-xiao_c3 | tee imu_unplug.log`
+(forms from `CLAUDE.md`, "Development Commands" and "Serial Debugging"). Disconnect the MPU-6050 (SDA D4,
 SCL D5) while armed. Expected: after `kImuFailMax` = 3 consecutive read failures [config.h:43],
 `[safe] LATCHED cause=imu` and torque off. Record the lines. `PASS` / `FAIL` / `NOT CHECKED`.
 
 **8.3 Servo failsafe.** Env: `balance-xiao_c3` (LQR), or `balance-xiao_c3-pid` if the human chose it in step 5.
+Flash only if the board does not already run this env: `pio run -e <env> -t upload`. Monitor:
+`pio device monitor -e <env> | tee servo_failsafe.log` (forms from `CLAUDE.md`, "Development Commands" and
+"Serial Debugging").
 Action PENDING OWNER DECISION (b). This checklist's proposal (G8) is to switch the servo supply OFF, not to
 hot-unplug a powered bus. Expected: after `kServoFailMax` = 3 consecutive write failures [config.h:23] the
 latch is `cause=wheel` [lib/balance_supervisor/balance_supervisor.h:157; main.cpp:122-123], then the torque-off
@@ -411,7 +418,8 @@ stops, reads -1, and goal writes return a Data Range Error until 0 is written. T
 say torque is disabled on timeout. The sim chip reports model 1200 (not the same model). Part of the page was not read.
 
 **Precondition.** Servo OFF the robot, HELD DOWN, NO wheel attached (the same condition as G1b, because
-this step commands a goal velocity). Separate supply with common GND, current-limited. A Dynamixel Wizard 2.0
+this step commands a goal velocity). Separate, current-limited supply, with common GND as in the 2026-10-21 comment of `pluto-atom-4/balancing-robot-controller#34`
+(that comment does not say what the common ground connects to; the human confirms the wiring). A Dynamixel Wizard 2.0
 session (human-operated; reads and writes single registers). NO balance firmware and NO control loop running.
 
 **Items** (each `PASS` / `FAIL` / `NOT CHECKED`):
@@ -433,7 +441,8 @@ kill path or `config.h` constant changes on this test's strength.
 
 **No written procedure exists.** Human-supervised only. Skip unless the owner adds one.
 
-**Precondition (if run).** Steps 1 to 8 are all PASS. If any of them is not PASS, do not run this step. A
+**Precondition (if run).** Steps 1 to 8 PASS, except step 5, which may be DEFERRED or NOT CHECKED (observed direction
+recorded). If any other step is not PASS, do not run this step. A
 written kill plan (serial `x`, tilt cutoff, servo supply OFF as the last resort). A human present for the whole run.
 
 **Record.** `PASS` / `FAIL` / `NOT CHECKED`. Notes: ____. No repo number defines a successful free balance.
@@ -452,7 +461,8 @@ Post the filled template as a results comment (see "Where results go"). Do not f
   commit 17436fe): ____
 - Servos connected: 1 / 2. Baud that answered (4b): ____. Supply limit (1a): ____
 - Per step, one line each, with `PASS` / `FAIL` / `NOT CHECKED`. `DEFERRED` appears ONLY for step 5 and the
-  sign-off block: 1a, 1b, 2, 3, 4a, 4b, 4c, 5 (PASS / FAIL / NOT CHECKED / DEFERRED), 6, 7, 8.1, 8.2, 8.3,
+  sign-off block: 1a, 1b, 2, 3, 4a, 4b, 4c, 5 (FAIL / NOT CHECKED / DEFERRED only; no PASS), 6, 7 (PASS only if
+  Running continuously from calibration end), 8.1, 8.2, 8.3,
   8b (items 1 to 6, status OPTIONAL-PENDING-OWNER), 9.
 - NOT CHECKED list (every step or sub-step not run, and why): ____
 
