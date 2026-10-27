@@ -23,7 +23,8 @@ kill paths.
   XL330 servos on the bus through the FE-URT-1 adapter on `Serial1` (GPIO20 RX, GPIO21 TX). MPU-6050 on
   I2C (SDA = D4, SCL = D5).
 - Not in scope: Feetech STS3032 (planned, untested); the final robot power path
-  (`pluto-atom-4/balancing-robot-controller#178`, deferred); Webots; ESP32-S3.
+  (`pluto-atom-4/balancing-robot-controller#178`, deferred); Webots; ESP32-S3; a BOOT-button (GPIO9)
+  hardware kill (a TODO in `programs/balance/config.h:49`, not implemented, so not part of this run).
 
 **Honesty rule.** Each constant, unit and baud here is either read from the repo (file and line in
 brackets) or marked UNVERIFIED. A box is PASS only when the human has seen the observation on the real
@@ -32,6 +33,21 @@ baud, the servo IDs, the velocity unit, the velocity limit, the PID or LQR sign,
 
 **Result vocabulary.** Each box is `PASS`, `FAIL` or `NOT CHECKED`. `DEFERRED` appears ONLY in step 5
 (PID sign) and in the sign-off block. A FAIL is a result: record it and do not work around it.
+
+## Inputs and their status
+
+Values below were read from `programs/balance/config.h` (line in brackets). Every row is UNVERIFIED on
+hardware or is a sim-model value; none is a C3 measurement.
+
+| Input | Value | Status |
+|---|---|---|
+| Timing budget (`pluto-atom-4/freecad-workspace#345`, `jitter_budget.py`) | nominal 20 ms; sustained mean limit 21.5 ms; up to 3 consecutive missed updates; jitter +-9 ms [config.h:28-31] | Sim-model tolerance, NOT a C3 measurement |
+| Over-budget threshold `kJitterBudgetUs` | 29000 us (20 ms + 9 ms) [config.h:32-34] | Sim-derived, UNVERIFIED on C3; TODO(human) |
+| Servo baud `kServoBaud` | 57600 [config.h:11] | UNVERIFIED on C3 + FE-URT-1. config.h:11 labels it PROVEN; that label is not a bench result, see 4b |
+| Servo baud requested `kServoBaudRequested` | 2,000,000 [config.h:12] | UNTESTED on C3 + FE-URT-1. Not used by the balance firmware. c3_facts tries it at boot (step 4a), but the servos are not set to 2,000,000; open decision (d) |
+| Tilt cutoff `kTiltCutoffRad` | 0.5 rad [config.h:38] | UNVERIFIED |
+| Startup lean gate `kStartupLeanGateRad` / `kLeanGateHoldTicks` | 0.1 rad about the centre (0 for PID, `THETA_REF` = -0.1086 rad for LQR), held 25 ticks (0.5 s at 50 Hz) [config.h:41-42; main.cpp:35, 40] | UNVERIFIED (SIM analogue) |
+| Stall threshold `kStallUs` | 100000 us (100 ms) [config.h:37] | UNVERIFIED |
 
 ## Safety gates (read before any step)
 
