@@ -76,8 +76,8 @@ hardware or is a sim-model value; none is a C3 measurement.
   [pluto-atom-4/balancing-robot-controller#159].
 - **G8. No hot-unplug of a powered servo bus.** `pluto-atom-4/balancing-robot-controller#148` has no
   design chosen: the owner's 2026-10-21 Q1 answer is software-only for the bench, and the power cut is
-  split to `pluto-atom-4/balancing-robot-controller#178`. THIS CHECKLIST PROPOSES switching the servo
-  supply OFF instead of unplugging a powered bus. The method is pending open decision (b).
+  split to `pluto-atom-4/balancing-robot-controller#178`. The owner DECIDED 2026-10-27 (open decision (b)): switch the servo
+  supply OFF instead of unplugging a powered bus.
 - **G9. Do not disable a firmware kill path** to get a test through. Changing `programs/balance/config.h`
   or a kill path needs a design issue [CLAUDE.md, "Balance safety design"].
 
@@ -104,7 +104,7 @@ Type `x` in the monitor.
 **Expected.** The log shows `[safe] LATCHED cause=serial` then `[safe] torque off confirmed`
 (`bsup::name` prints `serial` for SerialKill [lib/balance_supervisor/balance_supervisor.h:158];
 [programs/balance/main.cpp:122-127]). The latch is terminal: reset the board to re-arm (there is no
-re-arm command). If `[safe] TORQUE OFF NOT CONFIRMED` appears, power the servo supply OFF at once (this checklist's proposal, pending open decision (b)) and record it.
+re-arm command). If `[safe] TORQUE OFF NOT CONFIRMED` appears, power the servo supply OFF at once (decided 2026-10-27, open decision (b)) and record it.
 
 **Record.** 1a: `PASS` / `FAIL` / `NOT CHECKED`, notes: ____.
 1b: `PASS` / `FAIL` / `NOT CHECKED`, paste the latch and torque lines: ____.
@@ -420,19 +420,19 @@ SCL D5) while armed. Expected: after `kImuFailMax` = 3 consecutive read failures
 Flash only if the board does not already run this env: `pio run -e <env> -t upload`. Monitor:
 `pio device monitor -e <env> | tee servo_failsafe.log` (forms from `CLAUDE.md`, "Development Commands" and
 "Serial Debugging").
-Action PENDING OWNER DECISION (b). This checklist's proposal (G8) is to switch the servo supply OFF, not to
-hot-unplug a powered bus. Expected: after `kServoFailMax` = 3 consecutive write failures [config.h:23] the
+Action DECIDED 2026-10-27 (open decision (b)): switch the servo supply OFF, not to
+hot-unplug a powered bus (G8). Expected: after `kServoFailMax` = 3 consecutive write failures [config.h:23] the
 latch is `cause=wheel` [lib/balance_supervisor/balance_supervisor.h:157; main.cpp:122-123], then the torque-off
 lines as in step 2 (`TORQUE OFF NOT CONFIRMED, retrying` / `gave up: REMOVE SERVO POWER` possible). Record
 every line. `PASS` / `FAIL` / `NOT CHECKED`.
 
-**Unverified.** Every cause name and timing on this hardware. The servo-off method (decision (b)).
+**Unverified.** Every cause name and timing on this hardware. The servo-off method (decided 2026-10-27, (b)).
 
 ---
 
-## Step 8b. OPTIONAL-PENDING-OWNER: XL330 bus watchdog (register 98)
+## Step 8b. OPTIONAL: XL330 bus watchdog (register 98)
 
-**Status.** Optional. Whether it is REQUIRED for sign-off is open decision (f). It was requested as a
+**Status.** OPTIONAL, not required for sign-off (DECIDED 2026-10-27, open decision (f)). If run, record PASS / FAIL / NOT CHECKED. It was requested as a
 hardware-checklist item by the owner's answer to `pluto-atom-4/balancing-robot-controller#148` Q3
 (2026-10-21), and proposed on `pluto-atom-4/balancing-robot-controller#34` that day. It has not been run.
 
@@ -486,7 +486,7 @@ Post the filled template as a results comment (see "Where results go"). Do not f
 - Servos connected: 1 / 2. Baud that answered (4b): ____. Supply limit (1a): ____
 - Per step, one line each, with `PASS` / `FAIL` / `NOT CHECKED`. `DEFERRED` appears ONLY for step 5 and the
   sign-off block: 1a, 1b, 2, 3, 4a, 4b, 4c, 5 (FAIL / NOT CHECKED / DEFERRED only; no PASS), 6, 7 (PASS only per the step 7 owner-decision rule: Running from arming, reading at least 30 s after arming), 8.1, 8.2, 8.3,
-  8b (items 1 to 6, status OPTIONAL-PENDING-OWNER), 9.
+  8b (items 1 to 6, status OPTIONAL), 9.
 - NOT CHECKED list (every step or sub-step not run, and why): ____
 
 ---
@@ -521,28 +521,28 @@ Explicit deferral: if DEFERRED, list the steps not run and why, on the next line
 
 ## Open decisions for the owner
 
-Decided items are marked DECIDED; the rest are open.
+As of 2026-10-27 every item (a) to (g) is DECIDED; none is open.
 
 - (a) **Kill-switch order.** `pluto-atom-4/freecad-workspace#352` says test the kill switch first.
   `pluto-atom-4/balancing-robot-controller#34` puts the full set at step 8. This file does the minimal
-  serial `x` in step 1b and the full set in step 8. TODO(human): confirm this order, or move the full set earlier.
+  serial `x` in step 1b and the full set in step 8. DECIDED 2026-10-27: keep the split (minimal serial `x` kill check in step 1b before any lean test; the full set in step 8).
 - (b) **Bus unplug in step 8.** `pluto-atom-4/balancing-robot-controller#34` says "unplug servo bus".
-  `pluto-atom-4/balancing-robot-controller#148` has no design chosen (see G8). This file proposes switching
-  the servo supply OFF instead (step 8.3). TODO(human): decide the method.
+  `pluto-atom-4/balancing-robot-controller#148` has no design chosen (see G8). DECIDED 2026-10-27: switch
+  the servo supply OFF instead of unplugging the bus cable (step 8.3); no hot-unplug of a powered servo cable. The `pluto-atom-4/balancing-robot-controller#148` warning is respected.
 - (c) **XL330 limit and model values differ across the issues.** `pluto-atom-4/balancing-robot-controller#34` body: Velocity Limit 1023, 0.229 rpm
   per raw count (both UNVERIFIED). `pluto-atom-4/balancing-robot-controller#44` comment: Velocity Limit 1620,
   model 1190, cited to the e-Manual. The repo's `lib/dxl_units/dxl_units.h:32` has 1620, and
   `programs/c3_facts/facts_io.h:12` names 1190 "verified vs e-Manual". `pluto-atom-4/balancing-robot-controller#84`
-  says model 1200 (the sim). Step 4 asserts none of these. TODO(human): choose which values are accepted after
-  reading the device and the e-Manual.
+  says model 1200 (the sim). Step 4 asserts none of these. DECIDED 2026-10-27: read the actual values from the device and the e-Manual
+  during step 4 and record them; this checklist asserts none of the numbers quoted in pluto-atom-4/balancing-robot-controller#34, pluto-atom-4/balancing-robot-controller#44 or pluto-atom-4/balancing-robot-controller#84.
 - (d) **2,000,000 baud needs an EEPROM write.** Testing it needs a manual Dynamixel Wizard change. Out of
   scope for agents. (c3_facts does send 2,000,000-baud traffic at boot, step 4a, but the servos are not set to 2,000,000.)
-  TODO(human): decide whether and when a human runs a 2,000,000 test.
+  DECIDED 2026-10-27: stay at 57600 for the whole HIL; 2,000,000 baud is a separate later item. No EEPROM baud change is part of this sign-off; agents and probes still never do it.
 - (e) **Firmware boot-time EEPROM write.** The balance firmware writes Operating Mode (register 11) at bring-up,
   up to two times (one per servo ID), each only when that servo is not already in velocity mode
   [programs/balance/dxl_wheels.h:81-87]. It is not logged. DECIDED 2026-10-27: accepted by running step 2. G5 still forbids agent and probe EEPROM writes.
 - (f) **Is step 8b required for sign-off?** It was requested by the owner's answer to
-  `pluto-atom-4/balancing-robot-controller#148` Q3 and is marked OPTIONAL-PENDING-OWNER. TODO(human): decide.
+  `pluto-atom-4/balancing-robot-controller#148` Q3 and is marked OPTIONAL. DECIDED 2026-10-27: optional, not required for sign-off; record PASS / FAIL / NOT CHECKED if it is run.
 - (g) **Step 7 rule: DECIDED 2026-10-27 (see step 7).** Pre-arm lean-gate ticks are allowed in the `[loop]`
   statistics; the dilution (about 1.7 percent) is recorded in the result.
 
