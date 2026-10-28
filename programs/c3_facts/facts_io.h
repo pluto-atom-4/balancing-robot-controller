@@ -9,7 +9,11 @@
 
 namespace facts_io {
 
-constexpr uint16_t kModelXl330M077 = 1190;  // XL330-M077 model number: owner confirmed 1190 from the e-Manual on 2026-10-27 (page not recorded)
+// Model number 1190 = XL330-M077. Source: XL330-M077 e-Manual, https://emanual.robotis.com/docs/en/dxl/x/xl330-m077/
+// (same URL as lib/dxl_units/dxl_units.h). The owner read it and confirmed 1190 on 2026-10-27; the page was not recorded.
+// This is the manual's value for the part, not a check of the bench servo: the servo is read at runtime (readInfo) and
+// compared against this constant.
+constexpr uint16_t kModelXl330M077 = 1190;
 
 // Used to NAME a model only. 1200 is UNVERIFIED vs the e-Manual. Never gates safety except 1190.
 inline const char* modelName(uint16_t n) {
