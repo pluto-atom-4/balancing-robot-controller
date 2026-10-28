@@ -9,7 +9,7 @@
 
 namespace facts_io {
 
-constexpr uint16_t kModelXl330M077 = 1190;  // verified vs e-Manual (see lib/dxl_units/dxl_units.h)
+constexpr uint16_t kModelXl330M077 = 1190;  // XL330-M077 model number: owner confirmed 1190 from the e-Manual on 2026-10-27 (page not recorded)
 
 // Used to NAME a model only. 1200 is UNVERIFIED vs the e-Manual. Never gates safety except 1190.
 inline const char* modelName(uint16_t n) {
