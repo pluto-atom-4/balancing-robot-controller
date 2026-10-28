@@ -149,7 +149,7 @@ pio device monitor -e <env> [--port <port>]
   - `programs/c3_probe/main.cpp` – diagnostic probe (#43), builds, never run on hardware
   - `programs/c3_facts/main.cpp` – bench probe (#44), builds, never run on hardware; includes `facts_io.h`
 - `programs/<name>/wokwi.toml`, `diagram.json` – Wokwi simulation config (`blink`, `tilt_servo`, `balance`, `ttl_servo`, `stepper_motor`, `wokwi_ttl_servo`)
-- `lib/` – shared libraries usable by every program: `hal_iface`, `balance_core` (incl. generated `balance_gains_generated.h` and `balance_stamp.h`), `loop_stats`, `dxl_units`, `imu_math`, `imu_frame`, `wheel_servo`, `balance_supervisor`, `ramp_guard`, `segway_sim`, `segway_imu`, `stepper_speed`, `tilt`. Details for the balance libs under Key Libraries
+- `lib/` – shared libraries usable by every program: `hal_iface`, `balance_core` (incl. generated `balance_gains_generated.h` and `balance_stamp.h`), `loop_stats`, `dxl_units`, `imu_math`, `imu_frame`, `wheel_servo`, `balance_supervisor`, `ramp_guard`, `segway_sim`, `segway_imu`, `stepper_speed`, `tilt`. Details under Key Libraries cover the balance and tilt libs; `imu_frame`, `segway_sim`, `segway_imu` and `stepper_speed` are not described there
 - `include/` – shared headers (create when needed)
 - `test/` – unit tests for the native `test` env (17 suites, 272 test cases: balance_core, balance_parity, balance_stamp, balance_supervisor, dxl_units, hal_iface, imu_frame, imu_math, loop_stats, ramp_guard, segway_imu, segway_sim, stepper_speed, tilt, ttl_servo_slew, vector_roundtrip, wheel_pair)
 - `platformio.ini` – board sections and `<program>-<board>` envs
