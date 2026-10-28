@@ -149,9 +149,9 @@ pio device monitor -e <env> [--port <port>]
   - `programs/c3_probe/main.cpp` – diagnostic probe (#43), builds, never run on hardware
   - `programs/c3_facts/main.cpp` – bench probe (#44), builds, never run on hardware; includes `facts_io.h`
 - `programs/<name>/wokwi.toml`, `diagram.json` – Wokwi simulation config (`blink`, `tilt_servo`, `balance`, `ttl_servo`, `stepper_motor`, `wokwi_ttl_servo`)
-- `lib/` – shared libraries usable by every program: `hal_iface`, `balance_core` (incl. generated `balance_gains_generated.h` and `balance_stamp.h`), `loop_stats`, `dxl_units`, `imu_math`, `wheel_servo`, `balance_supervisor`, `ramp_guard`, `segway_sim`, `stepper_speed`, `tilt`. Details under Key Libraries
+- `lib/` – shared libraries usable by every program: `hal_iface`, `balance_core` (incl. generated `balance_gains_generated.h` and `balance_stamp.h`), `loop_stats`, `dxl_units`, `imu_math`, `imu_frame`, `wheel_servo`, `balance_supervisor`, `ramp_guard`, `segway_sim`, `segway_imu`, `stepper_speed`, `tilt`. Details under Key Libraries cover the balance and tilt libs; `imu_frame`, `segway_sim`, `segway_imu` and `stepper_speed` are not described there
 - `include/` – shared headers (create when needed)
-- `test/` – unit tests for the native `test` env (15 suites, 240 `RUN_TEST` cases: balance_core, balance_parity, balance_stamp, balance_supervisor, dxl_units, hal_iface, imu_math, loop_stats, ramp_guard, segway_sim, stepper_speed, tilt, ttl_servo_slew, vector_roundtrip, wheel_pair)
+- `test/` – unit tests for the native `test` env (17 suites, 272 test cases: balance_core, balance_parity, balance_stamp, balance_supervisor, dxl_units, hal_iface, imu_frame, imu_math, loop_stats, ramp_guard, segway_imu, segway_sim, stepper_speed, tilt, ttl_servo_slew, vector_roundtrip, wheel_pair)
 - `platformio.ini` – board sections and `<program>-<board>` envs
 - `Makefile` – wrapper around `pio`
 - `CLAUDE.md` – project guide for Claude Code
@@ -196,7 +196,7 @@ Tracking issues:
 
 ## Verification status of this document
 
-The commands in this README were checked statically (file paths, env names and make targets compared with `platformio.ini` and `Makefile`). Commands actually run for the last docs update: `pio test -e test` (131 cases, all passed); `pio run -e balance-xiao_c3`, `pio run -e balance-xiao_c3-pid`, `pio run -e tilt_servo-xiao_c3` and `pio run -e blink-xiao_c3` (all succeeded); and a verbose build of `balance-xiao_c3` to confirm that both `-std=gnu++11` and `-std=gnu++17` appear in the C3 compile line. Not re-run for this update: `make sim-balance-xiao_c3` (last run for #33, PR #55) and the exporter `--check` (last run for #29, PR #51). Any command not listed was not run. Nothing was run on real hardware.
+The commands in this README were checked statically (file paths, env names and make targets compared with `platformio.ini` and `Makefile`). Commands actually run for the last docs update: `pio test -e test` (131 cases, all passed); `pio run -e balance-xiao_c3`, `pio run -e balance-xiao_c3-pid`, `pio run -e tilt_servo-xiao_c3` and `pio run -e blink-xiao_c3` (all succeeded); and a verbose build of `balance-xiao_c3` to confirm that both `-std=gnu++11` and `-std=gnu++17` appear in the C3 compile line. Not re-run for this update: `make sim-balance-xiao_c3` (last run for #33, PR #55) and the exporter `--check` (last run for #29, PR #51). Any command not listed was not run. Nothing was run on real hardware. (This is an older run; the current native suite is the 17 suites / 272 test cases in the `test/` bullet above, last run on main 6c5087b.)
 
 ## Code Knowledge Graph
 
