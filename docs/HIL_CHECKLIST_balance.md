@@ -240,7 +240,8 @@ manual Dynamixel Wizard EEPROM change, which this checklist does not do (open de
   Normally Operating Mode is velocity only after step 2's boot write, so 4c runs after 4a (which follows steps 2 and 3).
 - If it runs: the ramp switches torque ON (c3_facts `runRamp` calls `enableVelocityMode`
   [programs/c3_facts/main.cpp:287]). That is safe only with the servo held down. The cap is 20 percent of the
-  device-read Velocity Limit, positive only, about 15 s, 20 s hard timeout. It needs a typed `GO` and Enter
+  device-read Velocity Limit, positive only, about 15 s total (the ramp ends at 15 s; `lib/ramp_guard` has a 20 s
+  check that is an unreachable backstop, because the ramp loop ends first). It needs a typed `GO` and Enter
   within 60 s [lib/ramp_guard/ramp_guard.h:19], then a 5 s countdown. Any key aborts. Read Present Velocity
   from `ramp_row` lines (`C3FACTS ramp_row <t_ms>,<goal>,<present> ms_raw_raw`).
 - Velocity unit: `lib/dxl_units/dxl_units.h:10` says 0.229 rev/min per raw count, and the velocity

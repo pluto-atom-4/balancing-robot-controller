@@ -15,6 +15,8 @@ constexpr uint32_t kUpMs = 7000;
 constexpr uint32_t kHoldMs = 1000;
 constexpr uint32_t kDownMs = 7000;
 constexpr uint32_t kTotalMs = kUpMs + kHoldMs + kDownMs;  // 15000
+// Unreachable backstop in c3_facts today: runRamp ends at kTotalMs (15 s) before this check can fire.
+// The check()/Timeout branch below is kept and natively tested.
 constexpr uint32_t kHardTimeoutMs = 20000;
 constexpr uint32_t kGoWindowMs = 60000;
 
