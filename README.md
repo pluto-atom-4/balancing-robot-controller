@@ -15,7 +15,7 @@ Nothing here has been validated on real hardware.
 
 ### Supported boards
 
-- Seeed XIAO ESP32C3 (`xiao_c3`, `balance` (LQR and PID envs), `tilt_servo`, blink)
+- Seeed XIAO ESP32C3 (`xiao_c3`, `balance` (LQR and PID envs), `tilt_servo`, `c3_probe`, `c3_facts`, blink; sim-only: `ttl_servo`, `stepper_motor`, `wokwi_ttl_servo`, see Simulation)
 - Seeed XIAO ESP32S3 (`xiao_s3`, blink only; a future enhancement for `balance`, built on the C3 base)
 - Generic ESP32 dev board (`esp32dev`, blink only)
 - Arduino Uno R3 ATmega328P (`uno`, blink only)
@@ -90,6 +90,9 @@ Each program and board combination is a PlatformIO environment. Environments are
 | tilt_servo-xiao_c3 | tilt_servo | Seeed XIAO ESP32C3 | `make build-tilt_servo-xiao_c3` | `make upload-tilt_servo-xiao_c3` | `make monitor-tilt_servo-xiao_c3` |
 | c3_probe-xiao_c3 | c3_probe | Seeed XIAO ESP32C3 | `make build-c3_probe-xiao_c3` | `make upload-c3_probe-xiao_c3` | `make monitor-c3_probe-xiao_c3` |
 | c3_facts-xiao_c3 | c3_facts | Seeed XIAO ESP32C3 | `make build-c3_facts-xiao_c3` | `make upload-c3_facts-xiao_c3` | `make monitor-c3_facts-xiao_c3` |
+| ttl_servo-xiao_c3 | ttl_servo (sim-only, Wokwi) | Seeed XIAO ESP32C3 | `make build-ttl_servo-xiao_c3` | n/a (sim-only) | n/a (sim-only) |
+| stepper_motor-xiao_c3 | stepper_motor (sim-only, Wokwi) | Seeed XIAO ESP32C3 | `make build-stepper_motor-xiao_c3` | n/a (sim-only) | n/a (sim-only) |
+| wokwi_ttl_servo-xiao_c3 | wokwi_ttl_servo (sim-only, Wokwi) | Seeed XIAO ESP32C3 | `make build-wokwi_ttl_servo-xiao_c3` | n/a (sim-only) | n/a (sim-only) |
 | blink-xiao_c3 | blink | Seeed XIAO ESP32C3 | `make build-blink-xiao_c3` | `make upload-blink-xiao_c3` | `make monitor-blink-xiao_c3` |
 | blink-uno | blink | Arduino Uno R3 (ATmega328P) | `make build-blink-uno` | `make upload-blink-uno` | `make monitor-blink-uno` |
 | blink-uno_r4_wifi | blink | Arduino UNO R4 WiFi | `make build-blink-uno_r4_wifi` | `make upload-blink-uno_r4_wifi` | `make monitor-blink-uno_r4_wifi` |
@@ -142,12 +145,15 @@ pio device monitor -e <env> [--port <port>]
 
 ## Project Structure
 
-- `programs/<name>/main.cpp` – one entry point per program (`balance`, `blink`, `tilt_servo`, `c3_probe`, `c3_facts`). `programs/balance/` also holds `config.h`, `imu_mpu6050.h`, `dxl_wheels.h` (Arduino-bound code only)
+- `programs/<name>/main.cpp` – one entry point per program (`balance`, `blink`, `tilt_servo`, `c3_probe`, `c3_facts`, `ttl_servo`, `stepper_motor`, `wokwi_ttl_servo`). `programs/balance/` also holds `config.h`, `imu_mpu6050.h`, `dxl_wheels.h` (Arduino-bound code only)
   - `programs/balance/main.cpp` – balance control loop (IMU, controller, wheel pair, latched supervisor)
   - `programs/blink/main.cpp` – portable blink example
   - `programs/tilt_servo/main.cpp` – MPU6050 tilt drives Dynamixel XL330 (XIAO C3)
   - `programs/c3_probe/main.cpp` – diagnostic probe (#43), builds, never run on hardware
   - `programs/c3_facts/main.cpp` – bench probe (#44), builds, never run on hardware; includes `facts_io.h`
+  - `programs/ttl_servo/main.cpp` – sim-only (Wokwi): Segway closed-loop PD, wheel velocity sent as a Dynamixel goal velocity to the simulated XL330 chip; simulation-only, not hardware-validated
+  - `programs/stepper_motor/main.cpp` – sim-only (Wokwi): PD wheel velocity drives an A4988 stepper step rate; simulation-only, not hardware-validated
+  - `programs/wokwi_ttl_servo/main.cpp` – sim-only (Wokwi): Dynamixel host demo on the shared chips in `wokwi/chips/`; simulation-only, not hardware-validated
 - `programs/<name>/wokwi.toml`, `diagram.json` – Wokwi simulation config (`blink`, `tilt_servo`, `balance`, `ttl_servo`, `stepper_motor`, `wokwi_ttl_servo`)
 - `lib/` – shared libraries usable by every program: `hal_iface`, `balance_core` (incl. generated `balance_gains_generated.h` and `balance_stamp.h`), `loop_stats`, `dxl_units`, `imu_math`, `imu_frame`, `wheel_servo`, `balance_supervisor`, `ramp_guard`, `segway_sim`, `segway_imu`, `stepper_speed`, `tilt`. Details under Key Libraries cover the balance and tilt libs; `imu_frame`, `segway_sim`, `segway_imu` and `stepper_speed` are not described there
 - `include/` – shared headers (create when needed)
@@ -168,12 +174,17 @@ pio device monitor -e <env> [--port <port>]
 Run a program in the Wokwi simulator without hardware (needs `wokwi-cli` or the CLion Wokwi plugin):
 
 ```bash
-make sim                    # tilt_servo-xiao_c3; no servo in the sim, so the firmware runs read-only
-make sim-blink-xiao_c3      # serial-only control sketch
-make sim-balance-xiao_c3    # balance firmware (LQR): boot and wiring check only
+make sim                         # tilt_servo-xiao_c3: servo and FE-URT-1 chips in the sim; needs WOKWI_CLI_TOKEN; headless run showed boot, [dxl] ping ok, [dxl] torque on (GUI not checked)
+make sim-blink-xiao_c3           # serial-only control sketch
+make sim-balance-xiao_c3         # balance firmware (LQR): boot and wiring check only
+make sim-ttl_servo-xiao_c3       # sim-only Segway closed-loop demo on the Wokwi XL330 chip (simulation-only, not hardware-validated)
+make sim-stepper_motor-xiao_c3   # sim-only stepper demo (simulation-only, not hardware-validated)
+make sim-wokwi_ttl_servo-xiao_c3 # sim-only Dynamixel host demo on the shared chips (simulation-only, not hardware-validated)
 ```
 
-Config lives in `programs/<program>/` (`wokwi.toml`, `diagram.json`). The C3 firmware prints over USB CDC, so each C3 `diagram.json` must set `"serialInterface": "USB_SERIAL_JTAG"` on the board part. The CLI never exits on its own, so `make sim` ends with the timeout exit code 42. The simulator does not cover the servo, and it does not validate balance. The `balance` sim ([#33](https://github.com/pluto-atom-4/balancing-robot-controller/issues/33)) is an ESP32-C3 devkit plus an MPU-6050 and no servo, so it checks only boot and I2C wiring; it is configured for the LQR env only, and `make sim-balance-xiao_c3-pid` is refused by design because the PID firmware path is not in its `wokwi.toml`. With no servo present the wheel startup fails and latches; this was observed in the simulator (`startup FAILED`, `LATCHED cause=startup`, then `gave up: REMOVE SERVO POWER`), and the IMU is still read and printed with state Latched.
+The tilt_servo, ttl_servo and wokwi_ttl_servo sims build the shared Wokwi chips (`make wokwi-chips`) when the wasm is missing or stale; the first run needs network. Every sim here is simulation-only and not hardware-validated.
+
+Config lives in `programs/<program>/` (`wokwi.toml`, `diagram.json`). The C3 firmware prints over USB CDC, so each C3 `diagram.json` must set `"serialInterface": "USB_SERIAL_JTAG"` on the board part. The CLI never exits on its own, so `make sim` ends with the timeout exit code 42. The balance sim does not cover the servo, and it does not validate balance. The `balance` sim ([#33](https://github.com/pluto-atom-4/balancing-robot-controller/issues/33)) is an ESP32-C3 devkit plus an MPU-6050 and no servo, so it checks only boot and I2C wiring; it is configured for the LQR env only, and `make sim-balance-xiao_c3-pid` is refused by design because the PID firmware path is not in its `wokwi.toml`. With no servo present the wheel startup fails and latches; this was observed in the simulator (`startup FAILED`, `LATCHED cause=startup`, then `gave up: REMOVE SERVO POWER`), and the IMU is still read and printed with state Latched.
 
 ## Status and plan (Stage F)
 
