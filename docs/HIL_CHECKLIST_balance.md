@@ -532,7 +532,9 @@ As of 2026-10-27 every item (a) to (g) is DECIDED; none is open.
 - (c) **XL330 limit and model values differ across the issues.** `pluto-atom-4/balancing-robot-controller#34` body: Velocity Limit 1023, 0.229 rpm
   per raw count (both UNVERIFIED). `pluto-atom-4/balancing-robot-controller#44` comment: Velocity Limit 1620,
   model 1190, cited to the e-Manual. The repo's `lib/dxl_units/dxl_units.h:32` has 1620, and
-  `programs/c3_facts/facts_io.h:12` names 1190 "verified vs e-Manual". `pluto-atom-4/balancing-robot-controller#84`
+  `programs/c3_facts/facts_io.h` names 1190 (the owner confirmed 1190 from the XL330-M077 e-Manual on
+  2026-10-27, page not recorded; the code comment is being corrected in
+  pluto-atom-4/balancing-robot-controller#206). `pluto-atom-4/balancing-robot-controller#84`
   says model 1200 (the sim). Step 4 asserts none of these. DECIDED 2026-10-27: read the actual values from the device and the e-Manual
   during step 4 and record them; this checklist asserts none of the numbers quoted in pluto-atom-4/balancing-robot-controller#34, pluto-atom-4/balancing-robot-controller#44 or pluto-atom-4/balancing-robot-controller#84.
 - (d) **2,000,000 baud needs an EEPROM write.** Testing it needs a manual Dynamixel Wizard change. Out of
