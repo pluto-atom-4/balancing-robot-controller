@@ -400,6 +400,20 @@ latch path then retries up to 5 times, 1 s apart [main.cpp:44-47, 128-131]. The 
 2026-10-07 comment matches this code bound. It is UNVERIFIED as a measurement. Do not read a latched run as
 a timing result. Real C3 numbers come from `pluto-atom-4/balancing-robot-controller#43` (`c3_probe`), not yet run.
 
+**c3_probe run (optional, separate session).** To get the C3 numbers, flash and capture:
+`pio run -e c3_probe-xiao_c3 -t upload`, then `pio device monitor -e c3_probe-xiao_c3 | tee c3probe.log`
+(close the monitor before any other tool uses the port, gate G7). Robot still for the gyro calibration,
+wheels off the ground, servo torque OFF by default. Afterwards reflash `balance-xiao_c3` before any
+balance step. Use the default build and confirm the output shows `torque_on_build 0`. Do NOT build with
+`-D C3PROBE_TORQUE_ON` for the HIL: it can write the Operating Mode (EEPROM), which conflicts with gate
+G5, and in that build a servo whose torque-on setup fails is dropped from the final torque-off pass, so
+`torque_state` can read 0 without a confirmed torque-off. If the output shows `servo_unsafe 1`, switch
+the servo supply off, as in step 1b. Its `loop_period_us_*` and `work_us_max` lines are NOT step 7 pass
+criteria and do not replace the balance `[loop]` reading. Record `servo_mode` (0, 1 or 2; 0 means no
+usable servo, so no servo timing) from its output. Post its results as a comment on
+`pluto-atom-4/balancing-robot-controller#43`, not in the results template. Nothing here is validated on
+hardware.
+
 ---
 
 ## Step 8. Full kill-switch set
