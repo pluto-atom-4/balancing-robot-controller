@@ -241,9 +241,10 @@ manual Dynamixel Wizard EEPROM change, which this checklist does not do (open de
 - If it runs: the ramp switches torque ON (c3_facts `runRamp` calls `enableVelocityMode`
   [programs/c3_facts/main.cpp:287]). That is safe only with the servo held down. The cap is 20 percent of the
   device-read Velocity Limit, positive only, about 15 s total (the ramp ends at 15 s; `lib/ramp_guard` has a 20 s
-  check that is an unreachable backstop, because the ramp loop ends first). It needs a typed `GO` and Enter
-  within 60 s [lib/ramp_guard/ramp_guard.h:19], then a 5 s countdown. Any key aborts. Read Present Velocity
-  from `ramp_row` lines (`C3FACTS ramp_row <t_ms>,<goal>,<present> ms_raw_raw`).
+  check that c3_facts never reaches, because its ramp loop ends first, so `ramp_end_reason` is never
+  `hard_timeout` [programs/c3_facts/main.cpp:267, :296-324]). It needs a typed `GO` and Enter within 60 s
+  [lib/ramp_guard/ramp_guard.h:19], then a 5 s countdown. Any key aborts. Read Present Velocity from `ramp_row`
+  lines (`C3FACTS ramp_row <t_ms>,<goal>,<present> ms_raw_raw`).
 - Velocity unit: `lib/dxl_units/dxl_units.h:10` says 0.229 rev/min per raw count, and the velocity
   limit range is 0 to 2047 [dxl_units.h:11]. The header cites the XL330-M077 e-Manual URL
   (`https://emanual.robotis.com/docs/en/dxl/x/xl330-m077/`) but gives no page. Write the page you read.
