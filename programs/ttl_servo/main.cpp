@@ -443,6 +443,11 @@ void setup() {
 #if defined(TTL_SERVO_IMU_FRAMES) || defined(TTL_SERVO_DOF_FRAMES)
   lastFramesPrintMs = lastLoopMs;
 #endif
+#ifdef TTL_SERVO_EXT_CMD
+  // Bytes typed during boot (about 2 s of delays, gyro calibration, servo bring-up) are stale: drop them.
+  while (Serial.available() > 0) (void)Serial.read();
+  ext_parser.reset();
+#endif
 }
 
 void loop() {
@@ -486,6 +491,9 @@ void loop() {
       segway_sim.params.kd = 1.0f;
 #endif
       holding = false;
+#ifdef TTL_SERVO_EXT_CMD
+      ext_have = false;  // a restart never reuses a pre-fall host command
+#endif
       Serial.println("[ttl_servo] restart");
     }
   } else {
@@ -504,7 +512,8 @@ void loop() {
       float cmd = segway::pd_wheel_cmd(segway_sim.params, segway_sim.theta_rad, segway_sim.theta_dot_rad_s);
       const bool fresh = ext_have && (millis() - ext_cmd_ms) < kExtCmdFreshMs;
       if (fresh) {
-        cmd = ext_cmd_rad_s;
+        cmd = segway::clampf(ext_cmd_rad_s, -segway_sim.params.wheel_max_rad_s,
+                             segway_sim.params.wheel_max_rad_s);
         ++ext_used_ticks;
       } else {
         ++ext_pd_ticks;
@@ -529,6 +538,9 @@ void loop() {
       }
       hold_until_ms = millis() + 1000;
       holding = true;
+#ifdef TTL_SERVO_EXT_CMD
+      ext_have = false;  // the fall ends the closed loop until fresh host commands arrive
+#endif
     } else if (servo_ok) {
       // Goal velocity to the chip. Only on change, only if the chip is live.
       int32_t raw = segway::wheel_cmd_to_raw(segway_sim.wheel_vel_rad_s);
