@@ -215,9 +215,9 @@ Exit codes are in the script's `-h` text (the authority).
 | Part | Status |
 | --- | --- |
 | DOF frames from the SegwaySim state, built with the flag | Run headless in Wokwi once (see "Wokwi headless run" and "Capture script") |
-| wokwi-cli stdout carries serial lines live through a pipe | Spike on 2026-10-29, one headless 9 s run: 308 `IMU,` lines spread over the run; checksums and rate not checked |
-| `tools/ttl_servo_dof_live.sh` | Run headless 7 times on 2026-10-29 (no Webots), including the `-t 6000` and no-flag cases above and one run of `scenario_dof_live.yaml`: run 1 failed at the exit-code handling (`PIPESTATUS` bug, fixed) after the bridge had armed and recorded 557 rows; run 2 used `-- --duration 3` and ended with the bridge error plus the wokwi-cli `EPIPE` crash; run 3 exited 0 |
-| Bridge `--stdin` source (freecad-workspace) | Run once through the live pipe: armed, `cmd_rad_s` rose to +1.0 (the bridge's limit) after the gyro Z push, `wheel_angle` integrated to about 5.8 rad, 565 rows recorded (`--record`); one earlier run showed `faults=1` near the end, cause not investigated |
+| wokwi-cli stdout carries serial lines live through a pipe | Spike on 2026-10-29, not the script (a Python harness reading the pipe): one headless 9 s run, 308 `IMU,` lines spread over the run; checksums and rate not checked |
+| `tools/ttl_servo_dof_live.sh` | Run headless 7 times on 2026-10-29 (no Webots): (1) default scenario, died at the exit-code handling (`PIPESTATUS` bug, fixed) after the bridge had armed and recorded 557 rows; (2) default scenario with `-- --duration 3`: the bridge error plus the wokwi-cli `EPIPE` crash; (3) default scenario: exit 0, 565 rows; (4) `-s scenario_dof_live.yaml -- --duration 45`: exit 0, 1587 rows; (5) `-t 12000`: exit 0, 561 rows, wokwi-cli finished before the limit (no exit 42 line); (6) `-t 6000`: wokwi-cli exit 42, bridge exit 0, 168 rows, script exit 0; (7) build without the flag, `-t 15000`: bridge exit 2, script exit 2 |
+| Bridge `--stdin` source (freecad-workspace) | Script runs 3 to 5 above went through it: armed, `cmd_rad_s` rose to +1.0 (the bridge's limit) after the gyro Z push, `wheel_angle` integrated to about 5.8 rad (run 3). Also, not the script: a captured Wokwi log piped on stdin gave exit 0 and 259 rows. The status line showed `faults=1` in runs 1, 4 and 5; cause not investigated |
 | Webots display of the LQR wheel | Not run |
 | Sign conventions | UNVERIFIED |
 | Closed loop | None, by design |
