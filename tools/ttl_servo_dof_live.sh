@@ -3,21 +3,23 @@
 #
 # SIM-ONLY, not hardware-validated. Runs the headless Wokwi ttl_servo DOF frame stream (build with
 # -D TTL_SERVO_DOF_FRAMES) and pipes wokwi-cli's stdout live into the freecad-workspace bridge
-# --stdin. One-way stream: the firmware PD drives the Wokwi servo chip; the Python LQR command is
-# only shown on the Webots display wheel; nothing feeds back into the physics. Never builds
-# firmware. See -h for usage and exit codes.
+# --stdin. One-way stream by default: the firmware PD drives the Wokwi servo chip; the Python LQR command is
+# only shown on the Webots display wheel; nothing feeds back into the physics. With -c the bridge
+# command is sent back to the firmware through wokwi-cli --interactive (closed loop, SIM-ONLY).
+# Never builds firmware. See -h for usage and exit codes.
 
 set -u
 
 usage() {
   cat <<'EOF'
-Usage: tools/ttl_servo_dof_live.sh [-s SCENARIO.yaml] [-t TIMEOUT_MS] [-f FW_ROOT] [-h] [-- BRIDGE_ARGS...]
+Usage: tools/ttl_servo_dof_live.sh [-s SCENARIO.yaml] [-t TIMEOUT_MS] [-f FW_ROOT] [-c] [-h] [-- BRIDGE_ARGS...]
 
-SIM-ONLY, not hardware-validated. Live, one-way stream: wokwi-cli runs headless on programs/ttl_servo
+SIM-ONLY, not hardware-validated. Live stream: wokwi-cli runs headless on programs/ttl_servo
 and its stdout is piped into the freecad-workspace bridge (poc/esp32-dof/monitor/dof_wheel_bridge.py
 --stdin --core lqr).
   - Two controllers: the firmware PD (drives the Wokwi servo chip, the physics) and the Python LQR
-    (its command is only shown on the Webots display wheel). No feedback into the physics or the chip.
+    (its command is only shown on the Webots display wheel). Without -c: no feedback into the physics
+    or the chip. With -c: closed loop, see below.
   - Sign conventions UNVERIFIED (BRC#185, FW#359, FW#377). Not hardware-validated.
   - The Webots display with this stream has not been run (headless runs only, 2026-10-29).
 
@@ -26,6 +28,17 @@ and its stdout is piped into the freecad-workspace bridge (poc/esp32-dof/monitor
   -t TIMEOUT_MS     wokwi-cli timeout in ms (default: 60000)
   -f FW_ROOT        freecad-workspace repo root (default: the FW_ROOT environment variable;
                     one of the two is required)
+  -c                closed loop: the bridge command is sent back to the firmware through wokwi-cli
+                    --interactive (needs the firmware built with -D TTL_SERVO_DOF_FRAMES -D TTL_SERVO_EXT_CMD,
+                    pluto-atom-4/balancing-robot-controller#221; the script cannot check the flag). Use
+                    -- --cmd-scale -1 if the loop diverges: the sign of the Python LQR command versus the
+                    firmware sim is UNVERIFIED (pluto-atom-4/freecad-workspace#359,
+                    pluto-atom-4/balancing-robot-controller#185). The stream stops when the sim body falls.
+                    Without the firmware flag the commands are ignored and the run is open loop.
+                    Run length with -c: wokwi-cli --interactive does NOT exit after a scenario has completed (it
+                    waits for stdin to close, which never happens here), so use a scenario that never completes
+                    (scenario_dof_closed.yaml) with an explicit -t; the run then ends at -t with exit 42, which
+                    counts as normal. A completed scenario would leave the run waiting (observed 2026-10-29).
   -h                show this help
   -- BRIDGE_ARGS    everything after -- goes to the bridge unchanged, for example:
                     -- --core pid --duration 30   (a later --core wins over the built-in --core lqr)
@@ -72,15 +85,26 @@ abspath() {
   esac
 }
 
+cleanup() {
+  exec 3>&- 2>/dev/null
+  rm -f "$CMD_FIFO" 2>/dev/null
+  rmdir "$CMD_DIR" 2>/dev/null
+  return 0
+}
+
 SCEN="scenario_dof_frames.yaml"
 TMO="60000"
 FW="${FW_ROOT:-}"
+CLOSED=0
+CMD_DIR=""
+CMD_FIFO=""
 
-while getopts ":s:t:f:h" opt; do
+while getopts ":s:t:f:ch" opt; do
   case "$opt" in
     s) SCEN=$OPTARG ;;
     t) TMO=$OPTARG ;;
     f) FW=$OPTARG ;;
+    c) CLOSED=1 ;;
     h) usage; exit 0 ;;
     :) echo "error: -$OPTARG needs a value" >&2; usage >&2; exit 1 ;;
     *) echo "error: unknown option -$OPTARG" >&2; usage >&2; exit 1 ;;
@@ -165,14 +189,38 @@ case "$WOKWI" in
   */*) WOKWI=$(abspath "$WOKWI") ;;
 esac
 
-# Informational only: omits the < /dev/null redirect and does not quote the arguments.
-echo "live: wokwi-cli --timeout $TMO --scenario $SCEN_ABS programs/ttl_servo | python3 $BRIDGE --stdin --core lqr ${EXTRA[*]+"${EXTRA[*]}"}" >&2
+WOKWI_OPTS=(--timeout "$TMO" --scenario "$SCEN_ABS")
+BRIDGE_OPTS=(--stdin --core lqr)
+IN_FILE=/dev/null
+if [ "$CLOSED" -eq 1 ]; then
+  CMD_DIR=$(mktemp -d) || { echo "error: mktemp -d failed" >&2; exit 1; }
+  trap 'cleanup' EXIT
+  trap 'cleanup; exit 130' INT
+  trap 'cleanup; exit 143' TERM
+  trap 'cleanup; exit 129' HUP
+  CMD_FIFO="$CMD_DIR/cmd.fifo"
+  mkfifo "$CMD_FIFO" || { echo "error: mkfifo failed: $CMD_FIFO" >&2; exit 1; }
+  # Hold the FIFO open read-write in this script (fd 3) so that neither side's open can block forever:
+  # if the bridge dies before it opens the FIFO, wokwi-cli's input redirect still succeeds. A side effect
+  # is that wokwi-cli never sees end of input on stdin, which it does not need.
+  exec 3<>"$CMD_FIFO" || { echo "error: cannot open the FIFO: $CMD_FIFO" >&2; exit 1; }
+  WOKWI_OPTS+=(--interactive)
+  BRIDGE_OPTS+=(--cmd-out "$CMD_FIFO")
+  IN_FILE=$CMD_FIFO
+fi
+
+# Informational only: omits the input redirect (< /dev/null, or < FIFO with -c) and does not quote the arguments.
+if [ "$CLOSED" -eq 1 ]; then
+  echo "live: wokwi-cli --timeout $TMO --scenario $SCEN_ABS --interactive programs/ttl_servo < $CMD_FIFO | python3 $BRIDGE --stdin --core lqr --cmd-out $CMD_FIFO ${EXTRA[*]+"${EXTRA[*]}"}" >&2
+else
+  echo "live: wokwi-cli --timeout $TMO --scenario $SCEN_ABS programs/ttl_servo | python3 $BRIDGE --stdin --core lqr ${EXTRA[*]+"${EXTRA[*]}"}" >&2
+fi
 
 # Foreground pipeline on purpose: Ctrl-C reaches wokwi-cli and the bridge together (one process group),
 # so no signal trap is needed. A SIGTERM or SIGHUP sent only to this script is NOT forwarded.
 cd "$REPO" || exit 1
-"$WOKWI" --timeout "$TMO" --scenario "$SCEN_ABS" programs/ttl_servo < /dev/null \
-  | python3 "$BRIDGE" --stdin --core lqr ${EXTRA[@]+"${EXTRA[@]}"}
+"$WOKWI" "${WOKWI_OPTS[@]}" programs/ttl_servo < "$IN_FILE" \
+  | python3 "$BRIDGE" "${BRIDGE_OPTS[@]}" ${EXTRA[@]+"${EXTRA[@]}"}
 PS=("${PIPESTATUS[@]}")   # copy at once: any later command resets PIPESTATUS
 W_RC=${PS[0]}
 B_RC=${PS[1]}

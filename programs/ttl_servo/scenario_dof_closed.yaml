@@ -1,0 +1,34 @@
+# SIM-ONLY headless scenario for the closed-loop launcher mode (tools/ttl_servo_dof_live.sh -c).
+# Not hardware-validated. Same early waits and two gyro Z pushes (+30 then -30 deg/s) as
+# scenario_dof_live.yaml, but it deliberately does NOT complete: the last step is a very long delay.
+# Why: with wokwi-cli --interactive the process stays alive after a scenario has completed (the
+# simulation stops and wokwi-cli waits for its stdin to close, which never happens in -c mode, because
+# the FIFO has writers until the bridge exits). A scenario that never completes lets the simulation run
+# until wokwi-cli's own --timeout (-t, simulated ms), which ends it with exit 42 (treated as normal).
+# Use it with an explicit -t, for example: -c -s scenario_dof_closed.yaml -t 45000.
+name: ttl_servo dof closed loop
+version: 1
+steps:
+  - wait-serial: '[frames] on dof-sim'
+  - wait-serial: 'IMU,'
+  - delay: 4000ms
+  - set-control:
+      part-id: imu
+      control: rotationZ
+      value: 30
+  - delay: 5000ms
+  - set-control:
+      part-id: imu
+      control: rotationZ
+      value: 0
+  - delay: 3000ms
+  - set-control:
+      part-id: imu
+      control: rotationZ
+      value: -30
+  - delay: 5000ms
+  - set-control:
+      part-id: imu
+      control: rotationZ
+      value: 0
+  - delay: 600000ms
