@@ -314,6 +314,12 @@ void test_negative_zero_is_normalised(void) {
   TEST_ASSERT_FALSE(std::signbit(r.last));
   r = feedStr(p, "CMD -0.0000\n");
   TEST_ASSERT_FALSE(std::signbit(r.last));
+  r = feedStr(p, "CMD -0.0\n");
+  TEST_ASSERT_EQUAL_UINT(1, r.lines);
+  TEST_ASSERT_FALSE(std::signbit(r.last));
+  r = feedStr(p, "CMD -.0\n");
+  TEST_ASSERT_EQUAL_UINT(1, r.lines);
+  TEST_ASSERT_FALSE(std::signbit(r.last));
 }
 
 int main(int argc, char **argv) {
