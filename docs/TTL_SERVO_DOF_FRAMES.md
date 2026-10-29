@@ -161,6 +161,47 @@ cd <FW> && mamba run -n esp32-dof python3 poc/esp32-dof/monitor/dof_wheel_bridge
   CSV or this build (the owner's replay conditions were not recorded); a replay of this stream
   is #191 (OPEN).
 
+## Live stream (Stage 1)
+
+`tools/ttl_servo_dof_live.sh` runs the same headless Wokwi scenario as the capture script, but
+pipes wokwi-cli's stdout live into the FW bridge `--stdin` instead of writing a CSV. It is SIM-ONLY,
+a one-way stream, and not hardware-validated. Two controllers are involved: the firmware PD drives
+the Wokwi servo chip (the physics), and the Python LQR command is only shown on the Webots display
+wheel. Nothing feeds back into the physics or the chip, so there is no closed loop.
+
+The script never builds firmware. It checks `WOKWI_CLI_TOKEN`, the two chip `.wasm` files, the
+bridge file under `FW_ROOT` and `.pio/build/ttl_servo-xiao_c3/firmware.bin`, then runs the pipeline.
+The bridge uses `python3` from PATH; the FW env is `mamba run -n esp32-dof`, and the whole script
+can be run under it.
+
+```bash
+PLATFORMIO_BUILD_FLAGS="-D TTL_SERVO_DOF_FRAMES" pio run -e ttl_servo-xiao_c3   # NOT run: build with the flag
+make wokwi-chips                                                                   # NOT run: only if the chip .wasm files are missing
+cd <FW>/poc/servo-wheel-dof && SWD_UDP_PORT=5006 ./run_demo.sh --gui              # NOT run: start Webots (world servo_wheel_dof) first, UDP 5006
+FW_ROOT=<FW> WOKWI_CLI_TOKEN=<token> tools/ttl_servo_dof_live.sh                   # NOT run: the live script, from the BRC repo root
+tools/ttl_servo_dof_live.sh -h                                                     # NOT run
+pio run -e ttl_servo-xiao_c3                                                       # NOT run: afterwards rebuild without the flag (shared .pio)
+```
+
+Options: `-s SCENARIO`, `-t TIMEOUT_MS` (default 60000), `-f FW_ROOT`, `-h`. Anything after `--` goes to
+the bridge unchanged, for example `-- --core pid --duration 30`; a later `--core` wins over the
+built-in `--core lqr`. Exit codes are in the script's `-h` text (the authority). wokwi-cli exit 42 is
+the expected timeout and counts as normal.
+
+| Part | Status |
+| --- | --- |
+| DOF frames from the SegwaySim state, built with the flag | Run headless in Wokwi once (see "Wokwi headless run" and "Capture script") |
+| wokwi-cli stdout carries serial lines live through a pipe | Spike on 2026-10-29, one headless 9 s run: 308 `IMU,` lines spread over the run; checksums and rate not checked |
+| `tools/ttl_servo_dof_live.sh` | Written; not run |
+| Bridge `--stdin` source (freecad-workspace) | Not run; not checked in this repo |
+| Webots display of the LQR wheel | Not run |
+| Sign conventions | UNVERIFIED |
+| Closed loop | None, by design |
+
+NOT run: the live script, the bridge `--stdin` source, and the Webots display have not been run end
+to end; sign conventions UNVERIFIED (pluto-atom-4/balancing-robot-controller#185,
+pluto-atom-4/freecad-workspace#359, pluto-atom-4/freecad-workspace#377); no closed loop.
+
 ## What this is NOT
 
 - **Open loop.** Nothing from Webots or the bridge feeds back into the ttl_servo physics or the
