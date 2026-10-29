@@ -1,5 +1,6 @@
 #include <unity.h>
 #include <segway_cmd.h>
+#include <cmath>
 #include <cstring>
 
 void setUp(void) {}
@@ -210,6 +211,111 @@ void test_reset_clears_counters(void) {
   TEST_ASSERT_EQUAL_UINT32(0, p.rejected);
 }
 
+void test_boundary_31_chars_accepted(void) {
+  segway_cmd::LineParser p;
+  FeedResult r = feedStr(p, "CMD 000000000000000000000000001\n");
+  TEST_ASSERT_EQUAL_UINT(1, r.lines);
+  TEST_ASSERT_FLOAT_WITHIN(1e-6f, 1.0f, r.last);
+  TEST_ASSERT_EQUAL_UINT32(0, p.rejected);
+}
+
+void test_boundary_32_chars_rejected_once(void) {
+  expectRejected("CMD 0000000000000000000000000001\n");
+}
+
+void test_boundary_33_chars_rejected_once(void) {
+  expectRejected("CMD 00000000000000000000000000001\n");
+}
+
+void test_reject_hex(void) { expectRejected("CMD 0x1\n"); }
+void test_reject_upper_nan(void) { expectRejected("CMD NAN\n"); }
+void test_reject_negative_inf(void) { expectRejected("CMD -inf\n"); }
+void test_reject_upper_exponent(void) { expectRejected("CMD 1E3\n"); }
+void test_reject_signed_exponent(void) { expectRejected("CMD 1e+3\n"); }
+void test_reject_two_spaces(void) { expectRejected("CMD  1\n"); }
+void test_reject_tab(void) { expectRejected("CMD\t1\n"); }
+
+void test_reset_drops_partial_line(void) {
+  segway_cmd::LineParser p;
+  feedStr(p, "CMD 1");
+  p.reset();
+  FeedResult r = feedStr(p, "CMD 2\n");
+  TEST_ASSERT_EQUAL_UINT(1, r.lines);
+  TEST_ASSERT_FLOAT_WITHIN(1e-6f, 2.0f, r.last);
+  TEST_ASSERT_EQUAL_UINT32(1, p.accepted);
+  TEST_ASSERT_EQUAL_UINT32(0, p.rejected);
+}
+
+void test_reset_drops_overflow_state(void) {
+  segway_cmd::LineParser p;
+  feedStr(p, "CMD 1111111111111111111111111111111111111111");  // overflowing, no terminator
+  p.reset();
+  FeedResult r = feedStr(p, "CMD 2\n");
+  TEST_ASSERT_EQUAL_UINT(1, r.lines);
+  TEST_ASSERT_FLOAT_WITHIN(1e-6f, 2.0f, r.last);
+  TEST_ASSERT_EQUAL_UINT32(0, p.rejected);
+}
+
+void test_null_out_pointer(void) {
+  segway_cmd::LineParser p;
+  bool got = false;
+  for (const char* c = "CMD 1\n"; *c != '\0'; c++) got = p.feed(*c, nullptr);
+  TEST_ASSERT_TRUE(got);
+  TEST_ASSERT_EQUAL_UINT32(1, p.accepted);
+  bool rej = true;
+  for (const char* c = "CMD x\n"; *c != '\0'; c++) rej = p.feed(*c, nullptr);
+  TEST_ASSERT_FALSE(rej);
+  TEST_ASSERT_EQUAL_UINT32(1, p.rejected);
+}
+
+void test_cr_only_terminator(void) {
+  segway_cmd::LineParser p;
+  FeedResult r = feedStr(p, "CMD 1\rCMD 2\r");
+  TEST_ASSERT_EQUAL_UINT(2, r.lines);
+  TEST_ASSERT_FLOAT_WITHIN(1e-6f, 2.0f, r.last);
+  TEST_ASSERT_EQUAL_UINT32(0, p.rejected);
+}
+
+void test_overflow_ended_by_crlf_rejected_once(void) {
+  segway_cmd::LineParser p;
+  FeedResult r = feedStr(p, "CMD 1111111111111111111111111111111111111111\r\nCMD 3\r\n");
+  TEST_ASSERT_EQUAL_UINT(1, r.lines);
+  TEST_ASSERT_FLOAT_WITHIN(1e-6f, 3.0f, r.last);
+  TEST_ASSERT_EQUAL_UINT32(1, p.rejected);
+  TEST_ASSERT_EQUAL_UINT32(1, p.accepted);
+}
+
+void test_leading_zeros(void) {
+  segway_cmd::LineParser p;
+  FeedResult r = feedStr(p, "CMD 0001.5\n");
+  TEST_ASSERT_EQUAL_UINT(1, r.lines);
+  TEST_ASSERT_FLOAT_WITHIN(1e-6f, 1.5f, r.last);
+}
+
+void test_bare_dot_forms_accepted(void) {
+  segway_cmd::LineParser p;
+  FeedResult r = feedStr(p, "CMD 1.\n");
+  TEST_ASSERT_EQUAL_UINT(1, r.lines);
+  TEST_ASSERT_FLOAT_WITHIN(1e-6f, 1.0f, r.last);
+  r = feedStr(p, "CMD .5\n");
+  TEST_ASSERT_EQUAL_UINT(1, r.lines);
+  TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.5f, r.last);
+  r = feedStr(p, "CMD +.5\n");
+  TEST_ASSERT_EQUAL_UINT(1, r.lines);
+  TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.5f, r.last);
+  TEST_ASSERT_EQUAL_UINT32(0, p.rejected);
+}
+
+void test_negative_zero_is_normalised(void) {
+  segway_cmd::LineParser p;
+  FeedResult r = feedStr(p, "CMD -0\n");
+  TEST_ASSERT_EQUAL_UINT(1, r.lines);
+  TEST_ASSERT_EQUAL_FLOAT(0.0f, r.last);
+  TEST_ASSERT_FALSE(std::signbit(r.last));
+  r = feedStr(p, "CMD -0.0000\n");
+  TEST_ASSERT_FALSE(std::signbit(r.last));
+}
+
 int main(int argc, char **argv) {
   UNITY_BEGIN();
   RUN_TEST(test_half);
@@ -236,5 +342,23 @@ int main(int argc, char **argv) {
   RUN_TEST(test_out_untouched_on_reject);
   RUN_TEST(test_overflow_then_good_line);
   RUN_TEST(test_reset_clears_counters);
+  RUN_TEST(test_boundary_31_chars_accepted);
+  RUN_TEST(test_boundary_32_chars_rejected_once);
+  RUN_TEST(test_boundary_33_chars_rejected_once);
+  RUN_TEST(test_reject_hex);
+  RUN_TEST(test_reject_upper_nan);
+  RUN_TEST(test_reject_negative_inf);
+  RUN_TEST(test_reject_upper_exponent);
+  RUN_TEST(test_reject_signed_exponent);
+  RUN_TEST(test_reject_two_spaces);
+  RUN_TEST(test_reject_tab);
+  RUN_TEST(test_reset_drops_partial_line);
+  RUN_TEST(test_reset_drops_overflow_state);
+  RUN_TEST(test_null_out_pointer);
+  RUN_TEST(test_cr_only_terminator);
+  RUN_TEST(test_overflow_ended_by_crlf_rejected_once);
+  RUN_TEST(test_leading_zeros);
+  RUN_TEST(test_bare_dot_forms_accepted);
+  RUN_TEST(test_negative_zero_is_normalised);
   return UNITY_END();
 }

@@ -63,7 +63,7 @@ inline bool parseLine(const char* buf, unsigned n, float* value) {
   if (digits == 0 || i != n) return false;
 
   double v = whole + frac / scale;
-  if (negative) v = -v;
+  if (negative && v != 0.0) v = -v;  // "-0" stays +0.0
   const double hi = static_cast<double>(kMaxRadS);
   if (v > hi) v = hi;
   if (v < -hi) v = -hi;
