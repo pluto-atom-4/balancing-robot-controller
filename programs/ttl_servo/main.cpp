@@ -24,6 +24,13 @@
 // accel and pitch-rate gyro from SegwaySim theta (lib/segway_imu, signs UNVERIFIED per #185),
 // not hardware-validated. Frames are the sim state, never the chip's accel or gyro. The body
 // rests upright for kDofRestTicks ticks, then the PD sim runs. The stream stops on a fall.
+// -D TTL_SERVO_EXT_CMD: SIM-ONLY, default OFF, needs TTL_SERVO_DOF_FRAMES (#error otherwise).
+// The host reads the DOF frame stream and sends `CMD <rad_s>` lines on USB serial
+// (wokwi-cli --interactive). A host command younger than 200 ms replaces the firmware PD
+// in the sim step; otherwise the PD runs, so a dead host never leaves a stale command.
+// Counters print once per second as `[ext_cmd] rx= bad= used= pd=`. The host command sign
+// versus the PD is UNVERIFIED (freecad-workspace#359, balancing-robot-controller#185).
+// Not hardware-validated; nothing run.
 #include <Arduino.h>
 #include <Wire.h>
 #include <Adafruit_MPU6050.h>
@@ -33,6 +40,9 @@
 #include <segway_sim.h>
 #if defined(TTL_SERVO_DOF_FRAMES) && defined(TTL_SERVO_IMU_FRAMES)
 #error "TTL_SERVO_DOF_FRAMES and TTL_SERVO_IMU_FRAMES are mutually exclusive: define only one"
+#endif
+#if defined(TTL_SERVO_EXT_CMD) && !defined(TTL_SERVO_DOF_FRAMES)
+#error "TTL_SERVO_EXT_CMD needs TTL_SERVO_DOF_FRAMES: the host needs the frame stream to compute a command"
 #endif
 #if defined(TTL_SERVO_IMU_FRAMES) || defined(TTL_SERVO_DOF_FRAMES)
 // Shared frame block: POC raw-gyro frames (TTL_SERVO_IMU_FRAMES) and the DOF sim stream
@@ -54,6 +64,9 @@
 #endif
 #ifdef TTL_SERVO_DOF_FRAMES
 #include <segway_imu.h>  // SIM-ONLY DOF stream synthesis (#186), signs UNVERIFIED (#185)
+#endif
+#ifdef TTL_SERVO_EXT_CMD
+#include <segway_cmd.h>  // SIM-ONLY host CMD line parser (#221), signs UNVERIFIED (#185)
 #endif
 
 // ===== Configuration =====
@@ -107,6 +120,11 @@ static constexpr float    kGravityMs2 = 9.80665f;    // m/s^2 per g (frame accel
 static constexpr uint32_t FRAMES_PRINT_PERIOD_MS = 1000;  // 1 Hz [frames] counters line
 // Free TX bytes needed before the [frames] line is printed (worst case line is 67 bytes).
 static constexpr int      kFramesLineRoom = 80;
+#ifdef TTL_SERVO_EXT_CMD
+static constexpr int      kExtLineRoom = 80;    // extra TX room for the `[ext_cmd]` line printed after `[frames]`
+#else
+static constexpr int      kExtLineRoom = 0;
+#endif
 static uint16_t frame_seq = 0;          // advances on every attempted frame, sent or dropped
 static uint32_t frames_sent = 0;
 static uint32_t frames_dropped = 0;
@@ -118,6 +136,28 @@ static char frame_buf[128];             // one frame, NUL included (about 65-95 
 static constexpr int      kDofRestTicks = 150;  // 3 s at 50 Hz, counted in loop ticks (not ms)
 static int dof_rest_ticks = 0;          // physics frozen while below kDofRestTicks
 static bool dof_stream_stopped = false; // latched on a fall: no more DOF frames until reset
+#endif
+#ifdef TTL_SERVO_EXT_CMD
+static segway_cmd::LineParser ext_parser;   // SIM-ONLY host CMD lines on USB serial
+static float ext_cmd_rad_s = 0.0f;          // last accepted host command (rad/s)
+static uint32_t ext_cmd_ms = 0;             // millis() when it was accepted
+static bool ext_have = false;               // true after the first accepted line
+static uint32_t ext_used_ticks = 0;         // sim ticks stepped with the host command
+static uint32_t ext_pd_ticks = 0;           // sim ticks stepped with the firmware PD
+static constexpr uint32_t kExtCmdFreshMs = 200;
+
+// Drains USB serial without blocking. Called on every loop() pass under TTL_SERVO_EXT_CMD.
+static void pollExtCmd() {
+  while (Serial.available() > 0) {
+    const int c = Serial.read();
+    float v = 0.0f;
+    if (c >= 0 && ext_parser.feed(static_cast<char>(c), &v)) {
+      ext_cmd_rad_s = v;
+      ext_cmd_ms = millis();
+      ext_have = true;
+    }
+  }
+}
 #endif
 
 // ===== Helpers =====
@@ -403,9 +443,17 @@ void setup() {
 #if defined(TTL_SERVO_IMU_FRAMES) || defined(TTL_SERVO_DOF_FRAMES)
   lastFramesPrintMs = lastLoopMs;
 #endif
+#ifdef TTL_SERVO_EXT_CMD
+  // Bytes typed during boot (about 2 s of delays, gyro calibration, servo bring-up) are stale: drop them.
+  while (Serial.available() > 0) (void)Serial.read();
+  ext_parser.reset();
+#endif
 }
 
 void loop() {
+#ifdef TTL_SERVO_EXT_CMD
+  pollExtCmd();  // every pass, so the USB RX buffer is drained between 50 Hz ticks
+#endif
   uint32_t now_ms = millis();
   uint32_t dt_ms = now_ms - lastLoopMs;
   if (dt_ms < LOOP_PERIOD_MS) {
@@ -443,6 +491,9 @@ void loop() {
       segway_sim.params.kd = 1.0f;
 #endif
       holding = false;
+#ifdef TTL_SERVO_EXT_CMD
+      ext_have = false;  // a restart never reuses a pre-fall host command
+#endif
       Serial.println("[ttl_servo] restart");
     }
   } else {
@@ -456,7 +507,22 @@ void loop() {
 #else
     const bool dof_rest = false;
 #endif
+#ifdef TTL_SERVO_EXT_CMD
+    if (!dof_rest) {
+      float cmd = segway::pd_wheel_cmd(segway_sim.params, segway_sim.theta_rad, segway_sim.theta_dot_rad_s);
+      const bool fresh = ext_have && (millis() - ext_cmd_ms) < kExtCmdFreshMs;
+      if (fresh) {
+        cmd = segway::clampf(ext_cmd_rad_s, -segway_sim.params.wheel_max_rad_s,
+                             segway_sim.params.wheel_max_rad_s);
+        ++ext_used_ticks;
+      } else {
+        ++ext_pd_ticks;
+      }
+      segway_sim.step(cmd, segway::disturbance_from_gyro(segway_sim.params, gyroZ_filtered_rad_s), dt_s);
+    }
+#else
     if (!dof_rest) (void)segway_sim.tick_cmd(gyroZ_filtered_rad_s, dt_s);
+#endif
 
     if (segway_sim.has_fallen) {
       // 4. Fall first, so a fall tick never writes the lagged velocity.
@@ -472,6 +538,9 @@ void loop() {
       }
       hold_until_ms = millis() + 1000;
       holding = true;
+#ifdef TTL_SERVO_EXT_CMD
+      ext_have = false;  // the fall ends the closed loop until fresh host commands arrive
+#endif
     } else if (servo_ok) {
       // Goal velocity to the chip. Only on change, only if the chip is live.
       int32_t raw = segway::wheel_cmd_to_raw(segway_sim.wheel_vel_rad_s);
@@ -533,10 +602,15 @@ void loop() {
   // counters and the timer are NOT reset, so it prints at the next tick that has room.
   // Not a no-blocking guarantee: unguarded prints can still block (see the imu_frame.h note).
   if (now_ms - lastFramesPrintMs >= FRAMES_PRINT_PERIOD_MS &&
-      Serial.availableForWrite() >= kFramesLineRoom) {
+      Serial.availableForWrite() >= kFramesLineRoom + kExtLineRoom) {
     Serial.printf("[frames] sent=%lu dropped=%lu max_emit_us=%lu\n",
                   (unsigned long)frames_sent, (unsigned long)frames_dropped,
                   (unsigned long)frames_max_emit_us);
+#ifdef TTL_SERVO_EXT_CMD
+    Serial.printf("[ext_cmd] rx=%lu bad=%lu used=%lu pd=%lu\n",
+                  (unsigned long)ext_parser.accepted, (unsigned long)ext_parser.rejected,
+                  (unsigned long)ext_used_ticks, (unsigned long)ext_pd_ticks);
+#endif
     frames_max_emit_us = 0;
     lastFramesPrintMs = now_ms;
   }
