@@ -167,7 +167,8 @@ cd <FW> && mamba run -n esp32-dof python3 poc/esp32-dof/monitor/dof_wheel_bridge
 pipes wokwi-cli's stdout live into the FW bridge `--stdin` instead of writing a CSV. It is SIM-ONLY,
 a one-way stream, and not hardware-validated. Two controllers are involved: the firmware PD drives
 the Wokwi servo chip (the physics), and the Python LQR command is only shown on the Webots display
-wheel. Nothing feeds back into the physics or the chip, so there is no closed loop.
+wheel. Without `-c`, nothing feeds back into the physics or the chip, so there is no closed loop;
+with `-c` the command is sent back to the firmware (see "Closed loop (Stage 2)" below).
 
 The script never builds firmware. It checks `WOKWI_CLI_TOKEN`, the two chip `.wasm` files, the
 bridge file under `FW_ROOT` and `.pio/build/ttl_servo-xiao_c3/firmware.bin`, then runs the pipeline.
@@ -183,7 +184,7 @@ tools/ttl_servo_dof_live.sh -h                                                  
 pio run -e ttl_servo-xiao_c3                                                       # NOT run: afterwards rebuild without the flag (shared .pio)
 ```
 
-Options: `-s SCENARIO`, `-t TIMEOUT_MS` (default 60000), `-f FW_ROOT`, `-h`. Anything after `--` goes to
+Options: `-s SCENARIO`, `-t TIMEOUT_MS` (default 60000), `-f FW_ROOT`, `-c` (closed loop, Stage 2 below), `-h`. Anything after `--` goes to
 the bridge unchanged, for example `-- --core pid`; a later `--core` wins over the built-in
 `--core lqr`. The bridge sends UDP to 127.0.0.1:5006 by default, the port the Webots world listens on.
 Exit codes are in the script's `-h` text (the authority).
@@ -220,15 +221,55 @@ Exit codes are in the script's `-h` text (the authority).
 | Bridge `--stdin` source (freecad-workspace) | Script runs 3 to 5 above went through it: armed, `cmd_rad_s` rose to +1.0 (the bridge's limit) after the gyro Z push, `wheel_angle` integrated to about 5.8 rad (run 3). Also, not the script: a captured Wokwi log piped on stdin gave exit 0 and 259 rows. The status line showed `faults=1` in runs 1, 4 and 5; cause not investigated |
 | Webots display of the LQR wheel | Not run |
 | Sign conventions | UNVERIFIED |
-| Closed loop | None, by design |
+| Closed loop | None in the default mode (no `-c`); `-c` is Stage 2 below, NOT run |
 
 NOT run: the Webots display with this stream (the live script and bridge were run headless only, without Webots); sign conventions UNVERIFIED (pluto-atom-4/balancing-robot-controller#185,
-pluto-atom-4/freecad-workspace#359, pluto-atom-4/freecad-workspace#377); no closed loop.
+pluto-atom-4/freecad-workspace#359, pluto-atom-4/freecad-workspace#377); no closed loop in the default mode.
+
+### Closed loop (Stage 2)
+
+Opt-in with `-c`. SIM-ONLY, not hardware-validated, and NOT run end to end (see the NOT-run line below).
+The script creates a private temp dir with a FIFO (`cmd.fifo`), runs wokwi-cli with `--interactive`
+reading that FIFO, and passes `--cmd-out` to the bridge so it writes `CMD <rad_s>` lines into the FIFO
+(the bridge option is pluto-atom-4/freecad-workspace#435). The temp dir and FIFO are removed on exit.
+
+```bash
+PLATFORMIO_BUILD_FLAGS="-D TTL_SERVO_DOF_FRAMES -D TTL_SERVO_EXT_CMD" pio run -e ttl_servo-xiao_c3   # NOT run
+pio run -e ttl_servo-xiao_c3                                                                         # NOT run: afterwards rebuild without the flags (shared .pio)
+FW_ROOT=<FW> WOKWI_CLI_TOKEN=<token> tools/ttl_servo_dof_live.sh -c -s scenario_dof_live.yaml -- --duration 45   # NOT run
+```
+
+- The firmware flag `-D TTL_SERVO_EXT_CMD` is pluto-atom-4/balancing-robot-controller#221. The script
+  cannot check it. Without the flag the commands are ignored and the run is open loop.
+- With the flag, the firmware PD is replaced by the host command while that command is fresher than
+  200 ms. The `[ext_cmd] rx= bad= used= pd=` line counts them. The field meanings are as named here;
+  the firmware side is not in this checkout, so they were not checked against the code.
+- The stream stops when the sim body falls, as in the default mode.
+- The sign of the Python LQR command versus the firmware sim is UNVERIFIED. If the loop diverges, use
+  `-- --cmd-scale -1` (flips the bridge command sign). Sign UNVERIFIED: pluto-atom-4/freecad-workspace#359,
+  pluto-atom-4/balancing-robot-controller#185.
+- A scenario whose first steps use `wait-serial` works together with `--interactive` (verified by the
+  main session in a scratch project on 2026-10-29: a scenario plus `--interactive` from a FIFO delivered
+  the typed line to the firmware and the scenario finished). A `wait-serial` for text printed BEFORE that
+  step starts would not match, so a closed-loop scenario should not wait for text that appears early.
+
+| Part | Status |
+| --- | --- |
+| FIFO, `wokwi-cli --interactive < FIFO`, bridge `--cmd-out` wiring in the script | NOT run |
+| Firmware with `TTL_SERVO_EXT_CMD` replacing the PD while the command is fresh | Flag only tested by typing constant CMD lines (the body fell as expected for a constant command); NOT run through the script |
+| `[ext_cmd] rx= bad= used= pd=` counters | NOT run |
+| Temp dir and FIFO removal on exit | NOT run |
+| Early exit of one side (bridge or wokwi-cli) while the other holds the FIFO | NOT checked |
+| Sign of the command (`-- --cmd-scale -1`) | UNVERIFIED |
+| Webots display in closed loop | NOT run |
+| Hardware | None; nothing on hardware |
+
+NOT run: the closed-loop launcher mode (-c) has not been run end to end; the firmware flag was only tested by typing constant CMD lines (the body fell as expected for a constant command); sign UNVERIFIED; nothing on hardware.
 
 ## What this is NOT
 
-- **Open loop.** Nothing from Webots or the bridge feeds back into the ttl_servo physics or the
-  chip. The bridge wheel command goes to Webots only.
+- **Open loop.** In the default mode nothing from Webots or the bridge feeds back into the ttl_servo
+  physics or the chip. The bridge wheel command goes to Webots only. With `-c` see Stage 2 above.
 - **Display wheel is an integral.** It is a commanded velocity integrated over time, not a
   measured wheel. Levelling the body stops it without rewinding it.
 - **PID vs LQR sign conflict** (FW #359) is open. The owner-reported result above is one
