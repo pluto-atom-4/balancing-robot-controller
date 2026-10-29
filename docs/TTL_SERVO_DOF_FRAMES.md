@@ -193,7 +193,10 @@ Exit codes are in the script's `-h` text (the authority).
   scenario does not finish, and exit 0 does not prove it finished (a short `-t` gives wokwi-cli exit 42,
   one stderr line, and exit 0 when the bridge exited 0). A build without the flag never prints the
   banner the scenario waits for, so wokwi-cli exits 42 after `-t` and the bridge gets no frames; the bridge
-  then exits 2 ("never armed") and the script returns that code. Use `-s` with a longer scenario for a longer demo.
+  then exits 2 ("never armed") and the script returns that code. For a longer demo use `-s scenario_dof_live.yaml` (gyro Z pushes of +30 and -30 deg/s, about 25 s of scenario after the first frame; give the bridge `--duration 45` or more).
+- Observed once on 2026-10-29 with `-s scenario_dof_live.yaml -- --duration 45 --record` (headless, no Webots): exit 0,
+  1587 rows recorded, `cmd_rad_s` swung from +1.0 to -1.0 and `wheel_angle` ended near 0; the status line showed
+  `faults=1` from the first push on (an armed HAL fault tick held the command; cause not investigated).
 - Run Webots in its own terminal and keep it open; the script is started from a second terminal.
 - Ctrl-C is meant to stop wokwi-cli and the bridge together (one foreground process group); this was not run. A SIGTERM or SIGHUP sent only to the script is not forwarded.
 - Observed on 2026-10-29 (headless, no Webots, T2 bridge branch): wokwi-cli needs about 8 s before the first
