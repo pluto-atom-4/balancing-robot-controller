@@ -44,18 +44,21 @@ the whole script under it, for example: mamba run -n esp32-dof tools/ttl_servo_d
 
 WOKWI_CLI selects the wokwi-cli binary (default: wokwi-cli on PATH).
 
-Run length: the default scenario (scenario_dof_frames.yaml) ends after about 9 s; wokwi-cli then exits 0
-and the bridge sees end of input. -t only matters if the scenario does not finish (for example a build
-without the flag never prints the banner the scenario waits for: wokwi-cli exits 42 after -t). In that
-case the bridge gets no frames and exits 2 ("never armed"), which this script returns.
-Ctrl-C stops wokwi-cli and the bridge together. A SIGTERM or SIGHUP sent only to this script is not
-forwarded to them.
+Run length: about 15 s of wall time for the default scenario (scenario_dof_frames.yaml): about 8 s until
+the first frame, then the scenario steps (about 7 s). wokwi-cli then exits 0 and the bridge sees end of
+input. -t only matters if the scenario does not finish (for example a build without the flag never prints
+the banner the scenario waits for: wokwi-cli exits 42 after -t). In that case the bridge gets no frames
+and exits 2 ("never armed"), which this script returns. Exit 0 does NOT prove the scenario finished: a
+-t shorter than the run gives wokwi-cli exit 42, one stderr line, and exit 0 if the bridge exited 0.
+Ctrl-C is meant to stop wokwi-cli and the bridge together (same foreground process group); this was NOT
+run. A SIGTERM or SIGHUP sent only to this script is not forwarded to them.
 The bridge sends UDP to 127.0.0.1:5006 (its default), the port the Webots
 servo_wheel_dof world listens on. Pass `-- --udp-port N` to change it.
 
-Exit codes. wokwi-cli's own exit codes can collide with the codes below.
+Exit codes. The bridge's and wokwi-cli's own exit codes can collide with the codes below (in particular a
+bridge exit 1 cannot be told apart from this script's own exit 1).
   0    the bridge exited 0 and wokwi-cli exited 0 or 42
-  1    usage, input or environment error (one line on stderr)
+  1    usage, input or environment error (one error line on stderr; option and argument errors also print this text)
   N    the bridge's nonzero exit code N (checked first; 2 = never armed, for example no frames)
   N    wokwi-cli's nonzero exit code N, other than 42, when the bridge exited 0
 EOF
@@ -162,6 +165,7 @@ case "$WOKWI" in
   */*) WOKWI=$(abspath "$WOKWI") ;;
 esac
 
+# Informational only: omits the < /dev/null redirect and does not quote the arguments.
 echo "live: wokwi-cli --timeout $TMO --scenario $SCEN_ABS programs/ttl_servo | python3 $BRIDGE --stdin --core lqr ${EXTRA[*]+"${EXTRA[*]}"}" >&2
 
 # Foreground pipeline on purpose: Ctrl-C reaches wokwi-cli and the bridge together (one process group),
