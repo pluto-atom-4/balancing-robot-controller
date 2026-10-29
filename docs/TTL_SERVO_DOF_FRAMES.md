@@ -193,10 +193,15 @@ Exit codes are in the script's `-h` text (the authority).
   scenario does not finish, and exit 0 does not prove it finished (a short `-t` gives wokwi-cli exit 42,
   one stderr line, and exit 0 when the bridge exited 0). A build without the flag never prints the
   banner the scenario waits for, so wokwi-cli exits 42 after `-t` and the bridge gets no frames; the bridge
-  then exits 2 ("never armed") and the script returns that code. For a longer demo use `-s scenario_dof_live.yaml` (gyro Z pushes of +30 and -30 deg/s, about 25 s of scenario after the first frame; give the bridge `--duration 45` or more).
-- Observed once on 2026-10-29 with `-s scenario_dof_live.yaml -- --duration 45 --record` (headless, no Webots): exit 0,
-  1587 rows recorded, `cmd_rad_s` swung from +1.0 to -1.0 and `wheel_angle` ended near 0; the status line showed
-  `faults=1` from the first push on (an armed HAL fault tick held the command; cause not investigated).
+  then exits 2 ("never armed") and the script returns that code. For a longer demo use `-s scenario_dof_live.yaml` (gyro Z pushes of +30 and -30 deg/s, about 20 s of scenario steps after the first frame; give the bridge `--duration 45` or more).
+- Observed once on 2026-10-29 with `-s scenario_dof_live.yaml -- --duration 45 --record` (headless, no Webots):
+  exit 0, 1587 rows recorded, `cmd_rad_s` went from +1.0 to -1.0 and `wheel_angle` ended near 0. The status line
+  showed `faults=1` from the first push on; the cause was not investigated, so treat the swing as an
+  observation, not as validated controller tracking.
+- Observed on 2026-10-29 (headless, no Webots): with `-t 6000` wokwi-cli printed "Timeout: simulation did not finish
+  in 6000ms" and exited 42, the bridge had armed and exited 0 (168 rows recorded), and the script exited 0 with the
+  one stderr line about exit 42. With a build WITHOUT the flag and `-t 15000` the same wokwi-cli timeout message
+  appeared, the bridge printed "never armed: window incomplete: 0/50" (exit 2) and the script exited 2.
 - Run Webots in its own terminal and keep it open; the script is started from a second terminal.
 - Ctrl-C is meant to stop wokwi-cli and the bridge together (one foreground process group); this was not run. A SIGTERM or SIGHUP sent only to the script is not forwarded.
 - Observed on 2026-10-29 (headless, no Webots, T2 bridge branch): wokwi-cli needs about 8 s before the first
@@ -211,7 +216,7 @@ Exit codes are in the script's `-h` text (the authority).
 | --- | --- |
 | DOF frames from the SegwaySim state, built with the flag | Run headless in Wokwi once (see "Wokwi headless run" and "Capture script") |
 | wokwi-cli stdout carries serial lines live through a pipe | Spike on 2026-10-29, one headless 9 s run: 308 `IMU,` lines spread over the run; checksums and rate not checked |
-| `tools/ttl_servo_dof_live.sh` | Run headless 3 times on 2026-10-29 (no Webots): run 1 failed at the exit-code handling (`PIPESTATUS` bug, fixed) after the bridge had armed and recorded 557 rows; run 2 used `-- --duration 3` and ended with the bridge error plus the wokwi-cli `EPIPE` crash; run 3 exited 0 |
+| `tools/ttl_servo_dof_live.sh` | Run headless 7 times on 2026-10-29 (no Webots), including the `-t 6000` and no-flag cases above and one run of `scenario_dof_live.yaml`: run 1 failed at the exit-code handling (`PIPESTATUS` bug, fixed) after the bridge had armed and recorded 557 rows; run 2 used `-- --duration 3` and ended with the bridge error plus the wokwi-cli `EPIPE` crash; run 3 exited 0 |
 | Bridge `--stdin` source (freecad-workspace) | Run once through the live pipe: armed, `cmd_rad_s` rose to +1.0 (the bridge's limit) after the gyro Z push, `wheel_angle` integrated to about 5.8 rad, 565 rows recorded (`--record`); one earlier run showed `faults=1` near the end, cause not investigated |
 | Webots display of the LQR wheel | Not run |
 | Sign conventions | UNVERIFIED |

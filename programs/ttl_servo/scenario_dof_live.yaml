@@ -1,7 +1,7 @@
 # SIM-ONLY longer headless scenario for the live DOF stream (tools/ttl_servo_dof_live.sh -s scenario_dof_live.yaml).
 # Not hardware-validated. Same banner and frame waits as scenario_dof_frames.yaml, then two gyro Z pushes of
 # opposite sign (30 and -30 deg/s) so the Python LQR command and the Webots display wheel move both ways.
-# About 25 s of scenario after the first frame (plus about 8 s start-up). Checks only that the banner, frames
+# About 20 s of scenario steps after the first frame (up to about 21 s with the final wait; plus about 8 s start-up). Checks only that the banner, frames
 # and the 1 Hz '[frames] sent=' line appear. Does NOT check frame checksums, signs or wheel motion.
 # Build the firmware with -D TTL_SERVO_DOF_FRAMES first. If the body falls the DOF stream stops until reset.
 name: ttl_servo dof live demo
