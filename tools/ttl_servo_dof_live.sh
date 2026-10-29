@@ -35,6 +35,10 @@ and its stdout is piped into the freecad-workspace bridge (poc/esp32-dof/monitor
                     firmware sim is UNVERIFIED (pluto-atom-4/freecad-workspace#359,
                     pluto-atom-4/balancing-robot-controller#185). The stream stops when the sim body falls.
                     Without the firmware flag the commands are ignored and the run is open loop.
+                    Run length with -c: wokwi-cli --interactive does NOT exit after a scenario has completed (it
+                    waits for stdin to close, which never happens here), so use a scenario that never completes
+                    (scenario_dof_closed.yaml) with an explicit -t; the run then ends at -t with exit 42, which
+                    counts as normal. A completed scenario would leave the run waiting (observed 2026-10-29).
   -h                show this help
   -- BRIDGE_ARGS    everything after -- goes to the bridge unchanged, for example:
                     -- --core pid --duration 30   (a later --core wins over the built-in --core lqr)
@@ -191,6 +195,9 @@ IN_FILE=/dev/null
 if [ "$CLOSED" -eq 1 ]; then
   CMD_DIR=$(mktemp -d) || { echo "error: mktemp -d failed" >&2; exit 1; }
   trap 'cleanup' EXIT
+  trap 'cleanup; exit 130' INT
+  trap 'cleanup; exit 143' TERM
+  trap 'cleanup; exit 129' HUP
   CMD_FIFO="$CMD_DIR/cmd.fifo"
   mkfifo "$CMD_FIFO" || { echo "error: mkfifo failed: $CMD_FIFO" >&2; exit 1; }
   # Hold the FIFO open read-write in this script (fd 3) so that neither side's open can block forever:

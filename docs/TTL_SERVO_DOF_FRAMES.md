@@ -236,7 +236,13 @@ reading that FIFO, and passes `--cmd-out` to the bridge so it writes `CMD <rad_s
 ```bash
 PLATFORMIO_BUILD_FLAGS="-D TTL_SERVO_DOF_FRAMES -D TTL_SERVO_EXT_CMD" pio run -e ttl_servo-xiao_c3   # NOT run
 pio run -e ttl_servo-xiao_c3                                                                         # NOT run: afterwards rebuild without the flags (shared .pio)
-FW_ROOT=<FW> WOKWI_CLI_TOKEN=<token> tools/ttl_servo_dof_live.sh -c -s scenario_dof_live.yaml -- --duration 45   # NOT run
+
+Run length in closed-loop mode (observed 2026-10-29): `wokwi-cli --interactive` does not exit after a scenario has
+completed; the simulation stops and it waits for its standard input to close, which never happens with `-c`. So use
+`scenario_dof_closed.yaml` (the two gyro pushes, then a very long delay, so it never completes) together with an explicit
+`-t` such as 45000: the run ends at `-t` with wokwi-cli exit 42, which counts as normal. The first closed-loop attempt with
+`scenario_dof_live.yaml` completed its scenario at 32 s of simulated time and then hung until the outer timeout killed it.
+FW_ROOT=<FW> WOKWI_CLI_TOKEN=<token> tools/ttl_servo_dof_live.sh -c -s scenario_dof_closed.yaml -t 45000 -- --cmd-scale -1   # NOT run
 ```
 
 - The firmware flag `-D TTL_SERVO_EXT_CMD` is pluto-atom-4/balancing-robot-controller#221. The script
