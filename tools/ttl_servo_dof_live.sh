@@ -19,7 +19,7 @@ and its stdout is piped into the freecad-workspace bridge (poc/esp32-dof/monitor
   - Two controllers: the firmware PD (drives the Wokwi servo chip, the physics) and the Python LQR
     (its command is only shown on the Webots display wheel). No feedback into the physics or the chip.
   - Sign conventions UNVERIFIED (BRC#185, FW#359, FW#377). Not hardware-validated.
-  - The bridge --stdin path and the Webots display are not run end to end by the builder.
+  - The Webots display with this stream has not been run (headless runs only, 2026-10-29).
 
   -s SCENARIO.yaml  scenario; relative paths are looked up in programs/ttl_servo first, then in
                     the current directory (default: scenario_dof_frames.yaml)
@@ -44,13 +44,19 @@ the whole script under it, for example: mamba run -n esp32-dof tools/ttl_servo_d
 
 WOKWI_CLI selects the wokwi-cli binary (default: wokwi-cli on PATH).
 
+Run length: the default scenario (scenario_dof_frames.yaml) ends after about 9 s; wokwi-cli then exits 0
+and the bridge sees end of input. -t only matters if the scenario does not finish (for example a build
+without the flag never prints the banner the scenario waits for: wokwi-cli exits 42 after -t). In that
+case the bridge gets no frames and exits 2 ("never armed"), which this script returns.
+Ctrl-C stops wokwi-cli and the bridge together. A SIGTERM or SIGHUP sent only to this script is not
+forwarded to them.
+The bridge sends UDP to 127.0.0.1:5006 (its default), the port the Webots
+servo_wheel_dof world listens on. Pass `-- --udp-port N` to change it.
+
 Exit codes. wokwi-cli's own exit codes can collide with the codes below.
-  0    wokwi-cli exited 0 or 42 (its timeout, which the firmware loop always reaches) and the bridge exited 0.
-       42 is also what a build without the flag gives (the banner wait never matches); the script still exits 0.
-  1    usage, input or environment error (one line on stderr), or the scenario/pipeline could not start
-  130  stopped by SIGINT (pipeline killed)
-  143  stopped by SIGTERM (pipeline killed)
-  N    the bridge's nonzero exit code N (checked first)
+  0    the bridge exited 0 and wokwi-cli exited 0 or 42
+  1    usage, input or environment error (one line on stderr)
+  N    the bridge's nonzero exit code N (checked first; 2 = never armed, for example no frames)
   N    wokwi-cli's nonzero exit code N, other than 42, when the bridge exited 0
 EOF
 }
@@ -103,6 +109,11 @@ if ! command -v "$WOKWI" >/dev/null 2>&1; then
   exit 1
 fi
 
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "error: python3 not found on PATH (the FW bridge needs it; try: mamba run -n esp32-dof $0 ...)" >&2
+  exit 1
+fi
+
 if [ -z "$FW" ]; then
   echo "error: FW_ROOT is not set (use -f FW_ROOT or set the FW_ROOT environment variable)" >&2
   exit 1
@@ -151,46 +162,25 @@ case "$WOKWI" in
   */*) WOKWI=$(abspath "$WOKWI") ;;
 esac
 
-# Job control gives the background pipeline its own process group, so the signal handler can kill
-# wokwi-cli and the bridge together.
-set -m
-PIPE_PID=""
-
-on_signal() {
-  trap - INT TERM
-  if [ -n "$PIPE_PID" ]; then
-    kill -TERM -- "-$PIPE_PID" 2>/dev/null
-    wait "$PIPE_PID" 2>/dev/null
-  fi
-  echo "stopped on $1; pipeline killed" >&2
-  exit "$2"
-}
-trap 'on_signal INT 130' INT
-trap 'on_signal TERM 143' TERM
-
 echo "live: wokwi-cli --timeout $TMO --scenario $SCEN_ABS programs/ttl_servo | python3 $BRIDGE --stdin --core lqr ${EXTRA[*]+"${EXTRA[*]}"}" >&2
 
-(
-  cd "$REPO" || exit 1
-  "$WOKWI" --timeout "$TMO" --scenario "$SCEN_ABS" programs/ttl_servo < /dev/null \
-    | python3 "$BRIDGE" --stdin --core lqr ${EXTRA[@]+"${EXTRA[@]}"}
-  W_RC=${PIPESTATUS[0]}
-  B_RC=${PIPESTATUS[1]}
-  if [ "$B_RC" -ne 0 ]; then
-    echo "bridge exit $B_RC" >&2
-    exit "$B_RC"
-  fi
-  if [ "$W_RC" -ne 0 ] && [ "$W_RC" -ne 42 ]; then
-    echo "wokwi-cli exit $W_RC" >&2
-    exit "$W_RC"
-  fi
-  if [ "$W_RC" -eq 42 ]; then
-    echo "wokwi-cli exit 42 (timeout, expected for the firmware loop)" >&2
-  fi
-  exit 0
-) &
-PIPE_PID=$!
-wait "$PIPE_PID"
-RC=$?
-PIPE_PID=""
-exit "$RC"
+# Foreground pipeline on purpose: Ctrl-C reaches wokwi-cli and the bridge together (one process group),
+# so no signal trap is needed. A SIGTERM or SIGHUP sent only to this script is NOT forwarded.
+cd "$REPO" || exit 1
+"$WOKWI" --timeout "$TMO" --scenario "$SCEN_ABS" programs/ttl_servo < /dev/null \
+  | python3 "$BRIDGE" --stdin --core lqr ${EXTRA[@]+"${EXTRA[@]}"}
+PS=("${PIPESTATUS[@]}")   # copy at once: any later command resets PIPESTATUS
+W_RC=${PS[0]}
+B_RC=${PS[1]}
+if [ "$B_RC" -ne 0 ]; then
+  echo "bridge exit $B_RC" >&2
+  exit "$B_RC"
+fi
+if [ "$W_RC" -ne 0 ] && [ "$W_RC" -ne 42 ]; then
+  echo "wokwi-cli exit $W_RC" >&2
+  exit "$W_RC"
+fi
+if [ "$W_RC" -eq 42 ]; then
+  echo "wokwi-cli exit 42 (timeout; the scenario did not finish before -t)" >&2
+fi
+exit 0

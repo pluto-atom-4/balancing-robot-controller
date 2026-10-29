@@ -175,31 +175,41 @@ The bridge uses `python3` from PATH; the FW env is `mamba run -n esp32-dof`, and
 can be run under it.
 
 ```bash
-PLATFORMIO_BUILD_FLAGS="-D TTL_SERVO_DOF_FRAMES" pio run -e ttl_servo-xiao_c3   # NOT run: build with the flag
+PLATFORMIO_BUILD_FLAGS="-D TTL_SERVO_DOF_FRAMES" pio run -e ttl_servo-xiao_c3   # build with the flag (built OK on 2026-10-29)
 make wokwi-chips                                                                   # NOT run: only if the chip .wasm files are missing
-cd <FW>/poc/servo-wheel-dof && SWD_UDP_PORT=5006 ./run_demo.sh --gui              # NOT run: start Webots (world servo_wheel_dof) first, UDP 5006
-FW_ROOT=<FW> WOKWI_CLI_TOKEN=<token> tools/ttl_servo_dof_live.sh                   # NOT run: the live script, from the BRC repo root
-tools/ttl_servo_dof_live.sh -h                                                     # NOT run
+cd <FW>/poc/servo-wheel-dof && SWD_UDP_PORT=5006 ./run_demo.sh --gui              # NOT run: in its own terminal, keep open (world servo_wheel_dof, UDP 5006)
+FW_ROOT=<FW> WOKWI_CLI_TOKEN=<token> tools/ttl_servo_dof_live.sh                   # run headless without Webots on 2026-10-29; the Webots display NOT run; from the BRC repo root
+tools/ttl_servo_dof_live.sh -h                                                     # run, exits 0
 pio run -e ttl_servo-xiao_c3                                                       # NOT run: afterwards rebuild without the flag (shared .pio)
 ```
 
 Options: `-s SCENARIO`, `-t TIMEOUT_MS` (default 60000), `-f FW_ROOT`, `-h`. Anything after `--` goes to
-the bridge unchanged, for example `-- --core pid --duration 30`; a later `--core` wins over the
-built-in `--core lqr`. Exit codes are in the script's `-h` text (the authority). wokwi-cli exit 42 is
-the expected timeout and counts as normal.
+the bridge unchanged, for example `-- --core pid`; a later `--core` wins over the built-in
+`--core lqr`. The bridge sends UDP to 127.0.0.1:5006 by default, the port the Webots world listens on.
+Exit codes are in the script's `-h` text (the authority).
+
+- Run length: the default scenario ends after about 9 s; wokwi-cli then exits 0 and the bridge sees end of
+  input. `-t` only matters if the scenario does not finish. A build without the flag never prints the
+  banner the scenario waits for, so wokwi-cli exits 42 after `-t` and the bridge gets no frames; the bridge
+  then exits 2 ("never armed") and the script returns that code. Use `-s` with a longer scenario for a longer demo.
+- Run Webots in its own terminal and keep it open; the script is started from a second terminal.
+- Ctrl-C stops wokwi-cli and the bridge together. A SIGTERM or SIGHUP sent only to the script is not forwarded.
+- Observed on 2026-10-29 (headless, no Webots, T2 bridge branch): wokwi-cli needs about 8 s before the first
+  frame, and the bridge polls meanwhile, so its `ticks` count runs ahead of the frames; use a bridge
+  `--duration` of at least 15 s. If the bridge exits first (one run with `--duration 3`), wokwi-cli crashes
+  with an unhandled Node `EPIPE` error and a stack trace; the script then returns the bridge's exit code.
 
 | Part | Status |
 | --- | --- |
 | DOF frames from the SegwaySim state, built with the flag | Run headless in Wokwi once (see "Wokwi headless run" and "Capture script") |
 | wokwi-cli stdout carries serial lines live through a pipe | Spike on 2026-10-29, one headless 9 s run: 308 `IMU,` lines spread over the run; checksums and rate not checked |
-| `tools/ttl_servo_dof_live.sh` | Written; not run |
-| Bridge `--stdin` source (freecad-workspace) | Not run; not checked in this repo |
+| `tools/ttl_servo_dof_live.sh` | Run headless 3 times on 2026-10-29 (no Webots); the last run exited 0 after the script's `PIPESTATUS` bug was fixed |
+| Bridge `--stdin` source (freecad-workspace) | Run once through the live pipe: armed, `cmd_rad_s` rose to +1.0 (the bridge's limit) after the gyro Z push, `wheel_angle` integrated to about 5.8 rad, 565 rows recorded (`--record`); one earlier run showed `faults=1` near the end, cause not investigated |
 | Webots display of the LQR wheel | Not run |
 | Sign conventions | UNVERIFIED |
 | Closed loop | None, by design |
 
-NOT run: the live script, the bridge `--stdin` source, and the Webots display have not been run end
-to end; sign conventions UNVERIFIED (pluto-atom-4/balancing-robot-controller#185,
+NOT run: the Webots display with this stream (the live script and bridge were run headless only, without Webots); sign conventions UNVERIFIED (pluto-atom-4/balancing-robot-controller#185,
 pluto-atom-4/freecad-workspace#359, pluto-atom-4/freecad-workspace#377); no closed loop.
 
 ## What this is NOT
