@@ -242,7 +242,7 @@ completed; the simulation stops and it waits for its standard input to close, wh
 `scenario_dof_closed.yaml` (the two gyro pushes, then a very long delay, so it never completes) together with an explicit
 `-t` such as 45000: the run ends at `-t` with wokwi-cli exit 42, which counts as normal. The first closed-loop attempt with
 `scenario_dof_live.yaml` completed its scenario at 32 s of simulated time and then hung until the outer timeout killed it.
-FW_ROOT=<FW> WOKWI_CLI_TOKEN=<token> tools/ttl_servo_dof_live.sh -c -s scenario_dof_closed.yaml -t 45000 -- --cmd-scale -1   # NOT run
+FW_ROOT=<FW> WOKWI_CLI_TOKEN=<token> tools/ttl_servo_dof_live.sh -c -s scenario_dof_closed.yaml -t 45000 -- --cmd-scale -1   # run headless once; runs end to end but does not balance, see below
 ```
 
 - The firmware flag `-D TTL_SERVO_EXT_CMD` is pluto-atom-4/balancing-robot-controller#221. The script
@@ -270,7 +270,16 @@ FW_ROOT=<FW> WOKWI_CLI_TOKEN=<token> tools/ttl_servo_dof_live.sh -c -s scenario_
 | Webots display in closed loop | NOT run |
 | Hardware | None; nothing on hardware |
 
-NOT run: the closed-loop launcher mode (-c) has not been run end to end; the firmware flag was only tested by typing constant CMD lines (the body fell as expected for a constant command); sign UNVERIFIED; nothing on hardware.
+Observed on 2026-10-29 (headless, no Webots; the firmware flag branch, the bridge `--cmd-out` branch and this launcher mode merged
+into a throwaway local branch): the mechanics work. `-c -s scenario_dof_closed.yaml -t 45000` ended by itself after 53 s with exit 0
+(wokwi-cli exit 42 at `-t`), removed its FIFO directory, and the firmware reported `[ext_cmd] rx=531 bad=0 used=907 pd=24`, so the
+host commands reached and drove the sim. It does NOT balance: with `--cmd-scale 1` and with `--cmd-scale -1`, with the +30/-30 deg/s
+pushes and also with a small 8 deg/s push of 1 s, the body fell about 1.3 to 1.5 s after the host command took over (8 to 20 falls per
+run, always to theta about +0.8) and the frame stream stops at the first fall. Neither sign recovered, so the sign question
+(pluto-atom-4/freecad-workspace#359) is not settled by this. Unverified hypotheses: the bridge command is limited to +-1.0 rad/s
+(the recorded `cmd_rad_s` range was 0 to +1.0) while the firmware PD can use up to +-3 rad/s; the loop delay through
+`wokwi-cli --interactive` (about 10 to 12 accepted `CMD` lines per second were counted, far below the bridge's write rate); the LQR gains
+come from another plant model than the firmware sim. Not run: Webots with this mode; anything on hardware.
 
 ## What this is NOT
 
