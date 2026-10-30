@@ -330,9 +330,9 @@ freecad-workspace repo at `poc/servo-wheel-dof/tools/wokwi-stream.sh`) piped int
 `--stdin`. The pipe is NOT verified. An ad-hoc relay of about 10 lines piped into `--stdin` did
 arm the bridge on 2026-10-30 (self-reported).
 
-Risk note: while the simulation runs, port 4000 listens on all interfaces. SELF-REPORTED (main
-session, 2026-10-30): `ss -ltn` showed `*:4000`; the bind address was not checked beyond that. The port is plain TCP without
-authentication. Anyone who can reach the machine can read the simulated serial output and write
+Risk note. SELF-REPORTED (main session, 2026-10-30): while the simulation ran, `ss -ltn` showed
+`*:4000` (a wildcard bind; the bind address was not checked further), so the port may be reachable
+on all interfaces. The port is plain TCP without authentication. Anyone who can reach the machine can read the simulated serial output and write
 to the simulated serial input. Impact is low: the data is simulated, there is no hardware and no
 secrets. The default build has no serial command reader; the `-D TTL_SERVO_EXT_CMD` build does.
 The owner accepted this risk (discussion 228, decision 4). Do not run the simulator on an
