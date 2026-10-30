@@ -309,7 +309,7 @@ cd <FW>/poc/esp32-dof/monitor
 mamba run -n esp32-dof python3 dof_wheel_bridge.py --port rfc2217://localhost:4000 --core lqr --duration 15 --record out.csv --echo-text
 ```
 
-This is the command of the 2026-10-30 run. This is the directory the 2026-10-30 run used; the Stage 1 text above runs the bridge from the repo root with the full poc/esp32-dof/monitor/ path, which is also valid. Afterwards restore the default build, because the
+This is the command used in the self-reported 2026-10-30 run (main session), run from this directory; the Stage 1 text above runs the bridge from the repo root with the full poc/esp32-dof/monitor/ path, which is also valid. Afterwards restore the default build, because the
 `.pio` directory is shared:
 
 ```bash
@@ -333,10 +333,11 @@ arm the bridge on 2026-10-30 (self-reported).
 
 Risk note. SELF-REPORTED (main session, 2026-10-30): while the simulation ran, `ss -ltn` showed
 `*:4000` (a wildcard bind; the bind address was not checked further), so the port may be reachable
-on all interfaces. The port is plain TCP without authentication. Anyone who can reach the machine can read the simulated serial output and write
-to the simulated serial input. Impact is low: the data is simulated, there is no hardware and no
-secrets. The default build has no serial command reader; the `-D TTL_SERVO_EXT_CMD` build does.
-The owner accepted this risk (discussion 228, decision 4). Do not run the simulator on an
+on all interfaces. The port is plain TCP without authentication. If the port is reachable, anyone who can reach the machine could read the simulated serial output
+(the read side rests on the self-reported run above); a write reaching the simulation was NOT
+tested, and the default build has no serial command reader, so a write has an effect only with the
+`-D TTL_SERVO_EXT_CMD` build (UNVERIFIED). Impact is low: the data is simulated, there is no hardware
+and no secrets. The owner accepted this risk (discussion 228, decision 4). Do not run the simulator on an
 untrusted network. SELF-REPORTED (main session, 2026-10-30): after the simulator was stopped, a
 listener on 4000 was still seen once (cause not checked).
 
