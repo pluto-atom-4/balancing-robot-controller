@@ -287,7 +287,7 @@ come from another plant model than the firmware sim. Not run: Webots with this m
 
 What it is: `programs/ttl_servo/wokwi.toml` sets `rfc2217ServerPort = 4000`, merged via
 pluto-atom-4/balancing-robot-controller#227. When a simulator front end that honors the key is
-running (the VS Code Wokwi extension was used; headless `wokwi-cli` v0.27.1 also opens it), the
+running (the VS Code Wokwi extension was used; headless `wokwi-cli` v0.27.1 also opens it, self-reported for a headless run of 2026-10-30), the
 bridge can read the simulated serial port over RFC2217 with `--port rfc2217://localhost:4000`
 instead of the stdin pipe of `tools/ttl_servo_dof_live.sh`. That script is not used on this route.
 
@@ -304,11 +304,11 @@ tab may pause the simulation. Keep the gyro Z slider at 0 during boot, because b
 Z for about 1 s. Start the simulator FIRST, then run the bridge:
 
 ```bash
-cd <FW>/poc/esp32-dof
-mamba run -n esp32-dof python3 monitor/dof_wheel_bridge.py --port rfc2217://localhost:4000 --core lqr --duration 15 --record out.csv --echo-text
+cd <FW>/poc/esp32-dof/monitor
+mamba run -n esp32-dof python3 dof_wheel_bridge.py --port rfc2217://localhost:4000 --core lqr --duration 15 --record out.csv --echo-text
 ```
 
-This is the command of the 2026-10-30 run. Afterwards restore the default build, because the
+This is the command of the 2026-10-30 run. This is the directory the 2026-10-30 run used; the Stage 1 text above runs the bridge from the repo root with the full poc/esp32-dof/monitor/ path, which is also valid. Afterwards restore the default build, because the
 `.pio` directory is shared:
 
 ```bash
@@ -323,21 +323,21 @@ acceptance issue is pluto-atom-4/balancing-robot-controller#226.
 
 Start order and retry: start the simulator before the bridge. Until a first-open retry lands
 (planned in pluto-atom-4/freecad-workspace#439, not merged), a bridge started before the port is
-open exits with status 2.
+open exits with status 2 (read in dof_serial.py, not run).
 
 Fallback: the `wokwi-stream.sh` relay from pluto-atom-4/freecad-workspace#438 (it lives in the
 freecad-workspace repo at `poc/servo-wheel-dof/tools/wokwi-stream.sh`) piped into the bridge
 `--stdin`. The pipe is NOT verified. An ad-hoc relay of about 10 lines piped into `--stdin` did
 arm the bridge on 2026-10-30 (self-reported).
 
-Risk note: while the simulation runs, port 4000 listens on all interfaces. `ss -ltn` showed
-`*:4000`; the bind address was not checked beyond that. The port is plain TCP without
+Risk note: while the simulation runs, port 4000 listens on all interfaces. SELF-REPORTED (main
+session, 2026-10-30): `ss -ltn` showed `*:4000`; the bind address was not checked beyond that. The port is plain TCP without
 authentication. Anyone who can reach the machine can read the simulated serial output and write
 to the simulated serial input. Impact is low: the data is simulated, there is no hardware and no
 secrets. The default build has no serial command reader; the `-D TTL_SERVO_EXT_CMD` build does.
 The owner accepted this risk (discussion 228, decision 4). Do not run the simulator on an
-untrusted network. After the simulator was stopped, a listener on 4000 was still seen once (cause
-not checked).
+untrusted network. SELF-REPORTED (main session, 2026-10-30): after the simulator was stopped, a
+listener on 4000 was still seen once (cause not checked).
 
 NOT run or UNVERIFIED:
 
@@ -367,9 +367,7 @@ NOT run or UNVERIFIED:
 - `PITCH_SIGN`, `WHEEL_DISPLAY_SIGN` and the wheel direction on Webots: see "FW side" (FW #377,
   FW #359).
 - GUI gyro-Z push direction: see "Wokwi headless run".
-- RFC2217 simulator route: see "VS Code simulator route (RFC2217)". One self-reported run on
-  2026-10-30; Webots not run; restart not tested; bind address not checked; port clash unverified;
-  fallback pipe unverified; first-open retry pending pluto-atom-4/freecad-workspace#439.
+- RFC2217 route: one self-reported run on 2026-10-30, Webots not run; details in the section "VS Code simulator route (RFC2217)".
 
 ## Cross-links
 
