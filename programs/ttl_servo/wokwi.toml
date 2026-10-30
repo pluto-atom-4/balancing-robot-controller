@@ -2,6 +2,8 @@
 version = 1
 firmware = '../../.pio/build/ttl_servo-xiao_c3/firmware.bin'
 elf = '../../.pio/build/ttl_servo-xiao_c3/firmware.elf'
+# RFC2217 TCP server for the simulated serial port, so a GUI run can feed a host script (#226). Opens port 4000 on every run of this project.
+rfc2217ServerPort = 4000
 
 [[chip]]
 name = 'wokwi-fe-urt-1'
