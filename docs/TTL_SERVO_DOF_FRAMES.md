@@ -287,8 +287,9 @@ come from another plant model than the firmware sim. Not run: Webots with this m
 
 What it is: `programs/ttl_servo/wokwi.toml` sets `rfc2217ServerPort = 4000`, merged via
 pluto-atom-4/balancing-robot-controller#227. When a simulator front end that honors the key is
-running (the VS Code Wokwi extension was used; headless `wokwi-cli` v0.27.1 also opens it, self-reported for a headless run of 2026-10-30), the
-bridge can read the simulated serial port over RFC2217 with `--port rfc2217://localhost:4000`
+running (SELF-REPORTED, main session, 2026-10-30: the owner's VS Code Wokwi extension run and a
+headless `wokwi-cli` v0.27.1 run both opened the port), the bridge read the simulated serial port
+over RFC2217 with `--port rfc2217://localhost:4000` on 2026-10-30 (self-reported, see below)
 instead of the stdin pipe of `tools/ttl_servo_dof_live.sh`. That script is not used on this route.
 
 Steps:
