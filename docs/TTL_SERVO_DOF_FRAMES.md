@@ -281,6 +281,75 @@ run, always to theta about +0.8) and the frame stream stops at the first fall. N
 `wokwi-cli --interactive` (about 10 to 12 accepted `CMD` lines per second were counted, far below the bridge's write rate); the LQR gains
 come from another plant model than the firmware sim. Not run: Webots with this mode; anything on hardware.
 
+## VS Code simulator route (RFC2217)
+
+> **SIM-ONLY, NOT hardware-validated. Webots NOT run with this route.** Dated 2026-10-30.
+
+What it is: `programs/ttl_servo/wokwi.toml` sets `rfc2217ServerPort = 4000`, merged via
+pluto-atom-4/balancing-robot-controller#227. When a simulator front end that honors the key is
+running (the VS Code Wokwi extension was used; headless `wokwi-cli` v0.27.1 also opens it), the
+bridge can read the simulated serial port over RFC2217 with `--port rfc2217://localhost:4000`
+instead of the stdin pipe of `tools/ttl_servo_dof_live.sh`. That script is not used on this route.
+
+Steps:
+
+```bash
+cd <this repo>
+PLATFORMIO_BUILD_FLAGS="-D TTL_SERVO_DOF_FRAMES" pio run -e ttl_servo-xiao_c3
+```
+
+Then, in VS Code, open the Wokwi simulator for `programs/ttl_servo` (its `wokwi.toml` and
+`diagram.json`) and start it. Keep the simulator tab visible, because the Wokwi docs say a hidden
+tab may pause the simulation. Keep the gyro Z slider at 0 during boot, because boot averages gyro
+Z for about 1 s. Start the simulator FIRST, then run the bridge:
+
+```bash
+cd <FW>/poc/esp32-dof
+mamba run -n esp32-dof python3 monitor/dof_wheel_bridge.py --port rfc2217://localhost:4000 --core lqr --duration 15 --record out.csv --echo-text
+```
+
+This is the command of the 2026-10-30 run. Afterwards restore the default build, because the
+`.pio` directory is shared:
+
+```bash
+pio run -e ttl_servo-xiao_c3
+```
+
+Result: on 2026-10-30 this command, run by the main session against the owner's VS Code simulation
+(DOF build), armed with `faults=0`, recorded 969 rows and exited 0. SELF-REPORTED by the main
+session, not independently checked. Results of the acceptance run go to discussion 216 of
+pluto-atom-4/balancing-robot-controller. The plan is discussion 228 of the same repo. The
+acceptance issue is pluto-atom-4/balancing-robot-controller#226.
+
+Start order and retry: start the simulator before the bridge. Until a first-open retry lands
+(planned in pluto-atom-4/freecad-workspace#439, not merged), a bridge started before the port is
+open exits with status 2.
+
+Fallback: the `wokwi-stream.sh` relay from pluto-atom-4/freecad-workspace#438 (it lives in the
+freecad-workspace repo at `poc/servo-wheel-dof/tools/wokwi-stream.sh`) piped into the bridge
+`--stdin`. The pipe is NOT verified. An ad-hoc relay of about 10 lines piped into `--stdin` did
+arm the bridge on 2026-10-30 (self-reported).
+
+Risk note: while the simulation runs, port 4000 listens on all interfaces. `ss -ltn` showed
+`*:4000`; the bind address was not checked beyond that. The port is plain TCP without
+authentication. Anyone who can reach the machine can read the simulated serial output and write
+to the simulated serial input. Impact is low: the data is simulated, there is no hardware and no
+secrets. The default build has no serial command reader; the `-D TTL_SERVO_EXT_CMD` build does.
+The owner accepted this risk (discussion 228, decision 4). Do not run the simulator on an
+untrusted network. After the simulator was stopped, a listener on 4000 was still seen once (cause
+not checked).
+
+NOT run or UNVERIFIED:
+
+- Webots with this route.
+- Restarting the simulation mid-run.
+- A headless run and a GUI run at the same time. The toml opens port 4000 on every run of that
+  project, so they may clash.
+- The bind address.
+- The fallback pipe.
+- Signs (UNVERIFIED, pluto-atom-4/balancing-robot-controller#185 and
+  pluto-atom-4/freecad-workspace#359).
+
 ## What this is NOT
 
 - **Open loop.** In the default mode nothing from Webots or the bridge feeds back into the ttl_servo
@@ -298,6 +367,9 @@ come from another plant model than the firmware sim. Not run: Webots with this m
 - `PITCH_SIGN`, `WHEEL_DISPLAY_SIGN` and the wheel direction on Webots: see "FW side" (FW #377,
   FW #359).
 - GUI gyro-Z push direction: see "Wokwi headless run".
+- RFC2217 simulator route: see "VS Code simulator route (RFC2217)". One self-reported run on
+  2026-10-30; Webots not run; restart not tested; bind address not checked; port clash unverified;
+  fallback pipe unverified; first-open retry pending pluto-atom-4/freecad-workspace#439.
 
 ## Cross-links
 
@@ -308,3 +380,7 @@ come from another plant model than the firmware sim. Not run: Webots with this m
   #190 (this doc), #191 (human replay through the bridge, OPEN), #192 (OPEN, owner: CLAUDE.md pointer).
 - PRs #194 (`lib/segway_imu` and the DOF block), #195 (scenario), #196 (capture script), #197 (this doc).
 - `docs/TILT_SERVO_FRAMES.md`.
+- RFC2217 route: pluto-atom-4/balancing-robot-controller#226, pluto-atom-4/balancing-robot-controller#227,
+  pluto-atom-4/balancing-robot-controller#229, discussion 228 and discussion 216 of
+  pluto-atom-4/balancing-robot-controller, pluto-atom-4/freecad-workspace#438,
+  pluto-atom-4/freecad-workspace#439.
