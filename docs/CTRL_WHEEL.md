@@ -171,7 +171,7 @@ the build was re-run after them (succeeded), the Wokwi runs were not repeated. T
 | native `test_wheel_frame` | 19/19 passed |
 | `pio run -e c3_ctrl_wheel-xiao_c3` | succeeded |
 | headless `wokwi-cli` run, 12 to 15 s, stdout, exit 42 from the timeout | two runs showed 608 and 458 `WHL` lines; all lines were accepted by the freecad-workspace parser, with no `seq` gaps and only state 0 |
-| counters line during the headless run | `sent=50 dropped=0` at the first 1 s line (the counts are cumulative, so later lines grow by about 50 per second) |
+| counters line during the second headless run (12 s, commit 13c049f; the first run predates the counters code) | `sent=50 dropped=0` at the first 1 s line (the counts are cumulative, so later lines grow by about 50 per second) |
 
 Not run:
 

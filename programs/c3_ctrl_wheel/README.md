@@ -6,7 +6,7 @@ A sim-only Wokwi program for the XIAO ESP32-C3. The firmware prints one `WHL` wh
 
 - `main.cpp` is the `programs/ttl_servo` copy with the IMU frame/DOF/EXT_CMD/KILL_POC/HORN_SELFTEST blocks stripped (the MPU6050 gyro Z read stays) (FALL_TEST kept) and a `WHL` line emitted once per 20 ms tick plus a 1 Hz `[ctrl_wheel]` counters line.
 - Env `c3_ctrl_wheel-xiao_c3` builds.
-- A headless Wokwi run showed the WHL lines (parsed by the freecad-workspace parser) and the counters line; nothing else was run. No RFC2217 read, no Webots, no hardware.
+- Two headless Wokwi runs (stdout, scratch worktree, see docs/CTRL_WHEEL.md section 8 for the commits and the parser version; the final code after the review edits was built but not re-run in Wokwi) showed the WHL lines (parsed by the freecad-workspace parser) and the counters line; nothing else was run. No RFC2217 read, no Webots, no hardware.
 - Simulation-only. Not hardware-validated. No balance claim. Details in `docs/CTRL_WHEEL.md`.
 
 ## Links
