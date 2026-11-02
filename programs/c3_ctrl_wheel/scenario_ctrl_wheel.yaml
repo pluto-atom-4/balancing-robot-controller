@@ -1,10 +1,10 @@
-# Headless gyro Z disturbance for the ttl_servo sim (SIM-ONLY, not hardware-validated).
+# Headless gyro Z disturbance for the c3_ctrl_wheel sim (SIM-ONLY, not hardware-validated).
 # Applied AFTER the boot gyro calibration, so it is not absorbed as bias.
-# Path is relative to the project dir (programs/ttl_servo). Run: make sim-ttl_servo-xiao_c3 WOKWI_ARGS="--scenario scenario.yaml --timeout 20000"
-# wait-serial matches the banner printed in programs/ttl_servo/main.cpp setup(); change both together.
+# Path is relative to the project dir (programs/c3_ctrl_wheel). Run: make sim-c3_ctrl_wheel-xiao_c3 WOKWI_ARGS="--scenario scenario_ctrl_wheel.yaml --timeout 20000"
+# wait-serial matches the banner printed in programs/c3_ctrl_wheel/main.cpp setup(); change both together.
 # rotationZ is in deg/s (30 deg/s = 0.524 rad/s). Steps total ~12 s after the banner; the run does not
 # end by itself, so --timeout stops it (exit 42 is expected). 20000 ms leaves roughly 7 s margin for boot.
-name: ttl_servo gyro Z push
+name: c3_ctrl_wheel gyro Z push
 version: 1
 steps:
   - wait-serial: 'Sim starts at 15 deg'
