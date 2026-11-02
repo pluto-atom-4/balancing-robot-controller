@@ -25,6 +25,7 @@
 #include <Dynamixel2Arduino.h>
 #include <math.h>
 #include <segway_sim.h>
+#include <wheel_frame.h>
 
 // ===== Configuration =====
 static constexpr uint8_t  I2C_SDA = 8;
@@ -61,6 +62,10 @@ static bool bus_down = false;        // latched: no Dynamixel calls until reset
 static uint8_t consec_fail = 0;      // consecutive failed writes (reset on success)
 static bool holding = false;         // true for 1 s after a fall
 static uint32_t hold_until_ms = 0;
+// WHL stream (sim-only, UNVERIFIED). 96 is a sizing choice: a line is ~45 bytes;
+// wheel_frame::format returns 0 if it does not fit, and the line is then dropped. Not measured.
+static uint16_t whl_seq = 0;
+static char whl_buf[96];
 
 
 // ===== Helpers =====
@@ -78,6 +83,17 @@ static float clamp_dt_s(uint32_t dt_ms) {
   return dt;
 }
 
+
+// One WHL line per call. Never blocks: written only if the whole line fits in the USB TX buffer.
+static void whl_emit(float model_rad_s, int32_t raw, uint8_t state) {
+  size_t n = wheel_frame::format(whl_buf, sizeof whl_buf, whl_seq, (uint32_t)micros(),
+                                 model_rad_s, raw, state);
+  whl_seq++;
+  if (n == 0) return;
+  int avail = Serial.availableForWrite();
+  if (avail <= 0 || (size_t)avail < n) return;
+  Serial.write((const uint8_t*)whl_buf, n);
+}
 
 // Goal velocity 0, up to 3 attempts. Each attempt is timed and counted.
 static bool write_vel_zero_with_retries() {
@@ -296,6 +312,12 @@ void loop() {
   }
 
 
+
+  // 4b. WHL line, once per tick (after the 20 ms gate, outside the servo_ok chip branch)
+  const float whl_model = holding ? 0.0f : segway_sim.wheel_vel_rad_s;
+  const int32_t whl_raw = segway::wheel_cmd_to_raw(whl_model);
+  const uint8_t whl_state = bus_down ? 2 : (holding ? 1 : 0);
+  whl_emit(whl_model, whl_raw, whl_state);
 
   // 5. Telemetry (10 Hz)
   if (now_ms - lastPrintMs >= PRINT_PERIOD_MS) {
