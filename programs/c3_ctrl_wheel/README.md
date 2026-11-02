@@ -4,7 +4,7 @@ A sim-only Wokwi program for the XIAO ESP32-C3. The firmware prints one `WHL` wh
 
 ## Status
 
-- `main.cpp` is the `programs/ttl_servo` copy with the IMU/DOF/EXT_CMD/KILL_POC/HORN_SELFTEST blocks stripped (FALL_TEST kept) and a `WHL` line emitted once per 20 ms tick plus a 1 Hz `[ctrl_wheel]` counters line.
+- `main.cpp` is the `programs/ttl_servo` copy with the IMU frame/DOF/EXT_CMD/KILL_POC/HORN_SELFTEST blocks stripped (the MPU6050 gyro Z read stays) (FALL_TEST kept) and a `WHL` line emitted once per 20 ms tick plus a 1 Hz `[ctrl_wheel]` counters line.
 - Env `c3_ctrl_wheel-xiao_c3` builds.
 - A headless Wokwi run showed the WHL lines (parsed by the freecad-workspace parser) and the counters line; nothing else was run. No RFC2217 read, no Webots, no hardware.
 - Simulation-only. Not hardware-validated. No balance claim. Details in `docs/CTRL_WHEEL.md`.
@@ -20,6 +20,6 @@ A sim-only Wokwi program for the XIAO ESP32-C3. The firmware prints one `WHL` wh
 ## Files
 
 - `main.cpp`: `programs/ttl_servo/main.cpp` with the blocks stripped and the `WHL` line added (see Status)
-- `wokwi.toml`: copy of `programs/ttl_servo/wokwi.toml`
+- `wokwi.toml`: copy of `programs/ttl_servo/wokwi.toml`, port changed to 4001
 - `diagram.json`: copy of `programs/ttl_servo/diagram.json`
 - `scenario_ctrl_wheel.yaml`: copy of the ttl_servo scenario file

@@ -1,12 +1,12 @@
 # c3_ctrl_wheel: WHL wheel-velocity relay (sim-only)
 
-> **Status: SIM-ONLY, simulation-only, not hardware-validated.** No MPU-6050, XL330 or STS3032 is
-> involved on this route. Nothing here is a balance result, and the program makes no balance claim.
+> **Status: SIM-ONLY, simulation-only, not hardware-validated.** The `WHL` relay route itself
+> involves no MPU-6050, XL330 or STS3032 hardware (the Wokwi program still simulates them as in ttl_servo). Nothing here is a balance result, and the program makes no balance claim.
 > The sign of `model` against Webots is UNVERIFIED. Latency is UNMEASURED.
 >
 > This is a RELAY, not a closed loop. Nothing is received from Webots. The firmware only prints.
 >
-> Dated 2026-11-02, from the scratch worktree run described in section 8. Not run on the main
+> Dated 2026-11-02, from the scratch worktree runs described in section 8. Not run on the main
 > branch by this document's author.
 
 FW is freecad-workspace, the Python sim repo (Webots, bridge). BRC is this repo.
@@ -18,7 +18,8 @@ FW is freecad-workspace, the Python sim repo (Webots, bridge). BRC is this repo.
 
 - It is a copy of `programs/ttl_servo`. The Segway physics PD (`lib/segway_sim`), the Dynamixel
   XL330 velocity-mode writes over `Serial1` (GPIO20 RX, GPIO21 TX, 57600 baud, through the
-  `wokwi-fe-urt-1` adapter), the fall hold and the bus latch all work as in `ttl_servo`.
+  `wokwi-fe-urt-1` adapter), the fall hold and the bus latch are the same code as in `ttl_servo`; the fall and bus-down paths
+  were not exercised in this copy.
 - In addition, it prints one `WHL` line per 20 ms loop tick (`main.cpp`, the `whl_emit` call in
   `loop()`, after the 20 ms gate `LOOP_PERIOD_MS`). The line format is in section 3.
 - It prints a 1 Hz `[ctrl_wheel] sent= dropped= max_emit_us=` counters line (section 4).
@@ -77,7 +78,9 @@ Emission:
 
 - The line is written only if the whole line fits in `Serial.availableForWrite()`. The buffer is
   `whl_buf[96]`. A line is about 45 bytes (the source comment; not measured).
-- Otherwise the line is dropped and counted as `dropped`. The loop never blocks on it.
+- Otherwise the line is dropped and counted as `dropped`. Whether `Serial.write` can still block on the C3 USB CDC is NOT
+  verified, and the loop's other prints (10 Hz line, `[dxl]`, FELL) are unguarded, so a stalled host
+  can still block the loop; the extra TX load of about 2 kB/s (estimate) makes that more likely.
 
 Sync with the host side:
 
@@ -122,7 +125,8 @@ RFC2217:
 - A simulator run that honors the key exposes the simulated serial port as a plain TCP server, with
   no authentication. Its bind address was not checked. The same risk is described for port 4000 in
   `docs/TTL_SERVO_DOF_FRAMES.md` (section "VS Code simulator route (RFC2217)").
-- The VS Code extension keeps its listener on the port open after the simulation stops. Check with
+- The VS Code extension keeps its listener on the port open after the simulation stops (observed
+  for port 4000 only, see CLAUDE.md; NOT checked for 4001). Check with
   `ss -ltn` before a bridge-first run.
 - RFC2217 read on port 4001: NOT run.
 
@@ -144,7 +148,7 @@ RFC2217:
 ## 7. Origins
 
 - Copied from `programs/ttl_servo`:
-  - `main.cpp`: copied, with the IMU, DOF, EXT_CMD, KILL_POC and HORN_SELFTEST blocks stripped and
+  - `main.cpp`: copied, with the IMU frame (TTL_SERVO_IMU_FRAMES), DOF, EXT_CMD, KILL_POC and HORN_SELFTEST blocks stripped (the MPU6050 gyro Z read stays) and
     the FALL_TEST block kept. The `WHL` line and the counters line were added.
   - `wokwi.toml`: copied, with `rfc2217ServerPort = 4001` (ttl_servo uses 4000).
   - `diagram.json`: copied, minus the `kill_btn` pushbutton.
@@ -152,12 +156,15 @@ RFC2217:
 - Reused, unchanged: `lib/segway_sim` (model and PD), `lib/dxl_units` (raw conversion), `lib/imu_frame`
   (through `lib/wheel_frame`), and the shared chips in `wokwi/chips/` (`wokwi-fe-urt-1`,
   `wokwi-ttl-servo`).
-- `programs/c3_ctrl_wheel/README.md` still describes the pre-`WHL` copy. It is not updated by this
-  document.
+- `programs/c3_ctrl_wheel/README.md` was refreshed in the same PR to match this text.
 
 ## 8. Verification status
 
-Only the following were run, all in a scratch worktree, all sim-only:
+Only the following were run, all in a scratch worktree, all sim-only. The two headless runs used the
+working trees that became commit 13c049f (counters, run 2) and its parent on branch feat/245 (run 1);
+the later review-round edits only removed dead lines (`dof_rest`, `math.h`) and changed comments, and
+the build was re-run after them (succeeded), the Wokwi runs were not repeated. The parser was
+`ctrl_wheel_msg.parse_line` from freecad-workspace PR #462 as of commit 05bc267 (before its review fixes):
 
 | Command or check | Result |
 | --- | --- |
