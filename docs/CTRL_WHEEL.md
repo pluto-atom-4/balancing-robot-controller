@@ -61,8 +61,9 @@ Placeholders in the example are not real output. `HH` is the checksum described 
 
 State details:
 
-- **Model forced to 0 while holding.** When the firmware is holding after a fall (state 1), `model`
-  is printed as 0 and `raw` is 0.
+- **Model forced to 0 while holding.** Whenever the firmware is holding after a fall, `model` is
+  printed as 0 and `raw` is 0, whatever the state. A fall whose stop fails latches the bus and sets
+  the hold in the same tick, so that tick prints state 2 (bus down wins) with model 0 and raw 0.
 - **State 2 does not zero the model.** With the bus latched and no hold, `model` and `raw` still
   carry the live sim values. The chip is no longer written to, so these values are not what the
   chip is doing.
