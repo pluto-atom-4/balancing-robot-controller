@@ -143,7 +143,7 @@ sim-%: ## Build env and run in Wokwi (e.g., sim-blink-xiao_c3)
 	$(WOKWI) $(WOKWI_ARGS) programs/$(firstword $(subst -, ,$*))
 
 # Custom Wokwi chips (C, built to wasm by wokwi-cli; downloads WASI-SDK on first use).
-# The chips are shared in wokwi/chips/, outside programs/ (src_dir), and used by wokwi_ttl_servo, tilt_servo and ttl_servo.
+# The chips are shared in wokwi/chips/, outside programs/ (src_dir), and used by wokwi_ttl_servo, tilt_servo, ttl_servo and c3_ctrl_wheel.
 # wokwi-fe-urt-1: half-duplex adapter (ESP UART TXD/RXD -> servo DATA bus, suppresses echo)
 # wokwi-ttl-servo: Dynamixel XL330 servo (pins RX, TX connected via adapter's DATA line)
 # wokwi-cli writes wokwi-api.h into the chip dir on first compile; no rule depends on it.
