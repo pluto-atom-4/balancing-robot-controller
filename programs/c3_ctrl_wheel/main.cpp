@@ -22,7 +22,6 @@
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 #include <Dynamixel2Arduino.h>
-#include <math.h>
 #include <segway_sim.h>
 #include <wheel_frame.h>
 
@@ -84,7 +83,9 @@ static float clamp_dt_s(uint32_t dt_ms) {
 }
 
 
-// One WHL line per call. Never blocks: written only if the whole line fits in the USB TX buffer.
+// One WHL line per call. Written only if availableForWrite() reports room for the whole line.
+// Whether Serial.write can still block on the C3 USB CDC is NOT verified, and the loop's other
+// Serial prints (10 Hz line, [dxl], FELL) are unguarded, so they can block when the host stalls.
 static void whl_emit(float model_rad_s, int32_t raw, uint8_t state) {
   uint32_t t0 = micros();
   size_t n = wheel_frame::format(whl_buf, sizeof whl_buf, whl_seq, (uint32_t)micros(),
@@ -281,8 +282,7 @@ void loop() {
     // 3. PD -> physics, same code the native tests exercise. The returned PD
     // command is ignored: the chip gets the plant's lagged wheel velocity.
     float dt_s = clamp_dt_s(dt_ms);
-    const bool dof_rest = false;
-    if (!dof_rest) (void)segway_sim.tick_cmd(gyroZ_filtered_rad_s, dt_s);
+    (void)segway_sim.tick_cmd(gyroZ_filtered_rad_s, dt_s);
 
     if (segway_sim.has_fallen) {
       // 4. Fall first, so a fall tick never writes the lagged velocity.
