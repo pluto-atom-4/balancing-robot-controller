@@ -23,7 +23,6 @@
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 #include <Dynamixel2Arduino.h>
-#include <math.h>
 #include <segway_sim.h>
 #include <wheel_frame.h>
 
@@ -272,8 +271,7 @@ void loop() {
     // 3. PD -> physics, same code the native tests exercise. The returned PD
     // command is ignored: the chip gets the plant's lagged wheel velocity.
     float dt_s = clamp_dt_s(dt_ms);
-    const bool dof_rest = false;
-    if (!dof_rest) (void)segway_sim.tick_cmd(gyroZ_filtered_rad_s, dt_s);
+    (void)segway_sim.tick_cmd(gyroZ_filtered_rad_s, dt_s);
 
     if (segway_sim.has_fallen) {
       // 4. Fall first, so a fall tick never writes the lagged velocity.
