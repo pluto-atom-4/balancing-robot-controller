@@ -3,7 +3,7 @@
 #
 # NOTE: Arduino Uno (uno), Uno R4 WiFi (uno_r4_wifi) and ATtiny85 (attiny85) support only the 'blink' program.
 # ATtiny85 has no hardware serial, so monitor is unavailable; uses ISP programmer.
-# NOTE: tilt_servo, ttl_servo, stepper_motor and wokwi_ttl_servo support only XIAO ESP32-C3 (xiao_c3); they are not built for other boards.
+# NOTE: tilt_servo, ttl_servo, stepper_motor, wokwi_ttl_servo and c3_ctrl_wheel support only XIAO ESP32-C3 (xiao_c3); they are not built for other boards.
 
 # pio from PATH, else the user-level PlatformIO install, else plain `pio`.
 # Override with e.g. `make PIO=.venv/bin/pio build`.
@@ -14,11 +14,11 @@ PORT ?=
 UPLOAD_PORT := $(if $(PORT),--upload-port $(PORT))
 MONITOR_PORT := $(if $(PORT),--port $(PORT))
 
-ENVS := balance-xiao_c3 balance-xiao_c3-pid blink-uno blink-uno_r4_wifi blink-attiny85 blink-xiao_s3 blink-esp32dev blink-xiao_c3 tilt_servo-xiao_c3 ttl_servo-xiao_c3 stepper_motor-xiao_c3 wokwi_ttl_servo-xiao_c3 c3_probe-xiao_c3 c3_facts-xiao_c3
+ENVS := balance-xiao_c3 balance-xiao_c3-pid blink-uno blink-uno_r4_wifi blink-attiny85 blink-xiao_s3 blink-esp32dev blink-xiao_c3 tilt_servo-xiao_c3 ttl_servo-xiao_c3 stepper_motor-xiao_c3 wokwi_ttl_servo-xiao_c3 c3_probe-xiao_c3 c3_facts-xiao_c3 c3_ctrl_wheel-xiao_c3
 
 # Per-program entries: each programs/<name>/main.cpp gets its own target set.
 # BOARD picks the board suffix; CONTROLLER=pid picks the PID balance env.
-PROGRAMS := balance tilt_servo blink c3_probe ttl_servo stepper_motor wokwi_ttl_servo
+PROGRAMS := balance tilt_servo blink c3_probe ttl_servo stepper_motor wokwi_ttl_servo c3_ctrl_wheel
 BOARD ?= xiao_c3
 CONTROLLER ?= lqr
 VALID_ENVS := $(ENVS)
@@ -170,6 +170,7 @@ wokwi_ttl_servo-bg: wokwi-bg ## Alias of wokwi-bg
 sim-wokwi_ttl_servo-xiao_c3: $(WOKWI_CHIP_WASMS)
 sim-tilt_servo-xiao_c3: $(WOKWI_CHIP_WASMS)
 sim-ttl_servo-xiao_c3: $(WOKWI_CHIP_WASMS)
+sim-c3_ctrl_wheel-xiao_c3: $(WOKWI_CHIP_WASMS)
 
 # Pattern rules: build-<env>, upload-<env>, monitor-<env>, clean-<env>
 # Example: make build-blink-uno, make upload-balance-xiao_c3 PORT=/dev/ttyUSB0
