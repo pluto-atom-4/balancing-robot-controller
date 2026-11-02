@@ -36,8 +36,9 @@ inline uint8_t checksum(const char* s, size_t n) {
 // Returns the frame length L, including the final '\n' and excluding the
 // NUL; out[L] == '\0' and L + 1 <= cap. Returns 0 on failure: cap too small,
 // snprintf error, out == nullptr, cap == 0, or state > 2 (rejected before
-// anything is written). On failure with cap > 0 and out != nullptr,
-// out[0] = '\0'. Nothing is written at or beyond out[cap].
+// any frame text is formatted; only out[0] is cleared). On failure with
+// cap > 0 and out != nullptr, out[0] = '\0'. Nothing is written at or beyond
+// out[cap].
 inline size_t format(char* out, size_t cap, uint16_t seq, uint32_t t_us,
                      float model_rad_s, int32_t raw, uint8_t state) {
   if (out == nullptr || cap == 0) return 0;
