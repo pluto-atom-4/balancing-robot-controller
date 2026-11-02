@@ -1,23 +1,22 @@
-// ttl_servo: closed-loop Segway physics simulation for Wokwi, driving the
-// simulated Dynamixel XL330 chip.
-// SIM-ONLY, UNVERIFIED on hardware. The firmware simulates the Segway frame
-// (lib/segway_sim) and balances it with a PD loop. The real MPU6050 gyro Z is
-// a disturbance rate injected into the simulated tilt dynamics (move the
-// Wokwi gyro Z slider to push the frame). The IMU I2C pins GPIO8/9 are a sim-only
-// Wokwi wiring choice (as in stepper_motor), not the hardware pins (tilt_servo/balance use GPIO6/7).
-//
-// Servo bus: Dynamixel XL330 chip host over Serial1, GPIO20 (RX) / GPIO21 (TX),
-// 57600 baud, protocol 2.0, through the FE-URT-1 adapter (direction handled in
-// hardware). Velocity mode. The goal is the simulated wheel's lagged velocity
-// in raw units, capped on the host (segway::kWheelCapRaw), never a device read.
-// 10 Hz telemetry also reads the present position (pos, dpos) for the sim check.
-// 1 Hz [dxl] line reports transaction counts and the max transaction time (us).
-// Fall: zero-velocity stop (3 tries, torque off if all fail), then hold 1 s and restart.
-// 3 failed writes in a row: the firmware first stops the chip (velocity 0 with 3 tries,
-// torque off if needed), then latches bus_down (no Dynamixel calls; reset the board to retry).
-// A failed bring-up also stops then latches, and always forces torque off.
-// -D TTL_SERVO_FALL_TEST: low gains (kp=2 kd=1) so the frame falls within seconds.
-// Not hardware-validated; nothing run.
+// c3_ctrl_wheel: Wokwi program copied from programs/ttl_servo. SIM-ONLY, UNVERIFIED,
+// not hardware-validated. No balance claim.
+// It keeps the closed-loop Segway physics PD sim (lib/segway_sim) and the Dynamixel
+// XL330 chip write exactly as ttl_servo does: servo bus Serial1 GPIO20 (RX) / GPIO21 (TX),
+// 57600 baud, protocol 2.0, through the FE-URT-1 adapter (direction handled in hardware),
+// velocity mode. The goal is the simulated wheel's lagged velocity in raw units, capped on
+// the host. Fall: zero-velocity stop (3 tries, torque off if all fail), then hold 1 s and
+// restart. 3 failed writes in a row: stop the chip first (velocity 0, torque off if needed),
+// then latch bus_down (no Dynamixel calls; reset the board to retry).
+// MPU6050 gyro Z is a disturbance rate injected into the sim tilt dynamics. Its IMU I2C is
+// on GPIO8/9, a sim-only Wokwi wiring choice (hardware tilt_servo and balance use GPIO6/7).
+// In addition it prints one line per 20 ms tick, WHL,<seq>,<t_us>,<model_rad_s>,<raw>,<state>*HH
+// (format in lib/wheel_frame/wheel_frame.h; state 0 run, 1 hold after a fall, 2 bus down), for
+// the freecad-workspace bridge poc/ctrl-wheel, plus a 1 Hz [ctrl_wheel] sent= dropped=
+// max_emit_us= line. model is the firmware's lagged MODEL velocity, not a measurement.
+// This is a RELAY to Webots, NOT a closed loop through Webots: nothing is received from Webots.
+// Log tags in this copy still say [ttl_servo] and [dxl].
+// -D TTL_SERVO_FALL_TEST: low gains (kp=2 kd=1) so the frame falls.
+// RFC2217 port 4001 is set in wokwi.toml.
 #include <Arduino.h>
 #include <Wire.h>
 #include <Adafruit_MPU6050.h>
@@ -64,6 +63,7 @@ static uint32_t hold_until_ms = 0;
 // WHL stream (sim-only, UNVERIFIED). 96 is a sizing choice: a line is ~45 bytes;
 // wheel_frame::format returns 0 if it does not fit, and the line is then dropped. Not measured.
 static uint16_t whl_seq = 0;
+static uint32_t whl_sent = 0, whl_dropped = 0, whl_max_emit_us = 0, lastWhlPrintMs = 0;
 static char whl_buf[96];
 
 
@@ -87,13 +87,21 @@ static float clamp_dt_s(uint32_t dt_ms) {
 // Whether Serial.write can still block on the C3 USB CDC is NOT verified, and the loop's other
 // Serial prints (10 Hz line, [dxl], FELL) are unguarded, so they can block when the host stalls.
 static void whl_emit(float model_rad_s, int32_t raw, uint8_t state) {
+  uint32_t t0 = micros();
   size_t n = wheel_frame::format(whl_buf, sizeof whl_buf, whl_seq, (uint32_t)micros(),
                                  model_rad_s, raw, state);
   whl_seq++;
-  if (n == 0) return;
-  int avail = Serial.availableForWrite();
-  if (avail <= 0 || (size_t)avail < n) return;
-  Serial.write((const uint8_t*)whl_buf, n);
+  bool written = false;
+  if (n != 0) {
+    int avail = Serial.availableForWrite();
+    if (avail > 0 && (size_t)avail >= n) {
+      Serial.write((const uint8_t*)whl_buf, n);
+      written = true;
+    }
+  }
+  if (written) whl_sent++; else whl_dropped++;
+  uint32_t el = micros() - t0;
+  if (el > whl_max_emit_us) whl_max_emit_us = el;
 }
 
 // Goal velocity 0, up to 3 attempts. Each attempt is timed and counted.
@@ -236,6 +244,7 @@ void setup() {
   lastLoopMs = millis();
   lastPrintMs = lastLoopMs;
   lastBusPrintMs = lastLoopMs;
+  lastWhlPrintMs = lastLoopMs;
 }
 
 void loop() {
@@ -358,6 +367,14 @@ void loop() {
                   pos_s, dpos_s, gyroZ_filtered_rad_s, servo_ok ? 1 : 0);
   }
 
+  // Gate: 80 bytes of USB TX room is a sizing choice for one ~70-byte line, not measured.
+  if (now_ms - lastWhlPrintMs >= 1000 && Serial.availableForWrite() >= 80) {
+    Serial.printf("[ctrl_wheel] sent=%lu dropped=%lu max_emit_us=%lu\n",
+                  (unsigned long)whl_sent, (unsigned long)whl_dropped,
+                  (unsigned long)whl_max_emit_us);
+    whl_max_emit_us = 0;
+    lastWhlPrintMs = now_ms;
+  }
   if (servo_ok && now_ms - lastBusPrintMs >= 1000) {
     Serial.printf("[dxl] tx_ok=%lu tx_fail=%lu rd_ok=%lu rd_fail=%lu max_us=%lu\n",
                   (unsigned long)tx_ok, (unsigned long)tx_fail,
