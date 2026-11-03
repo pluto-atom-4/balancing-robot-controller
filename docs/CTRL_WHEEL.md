@@ -67,7 +67,7 @@ State details:
 - **State 2 does not zero the model.** With the bus latched and no hold, `model` and `raw` still
   carry the live sim values. The chip is no longer written to, so these values are not what the
   chip is doing.
-- **Non-finite model.** Refused by `wheel_frame::format` (returns 0), because a NaN or infinite value printed as `0.000000` would look like a genuine zero in run state. Not reachable today: a NaN or infinite plant state sets the fall flag in the same tick, so the hold line (state 1, model 0) is printed instead. The matching host change (freecad-workspace issue #475, PR #476, pending until merged) raises `WhlError` for the same input; the host's 200 ms silence rule then stops the wheel.
+- **Non-finite model.** Refused by `wheel_frame::format` (returns 0), because a NaN or infinite value printed as `0.000000` would look like a genuine zero in run state. Not reachable today: a NaN or infinite plant state sets the fall flag in the same tick, so the hold line (state 1, model 0) is printed instead. The matching host change (freecad-workspace issue #475, PR #476, pending until merged) raises `WhlError` for the same input; the host's 200 ms silence rule is meant to stop the wheel then (host behaviour, not checked from this repo).
 
 Checksum:
 
@@ -168,13 +168,15 @@ RFC2217:
 Only the following were run, all in a scratch worktree, all sim-only. The two headless runs used the
 working trees that became commit 13c049f (counters, run 2) and its parent on branch feat/245 (run 1);
 the later review-round edits only removed dead lines (`dof_rest`, `math.h`) and changed comments, and
-the build was re-run after them (succeeded), the Wokwi runs were not repeated. The parser was
+the build was re-run after them (succeeded), the Wokwi runs were not repeated. One later change is
+behavioural: issue #261 makes `wheel_frame::format` refuse a non-finite model. The headless Wokwi runs
+predate it and do not cover it (the condition cannot occur in the simulation); only the native test does. The parser was
 `ctrl_wheel_msg.parse_line` from freecad-workspace PR #462 as of commit 05bc267 (before its review fixes):
 
 | Command or check | Result |
 | --- | --- |
-| native `test_wheel_frame` | 19/19 passed in the earlier runs; 20/20 after the non-finite change (issue #261; branch run on 2026-11-02, then 334/334 for the whole native suite on the tree of commit 2b81c99; the later commit changed docs and one comment only) |
-| `pio run -e c3_ctrl_wheel-xiao_c3` | succeeded; after the non-finite change also `ttl_servo-xiao_c3` and `balance-xiao_c3`, and again after the docs and comment commit |
+| native `test_wheel_frame` | 19/19 passed in the earlier runs; 20/20 after the non-finite change (issue #261); the whole native suite passed 334/334 on commit d9cc19c (run on 2026-11-02). The commits after d9cc19c change docs and comments only |
+| `pio run -e c3_ctrl_wheel-xiao_c3` | succeeded on commit d9cc19c; `ttl_servo-xiao_c3` and `balance-xiao_c3` also succeeded on d9cc19c |
 | headless `wokwi-cli` run, 12 to 15 s, stdout, exit 42 from the timeout | two runs showed 608 and 458 `WHL` lines; all lines were accepted by the freecad-workspace parser, with no `seq` gaps and only state 0 |
 | counters line during the second headless run (12 s, commit 13c049f; the first run predates the counters code) | `sent=50 dropped=0` at the first 1 s line (the counts are cumulative, so later lines grow by about 50 per second) |
 

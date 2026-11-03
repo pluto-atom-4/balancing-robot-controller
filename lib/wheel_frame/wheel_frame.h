@@ -6,7 +6,8 @@
 // Frame: WHL,<seq>,<t_us>,<model>,<raw>,<state>*HH\n
 //   model in rad/s as %.6f (a non-finite model is REFUSED: format returns 0
 //   and writes no frame, the caller counts it as dropped, the seq gap shows,
-//   and the host's silence rule stops the wheel; a finite value whose printed
+//   and the host's silence rule is meant to stop the wheel (host behaviour,
+//   not checked from this repo); a finite value whose printed
 //   text is -0 still drops its sign), raw as signed decimal (servo raw
 //   velocity units),
 //   state as a decimal digit 0..2.
