@@ -100,7 +100,7 @@ Details per program (the former Programs paragraph, text kept as it was, split a
   - simulation-only, not hardware-validated
 - **`c3_ctrl_wheel`**
   - XIAO C3 only: sim-only Wokwi program copied from `ttl_servo` (the IMU frame, DOF, EXT_CMD, KILL_POC and HORN_SELFTEST blocks are stripped, `TTL_SERVO_FALL_TEST` is kept, the MPU6050 gyro Z read stays, the log tags stay `[ttl_servo]` / `[dxl]`)
-  - prints one `WHL,<seq>,<t_us>,<model_rad_s>,<raw>,<state>*HH` line per 20 ms tick through `lib/wheel_frame`: `model` is the lagged `segway_sim` wheel velocity, not a measurement; `raw` is the chip raw goal velocity (cap 125); state 0 run, 1 hold after a fall, 2 bus down (2 wins); a non-finite or -0 model prints as `0.000000`; `model` is 0 while holding
+  - prints one `WHL,<seq>,<t_us>,<model_rad_s>,<raw>,<state>*HH` line per 20 ms tick through `lib/wheel_frame`: `model` is the lagged `segway_sim` wheel velocity, not a measurement; `raw` is the chip raw goal velocity (cap 125); state 0 run, 1 hold after a fall, 2 bus down (2 wins); a non-finite model is refused (`wheel_frame::format` returns 0, no line is printed, the `dropped` counter counts it and `whl_seq` still advances; not reachable from the current firmware, covered by the native test only), a -0 model prints as `0.000000`; `model` is 0 while holding
   - also prints a 1 Hz `[ctrl_wheel] sent= dropped= max_emit_us=` line (`sent` and `dropped` are cumulative); the 80-byte USB room gate and the 96-byte line buffer are sizing choices, not measured
   - the chip write block is unchanged from `ttl_servo`
   - `programs/c3_ctrl_wheel/wokwi.toml` sets `rfc2217ServerPort = 4001` (`ttl_servo` uses 4000); the key was not exercised
