@@ -4,8 +4,11 @@
 // SDK, no heap.
 //
 // Frame: WHL,<seq>,<t_us>,<model>,<raw>,<state>*HH\n
-//   model in rad/s as %.6f (non-finite becomes 0.000000, printed-text -0
-//   drops its sign), raw as signed decimal (servo raw velocity units),
+//   model in rad/s as %.6f (a non-finite model is REFUSED: format returns 0
+//   and writes no frame, the caller counts it as dropped, the seq gap shows,
+//   and the host's silence rule stops the wheel; a finite value whose printed
+//   text is -0 still drops its sign), raw as signed decimal (servo raw
+//   velocity units),
 //   state as a decimal digit 0..2.
 //   HH = 2 uppercase hex digits, XOR of every byte from 'W' up to but not
 //   including '*'.
@@ -16,11 +19,16 @@
 //     format. Any format change must be made in both places.
 //   - Reuses imu_frame (checksum, %.6f text, -0 rule and append helpers), so
 //     there is a single copy of the checksum and of the -0 rule.
+//   - freecad-workspace ctrl_wheel_msg.format_whl raises WhlError for a
+//     non-finite model (same decision, #475).
+//   - The IMU frame streams keep their own rule of printing 0.0f for a
+//     non-finite value (imu_frame, #156, untouched).
 //
 // Pure formatting only. Nothing here is validated on hardware, and this file
 // makes no timing or bandwidth claim.
 
 #include <imu_frame.h>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -35,14 +43,19 @@ inline uint8_t checksum(const char* s, size_t n) {
 // Writes one frame into out (capacity cap bytes, NUL included).
 // Returns the frame length L, including the final '\n' and excluding the
 // NUL; out[L] == '\0' and L + 1 <= cap. Returns 0 on failure: cap too small,
-// snprintf error, out == nullptr, cap == 0, or state > 2 (rejected before
-// any frame text is formatted; only out[0] is cleared). On failure with
+// snprintf error, out == nullptr, cap == 0, state > 2, or a non-finite
+// model_rad_s (rejected before any frame text is formatted; only out[0] is
+// cleared). On failure with
 // cap > 0 and out != nullptr, out[0] = '\0'. Nothing is written at or beyond
 // out[cap].
 inline size_t format(char* out, size_t cap, uint16_t seq, uint32_t t_us,
                      float model_rad_s, int32_t raw, uint8_t state) {
   if (out == nullptr || cap == 0) return 0;
   if (state > 2) {
+    out[0] = '\0';
+    return 0;
+  }
+  if (!std::isfinite(model_rad_s)) {
     out[0] = '\0';
     return 0;
   }
