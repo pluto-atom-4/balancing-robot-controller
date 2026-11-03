@@ -67,7 +67,7 @@ State details:
 - **State 2 does not zero the model.** With the bus latched and no hold, `model` and `raw` still
   carry the live sim values. The chip is no longer written to, so these values are not what the
   chip is doing.
-- **Non-finite model.** Refused by `wheel_frame::format` (returns 0), because a NaN or infinite value printed as `0.000000` would look like a genuine zero in run state. Not reachable today: a NaN or infinite plant state sets the fall flag in the same tick, so the hold line (state 1, model 0) is printed instead. The matching host change (freecad-workspace issue #475, PR #476, pending until merged) raises `WhlError` for the same input; the host's 200 ms silence rule is meant to stop the wheel then (host behaviour, not checked from this repo).
+- **Non-finite model.** Refused by `wheel_frame::format` (returns 0), because a NaN or infinite value printed as `0.000000` would look like a genuine zero in run state. Not reachable today: a NaN or infinite plant state sets the fall flag in the same tick, so the hold line (state 1, model 0) is printed instead. The matching host change (freecad-workspace issue #475, PR #476, pending until merged) raises `WhlError` for the same input; the host is meant to keep the last good value for a single refused line and to go stale only after 200 ms without a good line (host behaviour, not checked from this repo).
 
 Checksum:
 
