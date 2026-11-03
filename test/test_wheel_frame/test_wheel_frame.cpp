@@ -134,7 +134,7 @@ void test_nonfinite_model_rejected(void) {
 }
 
 // Finite extremes and a tiny finite value still format (the non-finite check is not over-broad)
-void test_finite_extremes_still_format(void) {
+void test_finite_values_still_format(void) {
   char buf[64];
   size_t n = wheel_frame::format(buf, sizeof buf, 0, 0, 3.0f, 125, 0);
   TEST_ASSERT_TRUE(n > 0);
@@ -259,7 +259,7 @@ int main(int argc, char **argv) {
   RUN_TEST(test_field_order);
   RUN_TEST(test_model_six_decimals);
   RUN_TEST(test_nonfinite_model_rejected);
-  RUN_TEST(test_finite_extremes_still_format);
+  RUN_TEST(test_finite_values_still_format);
   RUN_TEST(test_negative_zero_and_tiny_negative_normalized);
   RUN_TEST(test_negative_raw);
   RUN_TEST(test_states_0_1_2_accepted);

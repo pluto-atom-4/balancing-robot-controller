@@ -19,8 +19,9 @@
 //     format. Any format change must be made in both places.
 //   - Reuses imu_frame (checksum, %.6f text, -0 rule and append helpers), so
 //     there is a single copy of the checksum and of the -0 rule.
-//   - freecad-workspace ctrl_wheel_msg.format_whl raises WhlError for a
-//     non-finite model (same decision, #475).
+//   - The matching host change (freecad-workspace ctrl_wheel_msg.format_whl
+//     raises WhlError for a non-finite model) is issue #475 / PR #476 and is
+//     not on the host's main until that PR is merged.
 //   - The IMU frame streams keep their own rule of printing 0.0f for a
 //     non-finite value (imu_frame, #156, untouched).
 //
@@ -45,9 +46,8 @@ inline uint8_t checksum(const char* s, size_t n) {
 // NUL; out[L] == '\0' and L + 1 <= cap. Returns 0 on failure: cap too small,
 // snprintf error, out == nullptr, cap == 0, state > 2, or a non-finite
 // model_rad_s (rejected before any frame text is formatted; only out[0] is
-// cleared). On failure with
-// cap > 0 and out != nullptr, out[0] = '\0'. Nothing is written at or beyond
-// out[cap].
+// cleared). On failure with cap > 0 and out != nullptr, out[0] = '\0'.
+// Nothing is written at or beyond out[cap].
 inline size_t format(char* out, size_t cap, uint16_t seq, uint32_t t_us,
                      float model_rad_s, int32_t raw, uint8_t state) {
   if (out == nullptr || cap == 0) return 0;

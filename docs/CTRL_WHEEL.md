@@ -67,7 +67,7 @@ State details:
 - **State 2 does not zero the model.** With the bus latched and no hold, `model` and `raw` still
   carry the live sim values. The chip is no longer written to, so these values are not what the
   chip is doing.
-- **Non-finite model.** Refused by `wheel_frame::format` (returns 0), because a NaN or infinite value printed as `0.000000` would look like a genuine zero in run state. Not reachable today: a NaN or infinite plant state sets the fall flag in the same tick, so the hold line (state 1, model 0) is printed instead. The host side raises (`WhlError`) and its silence rule stops the wheel after 200 ms.
+- **Non-finite model.** Refused by `wheel_frame::format` (returns 0), because a NaN or infinite value printed as `0.000000` would look like a genuine zero in run state. Not reachable today: a NaN or infinite plant state sets the fall flag in the same tick, so the hold line (state 1, model 0) is printed instead. The matching host change (freecad-workspace issue #475, PR #476, pending until merged) raises `WhlError` for the same input; the host's 200 ms silence rule then stops the wheel.
 
 Checksum:
 
@@ -173,8 +173,8 @@ the build was re-run after them (succeeded), the Wokwi runs were not repeated. T
 
 | Command or check | Result |
 | --- | --- |
-| native `test_wheel_frame` | 19/19 passed in the earlier runs; 20/20 after the non-finite change (issue #261, branch run on 2026-11-03) |
-| `pio run -e c3_ctrl_wheel-xiao_c3` | succeeded |
+| native `test_wheel_frame` | 19/19 passed in the earlier runs; 20/20 after the non-finite change (issue #261; branch run on 2026-11-02, then 334/334 for the whole native suite on the tree of commit 2b81c99; the later commit changed docs and one comment only) |
+| `pio run -e c3_ctrl_wheel-xiao_c3` | succeeded; after the non-finite change also `ttl_servo-xiao_c3` and `balance-xiao_c3`, and again after the docs and comment commit |
 | headless `wokwi-cli` run, 12 to 15 s, stdout, exit 42 from the timeout | two runs showed 608 and 458 `WHL` lines; all lines were accepted by the freecad-workspace parser, with no `seq` gaps and only state 0 |
 | counters line during the second headless run (12 s, commit 13c049f; the first run predates the counters code) | `sent=50 dropped=0` at the first 1 s line (the counts are cumulative, so later lines grow by about 50 per second) |
 
