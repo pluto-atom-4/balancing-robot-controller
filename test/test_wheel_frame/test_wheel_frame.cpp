@@ -36,7 +36,7 @@ static void assert_hh_matches(const char* line) {
   TEST_ASSERT_EQUAL_CHAR('\n', star[3]);
 }
 
-// Test 1: G1 golden, exact string and length
+// G1 golden, exact string and length
 void test_golden_WHL_1(void) {
   char buf[64];
   size_t n = wheel_frame::format(buf, sizeof buf, 1, 20000u, 0.5f, 21, 0);
@@ -44,7 +44,7 @@ void test_golden_WHL_1(void) {
   TEST_ASSERT_EQUAL_STRING(kG1, buf);
 }
 
-// Test 2: G2 golden, seq and t_us maxima, negative model and raw
+// G2 golden, seq and t_us maxima, negative model and raw
 void test_golden_WHL_2(void) {
   char buf[64];
   size_t n = wheel_frame::format(buf, sizeof buf, 65535, 4294967295u, -1.25f, -125, 2);
@@ -52,7 +52,7 @@ void test_golden_WHL_2(void) {
   TEST_ASSERT_EQUAL_STRING(kG2, buf);
 }
 
-// Test 3: G3 golden, all zero with state 1
+// G3 golden, all zero with state 1
 void test_golden_WHL_3(void) {
   char buf[64];
   size_t n = wheel_frame::format(buf, sizeof buf, 0, 0, 0.0f, 0, 1);
@@ -60,7 +60,7 @@ void test_golden_WHL_3(void) {
   TEST_ASSERT_EQUAL_STRING(kG3, buf);
 }
 
-// Test 4: G4 golden, model -0.000001 keeps its sign
+// G4 golden, model -0.000001 keeps its sign
 void test_golden_WHL_4(void) {
   char buf[64];
   size_t n = wheel_frame::format(buf, sizeof buf, 7, 140000u, -0.000001f, 0, 0);
@@ -68,24 +68,24 @@ void test_golden_WHL_4(void) {
   TEST_ASSERT_EQUAL_STRING(kG4, buf);
 }
 
-// Test 5: checksum of "WHL," is 0x7F
+// checksum of "WHL," is 0x7F
 void test_checksum_WHL_comma(void) {
   TEST_ASSERT_EQUAL_HEX8(0x7F, wheel_frame::checksum("WHL,", 4));
 }
 
-// Test 6: checksum of a single 'W' is 0x57
+// checksum of a single 'W' is 0x57
 void test_checksum_W_single(void) {
   TEST_ASSERT_EQUAL_HEX8(0x57, wheel_frame::checksum("W", 1));
 }
 
-// Test 7: checksum of the G3 body (up to '*') is 0x60
+// checksum of the G3 body (up to '*') is 0x60
 void test_checksum_body_WHL_3(void) {
   const size_t body_len = static_cast<size_t>(strchr(kG3, '*') - kG3);
   TEST_ASSERT_EQUAL_UINT(20, body_len);
   TEST_ASSERT_EQUAL_HEX8(0x60, wheel_frame::checksum(kG3, body_len));
 }
 
-// Test 8: library checksum, independent XOR and printed HH agree on all goldens
+// library checksum, independent XOR and printed HH agree on all goldens
 void test_checksum_matches_printed_hh(void) {
   const char* lines[4] = {kG1, kG2, kG3, kG4};
   for (int i = 0; i < 4; i++) {
@@ -95,7 +95,7 @@ void test_checksum_matches_printed_hh(void) {
   }
 }
 
-// Test 9: field order is WHL, seq, t_us, model, raw, state
+// field order is WHL, seq, t_us, model, raw, state
 void test_field_order(void) {
   char buf[64];
   size_t n = wheel_frame::format(buf, sizeof buf, 5, 6, 0.0f, 7, 2);
@@ -104,7 +104,7 @@ void test_field_order(void) {
   assert_hh_matches(buf);
 }
 
-// Test 10: model is printed with %.6f
+// model is printed with %.6f
 void test_model_six_decimals(void) {
   char buf[64];
   wheel_frame::format(buf, sizeof buf, 0, 0, 0.25f, 0, 0);
@@ -113,7 +113,7 @@ void test_model_six_decimals(void) {
   TEST_ASSERT_EQUAL_INT(0, strncmp(buf, "WHL,0,0,-2.500000,0,0*", 22));
 }
 
-// Test 11: non-finite model (NaN, +inf, -inf) is refused in every state: returns 0,
+// non-finite model (NaN, +inf, -inf) is refused in every state: returns 0,
 // out[0] cleared, no frame written (bytes 1..63 keep the canary)
 void test_nonfinite_model_rejected(void) {
   const float bad[3] = {NAN, INFINITY, -INFINITY};
@@ -160,7 +160,7 @@ void test_negative_zero_and_tiny_negative_normalized(void) {
   }
 }
 
-// Test 13: negative raw is printed with its sign, INT32_MIN included
+// negative raw is printed with its sign, INT32_MIN included
 void test_negative_raw(void) {
   char buf[64];
   size_t n = wheel_frame::format(buf, sizeof buf, 0, 0, 0.0f, INT32_MIN, 0);
@@ -169,7 +169,7 @@ void test_negative_raw(void) {
   assert_hh_matches(buf);
 }
 
-// Test 14: states 0, 1 and 2 are accepted and printed as the last field
+// states 0, 1 and 2 are accepted and printed as the last field
 void test_states_0_1_2_accepted(void) {
   char buf[64];
   for (int s = 0; s <= 2; s++) {
@@ -195,7 +195,7 @@ void test_state_3_rejected(void) {
   TEST_ASSERT_EQUAL_CHAR('\0', buf[0]);
 }
 
-// Test 17: exact-fit cap (frame + NUL) succeeds
+// exact-fit cap (frame + NUL) succeeds
 void test_exact_fit_cap(void) {
   char buf[30];
   size_t n = wheel_frame::format(buf, sizeof buf, 1, 20000u, 0.5f, 21, 0);
@@ -225,7 +225,7 @@ void test_cap_sweep_golden_1(void) {
   TEST_ASSERT_EQUAL_STRING(kG1, buf);
 }
 
-// Test 19: cap 0 and nullptr out return 0 and write nothing
+// cap 0 and nullptr out return 0 and write nothing
 void test_cap_zero_and_null_out(void) {
   unsigned char buf[4] = {0x55, 0x55, 0x55, 0x55};
   size_t n = wheel_frame::format(reinterpret_cast<char*>(buf), 0, 0, 0, 0.0f, 0, 0);
@@ -237,7 +237,7 @@ void test_cap_zero_and_null_out(void) {
   TEST_ASSERT_EQUAL_UINT(0, n);
 }
 
-// Test 20: max seq 65535 and max t_us 4294967295 with a zero model
+// max seq 65535 and max t_us 4294967295 with a zero model
 void test_max_seq_and_t_us(void) {
   char buf[64];
   size_t n = wheel_frame::format(buf, sizeof buf, 65535, 4294967295u, 0.0f, 0, 0);
