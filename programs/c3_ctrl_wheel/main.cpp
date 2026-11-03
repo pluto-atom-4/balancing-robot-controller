@@ -86,6 +86,7 @@ static float clamp_dt_s(uint32_t dt_ms) {
 // One WHL line per call. Written only if availableForWrite() reports room for the whole line.
 // Whether Serial.write can still block on the C3 USB CDC is NOT verified, and the loop's other
 // Serial prints (10 Hz line, [dxl], FELL) are unguarded, so they can block when the host stalls.
+// wheel_frame::format also returns 0 for a non-finite model; that counts as dropped and whl_seq still advances.
 static void whl_emit(float model_rad_s, int32_t raw, uint8_t state) {
   uint32_t t0 = micros();
   size_t n = wheel_frame::format(whl_buf, sizeof whl_buf, whl_seq, (uint32_t)micros(),

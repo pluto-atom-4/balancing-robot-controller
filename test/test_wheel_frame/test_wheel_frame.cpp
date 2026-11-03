@@ -113,15 +113,40 @@ void test_model_six_decimals(void) {
   TEST_ASSERT_EQUAL_INT(0, strncmp(buf, "WHL,0,0,-2.500000,0,0*", 22));
 }
 
-// Test 11: NaN, +inf, -inf model become 0.000000
-void test_nonfinite_model_becomes_zero(void) {
+// Test 11: non-finite model (NaN, +inf, -inf) is refused in every state: returns 0,
+// out[0] cleared, no frame written (bytes 1..63 keep the canary)
+void test_nonfinite_model_rejected(void) {
   const float bad[3] = {NAN, INFINITY, -INFINITY};
-  char buf[64];
   for (int i = 0; i < 3; i++) {
-    size_t n = wheel_frame::format(buf, sizeof buf, 0, 0, bad[i], 0, 0);
-    TEST_ASSERT_EQUAL_UINT(24, n);
-    TEST_ASSERT_EQUAL_INT(0, strncmp(buf, kZeroPrefix, strlen(kZeroPrefix)));
+    for (uint8_t s = 0; s <= 2; s++) {
+      unsigned char canary[64];
+      memset(canary, 0x55, sizeof canary);
+      char* buf = reinterpret_cast<char*>(canary);
+      buf[0] = 'X';
+      size_t n = wheel_frame::format(buf, sizeof canary, 0, 0, bad[i], 0, s);
+      TEST_ASSERT_EQUAL_UINT(0, n);
+      TEST_ASSERT_EQUAL_CHAR('\0', buf[0]);
+      for (size_t k = 1; k < sizeof canary; k++) {
+        TEST_ASSERT_EQUAL_HEX8(0x55, canary[k]);
+      }
+    }
   }
+}
+
+// Finite extremes and a tiny finite value still format (the non-finite check is not over-broad)
+void test_finite_values_still_format(void) {
+  char buf[64];
+  size_t n = wheel_frame::format(buf, sizeof buf, 0, 0, 3.0f, 125, 0);
+  TEST_ASSERT_TRUE(n > 0);
+  TEST_ASSERT_EQUAL_INT(0, strncmp(buf, "WHL,0,0,3.000000,125,0*", strlen("WHL,0,0,3.000000,125,0*")));
+
+  n = wheel_frame::format(buf, sizeof buf, 0, 0, -3.0f, -125, 0);
+  TEST_ASSERT_TRUE(n > 0);
+  TEST_ASSERT_EQUAL_INT(0, strncmp(buf, "WHL,0,0,-3.000000,-125,0*", strlen("WHL,0,0,-3.000000,-125,0*")));
+
+  n = wheel_frame::format(buf, sizeof buf, 0, 0, 1e-9f, 0, 0);
+  TEST_ASSERT_TRUE(n > 0);
+  TEST_ASSERT_NOT_NULL(strstr(buf, ",0.000000,"));
 }
 
 // -0.0f and -1e-9f print as 0.000000 (no sign)
@@ -233,7 +258,8 @@ int main(int argc, char **argv) {
   RUN_TEST(test_checksum_matches_printed_hh);
   RUN_TEST(test_field_order);
   RUN_TEST(test_model_six_decimals);
-  RUN_TEST(test_nonfinite_model_becomes_zero);
+  RUN_TEST(test_nonfinite_model_rejected);
+  RUN_TEST(test_finite_values_still_format);
   RUN_TEST(test_negative_zero_and_tiny_negative_normalized);
   RUN_TEST(test_negative_raw);
   RUN_TEST(test_states_0_1_2_accepted);

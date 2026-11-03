@@ -55,7 +55,7 @@ Placeholders in the example are not real output. `HH` is the checksum described 
 | --- | --- |
 | `seq` | uint16, printed unsigned. Wraps 65535 to 0. Advances on every emit attempt, including a dropped line or a failed format, so a dropped line shows on the host as a sequence gap. |
 | `t_us` | uint32, `micros()` at the moment the line is formatted. Wraps about every 71.6 minutes. It is the emit time, not a sample time. |
-| `model_rad_s` | `%.6f`. A non-finite value prints as `0.000000`. A value that prints as `-0` drops its sign and prints as `0.000000`. |
+| `model_rad_s` | `%.6f`. A non-finite value is refused: no line is printed (counted in `dropped`, the `seq` gap shows). It is not reachable from the current firmware. A value that prints as `-0` drops its sign and prints as `0.000000`. |
 | `raw` | Signed decimal, the chip raw goal velocity: `segway::wheel_cmd_to_raw(whl_model)`, capped at `segway::kWheelCapRaw` = 125 (magnitude, in raw units). Same raw units as the chip goal velocity. |
 | `state` | One decimal digit. `0` run. `1` hold after a fall. `2` bus down. `bus_down` wins: if the bus is latched while holding, the state is `2`. |
 
@@ -67,6 +67,7 @@ State details:
 - **State 2 does not zero the model.** With the bus latched and no hold, `model` and `raw` still
   carry the live sim values. The chip is no longer written to, so these values are not what the
   chip is doing.
+- **Non-finite model.** Refused by `wheel_frame::format` (returns 0), because a NaN or infinite value printed as `0.000000` would look like a genuine zero in run state. Not reachable today: a NaN or infinite plant state sets the fall flag in the same tick, so the hold line (state 1, model 0) is printed instead. The matching host change (freecad-workspace issue #475, PR #476, pending until merged) raises `WhlError` for the same input; the host is meant to keep the last good value for a single refused line and to go stale only after 200 ms without a good line (host behaviour, not checked from this repo).
 
 Checksum:
 
@@ -99,6 +100,7 @@ Sync with the host side:
   the first later tick where the gate passes.
 - `sent` and `dropped` are **cumulative since boot**. They are never reset. At 50 Hz with no drops,
   `sent` grows by about 50 per second, so the first line shows about 50.
+- `dropped` also counts a refused frame (a non-finite model, section 3). It does not distinguish a refused frame from a full USB buffer.
 - `max_emit_us` is the longest `whl_emit` call since the previous counters line. It resets on each
   print. The timing is the simulated clock, not a C3 measurement.
 
@@ -142,6 +144,8 @@ RFC2217:
   sizing choices or simulated-clock values, not measurements.
 - **State 1 (hold after a fall) and state 2 (bus down) are not yet exercised in Wokwi.** The
   headless run showed state 0 only.
+- **The non-finite refusal is not exercised in Wokwi.** The condition cannot occur in the current
+  firmware, so the decision is covered by the native `test_wheel_frame` test only.
 - **`meas` is not produced here.** Only `model` is printed.
 - The Wokwi physics constants are guesses (`lib/segway_sim`), so the `model` values do not describe
   a real robot.
@@ -164,13 +168,15 @@ RFC2217:
 Only the following were run, all in a scratch worktree, all sim-only. The two headless runs used the
 working trees that became commit 13c049f (counters, run 2) and its parent on branch feat/245 (run 1);
 the later review-round edits only removed dead lines (`dof_rest`, `math.h`) and changed comments, and
-the build was re-run after them (succeeded), the Wokwi runs were not repeated. The parser was
+the build was re-run after them (succeeded), the Wokwi runs were not repeated. One later change is
+behavioural: issue #261 makes `wheel_frame::format` refuse a non-finite model. The headless Wokwi runs
+predate it and do not cover it (the condition cannot occur in the simulation); only the native test does. The parser was
 `ctrl_wheel_msg.parse_line` from freecad-workspace PR #462 as of commit 05bc267 (before its review fixes):
 
 | Command or check | Result |
 | --- | --- |
-| native `test_wheel_frame` | 19/19 passed |
-| `pio run -e c3_ctrl_wheel-xiao_c3` | succeeded |
+| native `test_wheel_frame` | 19/19 passed in the earlier runs; 20/20 after the non-finite change (issue #261); the whole native suite passed 334/334 on commit d9cc19c (run on 2026-11-02). The commits after d9cc19c change docs and comments only |
+| `pio run -e c3_ctrl_wheel-xiao_c3` | succeeded on commit d9cc19c; `ttl_servo-xiao_c3` and `balance-xiao_c3` also succeeded on d9cc19c |
 | headless `wokwi-cli` run, 12 to 15 s, stdout, exit 42 from the timeout | two runs showed 608 and 458 `WHL` lines; all lines were accepted by the freecad-workspace parser, with no `seq` gaps and only state 0 |
 | counters line during the second headless run (12 s, commit 13c049f; the first run predates the counters code) | `sent=50 dropped=0` at the first 1 s line (the counts are cumulative, so later lines grow by about 50 per second) |
 
