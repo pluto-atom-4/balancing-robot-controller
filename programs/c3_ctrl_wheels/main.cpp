@@ -84,13 +84,13 @@ struct WheelCtx {
   int8_t   sign;
   segway::SegwaySim sim;
   uint8_t  consec_fail;     // failed writes in a row
-  int32_t  last_raw;        // last raw CONFIRMED written to this chip (already signed)
+  int32_t  last_raw;        // last raw CONFIRMED on the chip (already signed); INT32_MIN = chip state unknown (initial value, and after any failed or unconfirmed step), so the next write_goal_raw always goes out
   int32_t  last_pos;        // telemetry
   bool     have_last_pos;
   uint32_t rd_ok, rd_fail;
   WheelCtx(uint8_t id_, int8_t sign_)
     : id(id_), sign(sign_), sim(SIM_INIT_THETA_RAD), consec_fail(0),
-      last_raw(0), last_pos(0), have_last_pos(false), rd_ok(0), rd_fail(0) {}
+      last_raw(INT32_MIN), last_pos(0), have_last_pos(false), rd_ok(0), rd_fail(0) {}
 };
 static WheelCtx W[2] = { WheelCtx(SERVO_ID_LEFT, WHEEL_SIGN_LEFT),
                          WheelCtx(SERVO_ID_RIGHT, WHEEL_SIGN_RIGHT) };
