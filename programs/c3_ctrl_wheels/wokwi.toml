@@ -1,0 +1,14 @@
+[wokwi]
+version = 1
+firmware = '../../.pio/build/c3_ctrl_wheel-xiao_c3/firmware.bin'
+elf = '../../.pio/build/c3_ctrl_wheel-xiao_c3/firmware.elf'
+# RFC2217 TCP server for the simulated serial port (#226). Port 4001 here; port 4000 is ttl_servo's, so in principle both can run (not tried).
+rfc2217ServerPort = 4001
+
+[[chip]]
+name = 'wokwi-fe-urt-1'
+binary = '../../wokwi/chips/wokwi-fe-urt-1.chip.wasm'
+
+[[chip]]
+name = 'wokwi-ttl-servo'
+binary = '../../wokwi/chips/wokwi-ttl-servo.chip.wasm'
