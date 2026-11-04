@@ -10,7 +10,7 @@ B04 (#289, env and Makefile target) and B05 (#290, `wokwi.toml`) are merged, so 
 
 A scratch merge of B04 (#289), B05 (#290) and B08 (#291) built with `pio run -e c3_ctrl_wheels-xiao_c3` and ran headless: `[dxl] ping ok` and 599 `WHL` lines. B08 only adds declarations that nothing reads yet (the B08 diff is insert-only; the first WHL line matched the single-wheel program's), so this is the still single-wheel behaviour. B04 plus B05 alone were not run together.
 
-A scratch merge of B07 (#292) and B09 (#293) at its first commit 818273e built and ran headless with both servo chips on the DATA net and the still single-wheel firmware: `[dxl] ping ok`, 599 `WHL` lines, tx_fail=0, rd_fail=0. B09 later gained a bus_down gate and a last_raw sentinel (two code lines); that change was built but not run in a two-chip run. Not run: the firmware addressing ID 2 (that arrives with B10), a broadcast packet, the Wokwi GUI layout.
+A scratch merge of B07 (#292) and B09 (#293) at its first commit 818273e built and ran headless with both servo chips on the DATA net and the still single-wheel firmware: `[dxl] ping ok`, 599 `WHL` lines, tx_fail=0, rd_fail=0. Later commits of B09 were built but not run in a two-chip run. Not run: the firmware addressing ID 2 (that arrives with B10), a broadcast packet, the Wokwi GUI layout.
 
 The RFC2217 port 4002 was not exercised in the headless runs above.
 
