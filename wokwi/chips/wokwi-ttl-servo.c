@@ -448,7 +448,7 @@ static void chip_timer_callback(void *user_data) {
 
 void chip_init() {
   chip_state_t *chip = calloc(1, sizeof(chip_state_t));
-  // Dynamixel ID from the "servoId" attribute, set in diagram.json as "attrs": { "servoId": "2" } (a string). Deliberately not declared in chip.json (wokwi-cli rejects it). Default 1 keeps existing sims unchanged.
+  // Dynamixel ID from the "servoId" attribute, set in diagram.json as "attrs": { "servoId": "2" } (a string). Not declared in chip.json: a controls entry for it (type number) was rejected by wokwi-cli, and the attribute is read from the diagram attrs without one. Default 1 keeps existing sims unchanged.
   uint32_t servo_id_attr = attr_read(attr_init("servoId", 1));
   chip->servo_id = servo_id_attr > 252 ? 1 : (uint8_t)servo_id_attr;
   if (servo_id_attr > 252) {
