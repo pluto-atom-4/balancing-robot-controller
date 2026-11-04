@@ -41,7 +41,8 @@ static constexpr float    SIM_INIT_THETA_RAD = 0.262f; // start leaning 15 deg
 static constexpr float    GYRO_FILTER_TAU_MS = 50.0f;  // gyro Z low-pass
 static constexpr int      GYRO_CAL_SAMPLES = 100;      // ~1 s at boot, sim at rest
 // Twin wheels (SIM-ONLY, UNVERIFIED). The ONLY place the wheel signs are defined.
-// The firmware applies the sign once, at the chip write (task B09). IDs must match diagram.json.
+// The firmware applies the sign once, at the chip write (task B09). IDs must match the servoId
+// attribute of the servo chips in diagram.json (B07 adds servo2 with servoId "2").
 static constexpr uint8_t SERVO_ID_LEFT    = 1;
 static constexpr uint8_t SERVO_ID_RIGHT   = 2;   // unconfirmed
 static constexpr int8_t  WHEEL_SIGN_LEFT  = 1;   // unconfirmed
@@ -71,7 +72,9 @@ static uint32_t hold_until_ms = 0;
 static uint16_t whl_seq = 0;
 static uint32_t whl_sent = 0, whl_dropped = 0, whl_max_emit_us = 0, lastWhlPrintMs = 0;
 static char whl_buf[96];
-// Per-wheel state for the twin (task B08: declared only, wired in B09 to B13).
+// Per-wheel state for the twin. Not used yet: W duplicates the single-wheel globals below
+// (segway_sim, consec_fail, last_written_raw, last_pos, have_last_pos, rd_ok/rd_fail) until
+// tasks B09 to B13 wire it in and retire the old ones. Do not use both at once.
 struct WheelCtx {
   uint8_t  id;
   int8_t   sign;
