@@ -6,19 +6,23 @@
 // Frame: WHL2,<seq>,<t_us>,<model>,<rawL>,<rawR>,<state>*HH\n
 //   model in rad/s as %.6f (a non-finite model is REFUSED: format returns 0 and
 //   writes no frame; a finite value whose printed text is -0 drops its sign).
-//   rawL and rawR are the raw goal velocities as written to each chip, as
-//   signed decimals (int32). The formatter does no sign logic and no clamping;
-//   no sign claim is made here (wheel signs unconfirmed).
-//   state: ONE decimal digit 0..2 for both wheels (both latch together):
+//   rawL and rawR are the raw goal velocities as passed in, as signed decimals
+//   (int32). The firmware will pass the values it writes to each chip (task
+//   B12 wires this in). The formatter does no sign logic and no clamping; no
+//   sign claim is made here (wheel signs unconfirmed).
+//   state: ONE decimal digit 0..2 for both wheels. The formatter does not
+//   enforce that both wheels latch together; the caller is responsible.
 //   0 = run, 1 = hold after a fall, 2 = bus down.
 //   HH = 2 uppercase hex digits, XOR of every byte from 'W' up to but not
 //   including '*'.
 //
 // Sync rules (keep in step with the host side):
-//   - freecad-workspace poc/ctrl-wheels/ctrl_wheels_msg.py (WHL2, PR #511) and
-//     poc/ctrl-wheels/CONTRACT.md S1/S7 are the reference. The golden lines in
-//     CONTRACT.md S7 are asserted by test/test_wheels_frame. Any format change
-//     must be made in both places.
+//   - The reference is freecad-workspace poc/ctrl-wheels/CONTRACT.md S1 (frame)
+//     and S7 (golden lines, asserted by test/test_wheels_frame). poc/ctrl-wheels/
+//     is the twin dir of the single-wheel poc/ctrl-wheel/. The Python WHL2
+//     parser/formatter is in freecad-workspace PR #511 (open when this was
+//     written; not merged, not on main). Any format change must be made in
+//     both places.
 //   - Reuses imu_frame (checksum, %.6f text, -0 rule and append helpers), so
 //     there is a single copy of the checksum and of the -0 rule.
 //   - The lib/wheel_frame WHL formatter is a separate, unchanged line format.
