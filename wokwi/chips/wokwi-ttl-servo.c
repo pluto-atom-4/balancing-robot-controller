@@ -448,7 +448,9 @@ static void chip_timer_callback(void *user_data) {
 
 void chip_init() {
   chip_state_t *chip = calloc(1, sizeof(chip_state_t));
-  chip->servo_id = 1;
+  // Dynamixel ID from the "servoId" attribute; default 1 keeps existing sims unchanged, values above 252 fall back to 1
+  uint32_t servo_id_attr = attr_read(attr_init("servoId", 1));
+  chip->servo_id = servo_id_attr > 252 ? 1 : (uint8_t)servo_id_attr;
   chip->current_position = 2048;
   chip->speed = 0;
   chip->goal_position = 2048;
