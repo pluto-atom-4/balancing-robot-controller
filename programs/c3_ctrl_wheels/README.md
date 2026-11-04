@@ -8,9 +8,9 @@ The RFC2217 ports differ: 4000 (`programs/ttl_servo`), 4001 (`programs/c3_ctrl_w
 
 `make sim-c3_ctrl_wheels-xiao_c3` needs the env and Makefile target from B04 (#289) together with this `wokwi.toml` from B05 (#290).
 
-A scratch merge of B04 (#289), B05 (#290) and B08 (#291) built with `pio run -e c3_ctrl_wheels-xiao_c3` and ran headless: `[dxl] ping ok` and 599 `WHL` lines. B08 only adds declarations that nothing reads yet, so this is the still single-wheel behaviour. B04 plus B05 alone were not run together.
+A scratch merge of B04 (#289), B05 (#290) and B08 (#291) built with `pio run -e c3_ctrl_wheels-xiao_c3` and ran headless: `[dxl] ping ok` and 599 `WHL` lines. B08 only adds declarations that nothing reads yet (the B08 diff is insert-only; the first WHL line matched the single-wheel program's), so this is the still single-wheel behaviour. B04 plus B05 alone were not run together.
 
-The RFC2217 port 4002 was not exercised: headless runs do not open the port.
+The RFC2217 port 4002 was not exercised in the headless runs above.
 
 Not run on hardware; the headless Wokwi runs mentioned above were scratch runs, not CI. Nothing is validated on hardware. Simulation-only.
 
@@ -20,7 +20,7 @@ Tracking: issue #267 (umbrella), issue #270 (this copy).
 
 Still planned, not present yet (task IDs from the plan and tracking issue #267):
 - B07: second servo
-- B08 to B14: `main.cpp` rewrite for two wheels
+- B09 to B14: `main.cpp` rewrite for two wheels (B08, #291, only adds declarations: constants, a WheelCtx struct and a W[2] array that nothing reads yet)
 - `docs/CTRL_WHEELS.md`
 
 The single-wheel `programs/c3_ctrl_wheel` is not changed by this copy.
