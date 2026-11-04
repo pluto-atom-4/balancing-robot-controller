@@ -40,6 +40,12 @@ static constexpr uint32_t PRINT_PERIOD_MS = 100;       // 10 Hz serial output
 static constexpr float    SIM_INIT_THETA_RAD = 0.262f; // start leaning 15 deg
 static constexpr float    GYRO_FILTER_TAU_MS = 50.0f;  // gyro Z low-pass
 static constexpr int      GYRO_CAL_SAMPLES = 100;      // ~1 s at boot, sim at rest
+// Twin wheels (SIM-ONLY, UNVERIFIED). The ONLY place the wheel signs are defined.
+// The firmware applies the sign once, at the chip write (task B09). IDs must match diagram.json.
+static constexpr uint8_t SERVO_ID_LEFT    = 1;
+static constexpr uint8_t SERVO_ID_RIGHT   = 2;   // unconfirmed
+static constexpr int8_t  WHEEL_SIGN_LEFT  = 1;   // unconfirmed
+static constexpr int8_t  WHEEL_SIGN_RIGHT = -1;  // unconfirmed mirror
 
 // ===== Globals =====
 Adafruit_MPU6050 mpu;
@@ -65,6 +71,22 @@ static uint32_t hold_until_ms = 0;
 static uint16_t whl_seq = 0;
 static uint32_t whl_sent = 0, whl_dropped = 0, whl_max_emit_us = 0, lastWhlPrintMs = 0;
 static char whl_buf[96];
+// Per-wheel state for the twin (task B08: declared only, wired in B09 to B13).
+struct WheelCtx {
+  uint8_t  id;
+  int8_t   sign;
+  segway::SegwaySim sim;
+  uint8_t  consec_fail;     // failed writes in a row
+  int32_t  last_raw;        // last raw CONFIRMED written to this chip (already signed)
+  int32_t  last_pos;        // telemetry
+  bool     have_last_pos;
+  uint32_t rd_ok, rd_fail;
+  WheelCtx(uint8_t id_, int8_t sign_)
+    : id(id_), sign(sign_), sim(SIM_INIT_THETA_RAD), consec_fail(0),
+      last_raw(0), last_pos(0), have_last_pos(false), rd_ok(0), rd_fail(0) {}
+};
+static WheelCtx W[2] = { WheelCtx(SERVO_ID_LEFT, WHEEL_SIGN_LEFT),
+                         WheelCtx(SERVO_ID_RIGHT, WHEEL_SIGN_RIGHT) };
 
 
 // ===== Helpers =====
