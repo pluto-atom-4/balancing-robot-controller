@@ -20,9 +20,8 @@
 //   - The reference is freecad-workspace poc/ctrl-wheels/CONTRACT.md S1 (frame)
 //     and S7 (golden lines, asserted by test/test_wheels_frame). poc/ctrl-wheels/
 //     is the twin dir of the single-wheel poc/ctrl-wheel/. The Python WHL2
-//     parser/formatter is in freecad-workspace PR #511 (open when this was
-//     written; not merged, not on main). Any format change must be made in
-//     both places.
+//     parser/formatter is ctrl_wheels_msg.py there (freecad-workspace PR
+//     #511). Any format change must be made in both places.
 //   - Reuses imu_frame (checksum, %.6f text, -0 rule and append helpers), so
 //     there is a single copy of the checksum and of the -0 rule.
 //   - The lib/wheel_frame WHL formatter is a separate, unchanged line format.
