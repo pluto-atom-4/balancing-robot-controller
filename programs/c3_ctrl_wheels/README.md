@@ -6,11 +6,11 @@ Status: copy in progress, not a twin yet. Today this directory holds a single-wh
 
 The RFC2217 ports differ: 4000 (`programs/ttl_servo`), 4001 (`programs/c3_ctrl_wheel`) and 4002 (this program). Running all three at once was not tried.
 
-`make sim-c3_ctrl_wheels-xiao_c3` needs the env and Makefile target from B04 (#289) together with this `wokwi.toml` from B05 (#290).
+B04 (#289, env and Makefile target) and B05 (#290, `wokwi.toml`) are merged, so `make sim-c3_ctrl_wheels-xiao_c3` exists.
 
 A scratch merge of B04 (#289), B05 (#290) and B08 (#291) built with `pio run -e c3_ctrl_wheels-xiao_c3` and ran headless: `[dxl] ping ok` and 599 `WHL` lines. B08 only adds declarations that nothing reads yet (the B08 diff is insert-only; the first WHL line matched the single-wheel program's), so this is the still single-wheel behaviour. B04 plus B05 alone were not run together.
 
-A scratch merge of B07 (#292) and B09 (#293) built and ran headless with both servo chips on the DATA net and the still single-wheel firmware: `[dxl] ping ok`, 599 `WHL` lines, tx_fail=0, rd_fail=0. Not run: the firmware addressing ID 2 (that arrives with B10), a broadcast packet, the Wokwi GUI layout.
+A scratch merge of B07 (#292) and B09 (#293) at its first commit 818273e built and ran headless with both servo chips on the DATA net and the still single-wheel firmware: `[dxl] ping ok`, 599 `WHL` lines, tx_fail=0, rd_fail=0. B09 later gained a bus_down gate and a last_raw sentinel (two code lines); that change was built but not run in a two-chip run. Not run: the firmware addressing ID 2 (that arrives with B10), a broadcast packet, the Wokwi GUI layout.
 
 The RFC2217 port 4002 was not exercised in the headless runs above.
 
@@ -21,7 +21,7 @@ Plan: https://github.com/pluto-atom-4/balancing-robot-controller/discussions/266
 Tracking: issue #267 (umbrella), issue #270 (this copy).
 
 Still planned, not present yet (task IDs from the plan and tracking issue #267):
-- B09 to B14: `main.cpp` rewrite for two wheels (B08, #291, only adds declarations: constants, a WheelCtx struct and a W[2] array that nothing reads yet)
+- B09 (#293, open): helpers; B10 to B14: bring-up, loop, WHL2 emit, telemetry, header (B08, #291, only adds declarations: constants, a WheelCtx struct and a W[2] array that nothing reads yet)
 - `docs/CTRL_WHEELS.md`
 
 The single-wheel `programs/c3_ctrl_wheel` is not changed by this copy.
