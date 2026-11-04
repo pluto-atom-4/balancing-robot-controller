@@ -169,6 +169,79 @@ static bool stop_chip_best_effort(const char* why, bool force_torque_off = false
   return force_torque_off ? off : false;
 }
 
+// Twin helpers (SIM-ONLY, UNVERIFIED, not hardware-validated). Tasks B10/B11 wire them in;
+// until then nothing calls them, hence __attribute__((unused)). They mirror the counters and
+// logging of the single-wheel helpers above, which stay unchanged for now.
+// The wheel sign is applied ONLY in write_goal_raw(). Do not multiply by .sign anywhere else.
+
+// Zero goal velocity to w.id, up to 3 attempts. On success w.last_raw = 0 (confirmed).
+// consec_fail is per-wheel telemetry only and saturates at 255.
+static __attribute__((unused)) bool write_vel_zero_ctx(WheelCtx& w) {
+  for (uint8_t i = 0; i < 3; ++i) {
+    uint32_t t0 = micros();
+    bool ok = dxl.setGoalVelocity(w.id, 0.0f, UNIT_RAW);
+    uint32_t el = micros() - t0;
+    if (el > max_us) max_us = el;
+    if (ok) {
+      ++tx_ok;
+      w.consec_fail = 0;
+      w.last_raw = 0;
+      return true;
+    }
+    ++tx_fail;
+    if (w.consec_fail < 255) ++w.consec_fail;
+  }
+  return false;
+}
+
+// THE ONLY place the wheel sign is applied. raw is the unsigned forward raw from
+// segway::wheel_cmd_to_raw, already capped at +-segway::kWheelCapRaw; do not re-cap here.
+// Write on change: no bus call if the signed value equals the last confirmed one.
+// Does NOT latch. Task B11 owns the rule: a tick fails if either wheel's write fails, and
+// 3 failed ticks in a row latch both. consec_fail here is per-wheel telemetry only.
+static __attribute__((unused)) bool write_goal_raw(WheelCtx& w, int32_t raw) {
+  int32_t wire = (int32_t)w.sign * raw;
+  if (wire == w.last_raw) return true;
+  uint32_t t0 = micros();
+  bool ok = dxl.setGoalVelocity(w.id, (float)wire, UNIT_RAW);
+  uint32_t el = micros() - t0;
+  if (el > max_us) max_us = el;
+  if (ok) {
+    ++tx_ok;
+    w.consec_fail = 0;
+    w.last_raw = wire;
+    return true;
+  }
+  ++tx_fail;
+  if (w.consec_fail < 255) ++w.consec_fail;
+  return false;
+}
+
+// Stops BOTH wheels, W[0] then W[1]; both are always attempted. Zero velocity with retries per
+// wheel. Then, if any zero write failed or force_torque_off, torque off on EACH id (up to 3 tries
+// each, both ids always attempted), printed in the [safe] style. Returns true only if everything
+// requested was confirmed: non-force needs both zero writes ok; force needs both torque-offs
+// confirmed. Does not latch. Same retry counts and prints as stop_chip_best_effort.
+static __attribute__((unused)) bool stop_wheels_best_effort(const char* why, bool force_torque_off = false) {
+  bool zok_all = true;
+  for (uint8_t k = 0; k < 2; ++k) {
+    bool zok = write_vel_zero_ctx(W[k]);
+    Serial.printf("[dxl] stop id=%lu vel=0 ok=%d\n", (unsigned long)W[k].id, zok ? 1 : 0);
+    if (!zok) zok_all = false;
+  }
+  if (zok_all && !force_torque_off) return true;
+  // Torque-off transactions are not counted in tx_ok/tx_fail/max_us, as in stop_chip_best_effort.
+  bool off_all = true;
+  for (uint8_t k = 0; k < 2; ++k) {
+    bool off = false;
+    for (uint8_t i = 0; i < 3 && !off; ++i) off = dxl.torqueOff(W[k].id);
+    Serial.printf("[safe] torque off %s id=%lu%s\n", why, (unsigned long)W[k].id,
+                  off ? "" : " (TORQUE OFF NOT CONFIRMED)");
+    if (!off) off_all = false;
+  }
+  return force_torque_off ? off_all : false;
+}
+
 // Serial1 + protocol setup for the servo bus. Called once, before any bus use.
 static void dxl_bus_begin() {
   dxl.begin(DXL_BAUD);
