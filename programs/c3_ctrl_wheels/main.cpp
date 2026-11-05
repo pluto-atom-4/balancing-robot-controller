@@ -13,12 +13,16 @@
 // on GPIO8/9, a sim-only Wokwi wiring choice (hardware tilt_servo and balance use GPIO6/7).
 // It also prints one WHL2 line per 20 ms tick, WHL2,<seq>,<t_us>,<model_rad_s>,<rawL>,<rawR>,<state>*HH
 // (format in lib/wheels_frame/wheels_frame.h; state 0 run, 1 hold after a fall, 2 bus down), for the
-// freecad-workspace twin contract poc/ctrl-wheels (CONTRACT.md S1; the host side is planned), plus a
+// freecad-workspace twin contract poc/ctrl-wheels (CONTRACT.md S1; the host parser is ctrl_wheels_msg.py
+// there). Evidence so far is the owner's simulator runs only (headless wokwi-cli, VS Code Wokwi over
+// RFC2217 port 4002): 773 WHL2 lines parsed without errors or seq gaps; nothing on hardware. Plus a
 // 1 Hz [ctrl_wheel] sent= dropped= max_emit_us= line. model is the LEFT wheel's (W[0]) lagged MODEL
 // velocity, not a measurement. rawL and rawR are the raw values last CONFIRMED on each chip, as written
 // (signed; the sign is applied once, in write_goal_raw). An unknown chip state and a confirmed 0 both
-// report 0, so a consumer cannot tell them apart; the state field and the [dxl] write failed log show
-// faults. State 2 reports 0 for both raws.
+// report 0, so a consumer cannot tell them apart: a 0 raw can mean unknown after a failed write. State 0
+// does not mean the writes succeeded. State 2 (after 3 failed ticks latch) is the only fault signal in
+// the line. The [dxl] write failed log is rate-limited (first failure and every 50th). State 2 reports
+// 0 for both raws.
 // This is a RELAY to Webots, NOT a closed loop through Webots: nothing is received from Webots.
 // Log tags are [ttl_servo] and [dxl].
 // -D TTL_SERVO_FALL_TEST: low gains (kp=2 kd=1) so the frame falls.
