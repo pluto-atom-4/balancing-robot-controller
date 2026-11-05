@@ -1,13 +1,16 @@
 # Headless gyro Z disturbance for the c3_ctrl_wheels sim (SIM-ONLY, not hardware-validated).
 # Applied AFTER the boot gyro calibration, so it is not absorbed as bias.
 # Path is relative to the project dir (programs/c3_ctrl_wheels). Run: make sim-c3_ctrl_wheels-xiao_c3 WOKWI_ARGS="--scenario scenario_ctrl_wheels.yaml --timeout 20000"
-# wait-serial matches the banner printed in programs/c3_ctrl_wheels/main.cpp setup(); change both together.
-# The run command above needs B04 (env and Makefile target, #289) and B05 (wokwi.toml, #290) merged.
+# wait-serial matches the two ping lines and the banner printed by programs/c3_ctrl_wheels/main.cpp (bring_up_wheel and setup()); change main.cpp and this file together.
+# This scenario has not been run by the author or the owner. The headless wokwi-cli is blocked by the Free-plan CI minute quota (owner-reported 2026-11-05).
+# A missing ping line makes the run hang until --timeout, which is also exit 42, so a typo would look like the normal timeout.
 # rotationZ is in deg/s (30 deg/s = 0.524 rad/s). Steps total ~12 s after the banner; the run does not
 # end by itself, so --timeout stops it (exit 42 is expected). 20000 ms leaves roughly 7 s margin for boot.
 name: c3_ctrl_wheels gyro Z push
 version: 1
 steps:
+  - wait-serial: 'ping id=1 ok'
+  - wait-serial: 'ping id=2 ok'
   - wait-serial: 'Sim starts at 15 deg'
   - delay: 4000ms
   - set-control:

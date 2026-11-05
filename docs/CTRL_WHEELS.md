@@ -242,12 +242,15 @@ make sim-c3_ctrl_wheels-xiao_c3 WOKWI_ARGS="--scenario scenario_ctrl_wheels.yaml
 - The headless run never exits by itself. Exit 42 from the timeout is expected.
 - `scenario_ctrl_wheels.yaml` was not run. Owner-reported: headless `wokwi-cli` runs hit the Free-plan
   CI minute quota on 2026-11-05. Whether the owner's VS Code captures used this scenario is not stated.
-  The scenario file's header comment still says the run needs B04 (#289) and B05 (#290) merged; both
-  are merged, so that comment is stale (tracked for B15, #284).
-- The scenario waits for `Sim starts at 15 deg`, pushes gyro Z to 30 deg/s for 4 s, sets it back to 0
-  for 4 s, then waits 4 s more. The sim is headless only and is not a balance test.
+  The scenario file's header comment said the run needed B04 (#289) and B05 (#290) merged; both are
+  merged, and B15 (#284) removed that stale line.
+- The scenario waits for `ping id=1 ok` and `ping id=2 ok` (in print order) and then `Sim starts at 15 deg`,
+  pushes gyro Z to 30 deg/s for 4 s, sets it back to 0 for 4 s, then waits 4 s more. The sim is headless
+  only and is not a balance test. A failed or missing wait ends at `--timeout` (exit 42), so exit code 42
+  does not prove the pings matched.
 - The fall path needs `PLATFORMIO_BUILD_FLAGS="-D TTL_SERVO_FALL_TEST"` (low gains kp=2, kd=1). Not run.
-- The owner's route is the VS Code Wokwi extension (see the quota note above).
+- The owner's route is the VS Code Wokwi extension (see the quota note above). Whether the extension
+  executes scenario files is not known.
 - RFC2217: `wokwi.toml` sets `rfc2217ServerPort = 4002`. Port 4002 has the same exposure as the 4000
   port: plain TCP with no authentication, and its bind address was not checked. The owner acceptance
   recorded in CLAUDE.md (discussion 228) covers 4000 only and is not extended here. The three-listener
