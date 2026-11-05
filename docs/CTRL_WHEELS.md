@@ -236,17 +236,19 @@ Log tags are the ones kept from the single-wheel copy: `[ttl_servo]`, `[dxl]`, `
 ```bash
 make wokwi-chips                      # builds the shared chips; the sim target depends on them (needs network on first use)
 pio run -e c3_ctrl_wheels-xiao_c3     # builds the env; not run for this document
-make sim-c3_ctrl_wheels-xiao_c3 WOKWI_ARGS="--scenario scenario_ctrl_wheels.yaml --timeout 20000"   # needs WOKWI_CLI_TOKEN
+make sim-c3_ctrl_wheels-xiao_c3 WOKWI_ARGS="--scenario scenario_ctrl_wheels.yaml --timeout 40000"   # needs WOKWI_CLI_TOKEN
 ```
 
 - The headless run never exits by itself. Exit 42 from the timeout is expected.
 - `scenario_ctrl_wheels.yaml` was not run. Owner-reported: headless `wokwi-cli` runs hit the Free-plan
   CI minute quota on 2026-11-05. Whether the owner's VS Code captures used this scenario is not stated.
 - The scenario waits for `ping id=1 ok` and `ping id=2 ok` (in print order) and then `Sim starts at 15 deg`,
-  then runs about 12 s: 4 s wait, 4 s at 30 deg/s, 4 s at 0. The 20000 ms `--timeout` may be too short if the sim runs
-  slower than real time (see the scenario header); raise it if the last wait is cut off. The sim is headless
+  then runs about 12 s: 4 s wait, 4 s at 30 deg/s, 4 s at 0. 40000 ms is the suggested `--timeout`, because the
+  boot before the banner, the bring-up sequences and a sim slower than real time (about 31 WHL2 lines per second
+  against 50 nominal, owner-reported) may take longer than the steps; it is not known whether `--timeout` is
+  wall-clock or simulation time (see the scenario header). Not run. The sim is headless
   only and is not a balance test. A failed or missing wait ends at `--timeout` (exit 42), so exit code 42
-  does not prove the pings matched.
+  does not prove the pings matched. A deliberately wrong wait-serial string run (recording the real exit code of a failed wait) is planned in V01 (#304), not run.
 - The fall path needs `PLATFORMIO_BUILD_FLAGS="-D TTL_SERVO_FALL_TEST"` (low gains kp=2, kd=1). Not run.
 - The owner's route is the VS Code Wokwi extension (see the quota note above). Whether the extension
   executes scenario files is not known.
