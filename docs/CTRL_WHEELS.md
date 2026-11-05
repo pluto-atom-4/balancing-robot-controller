@@ -35,7 +35,7 @@ describes a single-wheel copy, so this document follows `main.cpp` instead.
 | Name | What it is | Where it comes from |
 | --- | --- | --- |
 | `model` | The LEFT plant's lagged wheel velocity (`W[0]`), rad/s. **Not a measurement.** Printed as 0 while holding. Not zeroed in state 2. | `W[0].sim.wheel_vel_rad_s` in `main.cpp` (`whl_model`). |
-| `rawL` | The raw last CONFIRMED on the left chip (ID 1), already signed. Unknown reports 0. Reports 0 in state 2. | `last_raw` of `W[0]`, set only after a successful write or a zero write. |
+| `rawL` | The raw last CONFIRMED on the left chip (ID 1), already signed. Unknown reports 0. Reports 0 in state 2. | `last_raw` of `W[0]`: set to the signed value on a successful write and to 0 on a successful zero write. Reset to unknown (INT32_MIN) on a failed write, a failed zero write, any torque-off attempt, and a failed bring-up step. |
 | `rawR` | The raw last CONFIRMED on the right chip (ID 2), already signed. Unknown reports 0. Reports 0 in state 2. | `last_raw` of `W[1]`, same rule. |
 | Webots angle and velocity | Measurements, host side only. | The FW bridge CSV. **Not emitted by this firmware.** |
 
@@ -56,7 +56,7 @@ Format, one line per tick, terminated by `\n`:
 WHL2,<seq>,<t_us>,<model %.6f>,<rawL>,<rawR>,<state>*HH
 ```
 
-The example is a format, not real output.
+The template above is a format, not captured output.
 
 | Field | Type and rule |
 | --- | --- |
@@ -68,17 +68,19 @@ The example is a format, not real output.
 | `state` | One decimal digit: `0` run, `1` hold after a fall, `2` bus down. |
 | `HH` | Two uppercase hex digits: the XOR of every byte from `W` up to, not including, `*`. |
 
-Refusal (`lib/wheels_frame/wheels_frame.h`, `format`): the call returns 0 and writes an empty string
-when the output pointer is null, the capacity is 0, `state` is above 2, the model is not finite, or
-any field does not fit in the capacity. The firmware passes capacity 96. In `whl_emit`, a 0 return
-is not written and is counted as `dropped`.
+Refusal (`lib/wheels_frame/wheels_frame.h`, `format`): when the output pointer is null or the capacity
+is 0, `format` returns 0 without writing. Otherwise any other refusal (`state` above 2, a non-finite
+model, or a formatting step that does not fit in the capacity) sets `out[0]` to NUL and returns 0.
+The firmware passes capacity 96. In `whl_emit`, a 0 return is not written and is counted as `dropped`.
 
 Size and emit gate:
 
 - `whl_buf[96]` includes the NUL. 96 is a sizing choice, not measured.
-- The header comment of `wheels_frame.h` counts 61 bytes for a line with int32 raws (11 characters
-  each) and a 9-character model, including the newline. The count follows from the field widths and
-  was not measured. A larger `|model|` prints a longer line.
+- The size note in `programs/c3_ctrl_wheels/main.cpp` (the comment above `whl_buf`) gives 61 bytes for
+  a line with int32 raws and a 9-character model. This is arithmetic from the field widths, not a
+  measurement: `WHL2,` 5, seq 5 digits, `,` 1, t_us 10 digits, `,` 1, model 9, `,` 1, rawL 11, `,` 1,
+  rawR 11, `,` 1, state 1, `*HH` 3, newline 1. That is 61 including the newline (62 with the NUL).
+  A larger `|model|` prints a longer line.
 - `whl_emit` writes the line only if `Serial.availableForWrite()` is above 0 and at least the line
   length. Otherwise the line is dropped and counted in `dropped`.
 - Whether `Serial.write` can block on the C3 USB CDC is not verified. The other `Serial` prints in
@@ -115,10 +117,11 @@ Checksum: XOR of the body bytes, same routine as `lib/imu_frame` (reused through
 
 - The signs are defined only in `programs/c3_ctrl_wheels/main.cpp` (`WHEEL_SIGN_LEFT = 1`,
   `WHEEL_SIGN_RIGHT = -1`), both marked unconfirmed.
-- The sign is applied only in `write_goal_raw()`: `wire = sign * raw`. The raw is the unsigned value
-  from `segway::wheel_cmd_to_raw`. The `main.cpp` comment says that value is already capped at
-  +-`segway::kWheelCapRaw` (125 per CLAUDE.md), so the cap comes before the sign. `lib/segway_sim`
-  was not read for this document.
+- The sign is applied only in `write_goal_raw()`: `wire = sign * raw`. The raw is the output of
+  `segway::wheel_cmd_to_raw` (`lib/segway_sim/segway_sim.h`, lines 68-70), which calls
+  `dxl_units::radSToRaw`. That value is signed by the plant's wheel velocity and clamped to
+  +-`segway::kWheelCapRaw` (125, `segway_sim.h` line 64) before the wheel sign is applied, so the wire
+  value stays within +-125. The rounding and clamp are in `lib/dxl_units/dxl_units.h` (lines 37-50).
 - The chip therefore receives `rawL = +raw` and `rawR = -raw`. The WHL2 line carries the signed values
   that were confirmed on each chip.
 - The model carries no sign. It is the left plant's own velocity.
@@ -154,9 +157,13 @@ path; the owner captures in section 10 only cover the normal running path.
   resets. Not run in a simulator (no state 1 in WHL2 was seen).
 - **After a latch.** No goal writes, and no stop is sent on a fall. The hold and restart still run,
   and the state stays 2.
-- **Gyro calibration failure, or no IMU at boot.** A forced stop is sent (for the no-IMU case, after
-  the ping). Then the firmware halts in a loop. Neither path latches through `latch_bus_down`, and
-  the loop never prints WHL2 after the halt. Not run in a simulator.
+- **No IMU at boot (`Failed to find MPU6050 chip`).** The firmware pings both IDs (the ping result is
+  not printed), sends the forced stop to both IDs without a `bus_down` check, then halts in a loop. It
+  does not call `latch_bus_down`. Not run in a simulator.
+- **Gyro calibration failure (fewer than 50 of the 100 reads good).** It prints
+  `gyro calibration failed (IMU reads), halting`, sends the forced stop only if the bus is not already
+  latched, then halts in a loop. It does not call `latch_bus_down`. The loop never prints WHL2 after
+  either halt. Not run in a simulator.
 
 Every call to `latch_bus_down()` in `main.cpp` is one of: bring-up failure, three failed ticks, or a
 failed stop after a fall. This program has no tilt cutoff, no stall watchdog and no serial kill;
@@ -174,7 +181,7 @@ those are features of the balance firmware, not of this program.
 | --- | --- |
 | `cmd` | `W[0]`'s last CONFIRMED signed raw. `NA` when that state is unknown. A confirmed zero prints 0. Left only. |
 | `pos1`, `pos2` | Present position read from ID 1 and ID 2. A number when the read succeeded, `ERR` when it failed, `NA` when `servo_ok` is false (bring-up failed or the bus is latched). |
-| `dpos1`, `dpos2` | Change since the previous successful read of that ID, computed as `((pos - last + 6144) % 4096) - 2048`, so the range is -2048 to 2047. `n/a` until a previous successful read exists. A failed read clears it, so the next good read prints `n/a`. |
+| `dpos1`, `dpos2` | Change since the previous successful read of that ID, computed as `((pos - last + 6144) % 4096) - 2048`, so the range is -2048 to 2047 when both positions are in 0..4095 (the read value is not clamped in the code, so this assumes the chip reports in that range). `n/a` until a previous successful read exists. A failed read clears it, so the next good read prints `n/a`. |
 | `bus` | 1 when `servo_ok` (both wheels came up and the bus is not latched), else 0. |
 | `wheel` | `W[0]`'s plant velocity, shown as 0 while holding. |
 
@@ -206,11 +213,21 @@ Counters line (1 Hz, only when `Serial.availableForWrite()` is at least 80):
 - `max_emit_us` is the longest `whl_emit` call since the previous counters line. It resets on each print.
   The timing is the simulated clock, not a C3 measurement.
 
-Other lines: `[dxl] stop id=.. vel=0 ok=..`, `[safe] torque off <why> id=..` (with
-`(TORQUE OFF NOT CONFIRMED)` appended when not confirmed), `[safe] bus down (reset the board to retry)`,
-`[ttl_servo] FELL id=.. theta=..`, `[ttl_servo] restart`, `[dxl] write failed id=.. raw=.. (n=..)`
-(the raw is unsigned; logged on the first failed tick and every 50th), `[ttl_servo] IMU read failed,
-holding last gyro Z`.
+Other lines (not exhaustive):
+
+- Bring-up, per ID: `[dxl] ping id=.. ok` or `[dxl] ping id=.. FAILED`; `[dxl] torque_off id=.. ok=..`;
+  `[dxl] mode_velocity id=.. ok=..`; `[dxl] goal0 id=.. ok=..`; `[dxl] torque_on id=.. ok=..`;
+  `[dxl] bring-up id=.. failed`; and once for the whole bring-up, `[dxl] bring-up failed, bus down, no Dynamixel calls`.
+- Boot: `[ttl_servo] gyro Z bias=.. rad/s (keep the slider at 0 during boot)`;
+  `[ttl_servo] Failed to find MPU6050 chip`; `[ttl_servo] gyro calibration failed (IMU reads), halting`;
+  `[ttl_servo] FALL TEST: kp=2 kd=1 (expect FELL within ~6 s)` (only with `TTL_SERVO_FALL_TEST`).
+- Stops and latch: `[dxl] stop id=.. vel=0 ok=..`, `[safe] torque off <why> id=..` (with
+  `(TORQUE OFF NOT CONFIRMED)` appended when not confirmed), `[safe] bus down (reset the board to retry)`.
+- Fall: `[ttl_servo] FELL id=.. theta=..`, `[ttl_servo] restart`.
+- Writes: `[dxl] write failed id=.. raw=.. (n=..)`, logged on the first failed tick and every 50th. The
+  printed raw is the argument to `write_goal_raw()`: the `wheel_cmd_to_raw` output, signed and clamped
+  to +-125, before the wheel sign is applied. It can be negative.
+- `[ttl_servo] IMU read failed, holding last gyro Z`.
 
 Log tags are the ones kept from the single-wheel copy: `[ttl_servo]`, `[dxl]`, `[safe]` and `[ctrl_wheel]`.
 
@@ -223,14 +240,19 @@ make sim-c3_ctrl_wheels-xiao_c3 WOKWI_ARGS="--scenario scenario_ctrl_wheels.yaml
 ```
 
 - The headless run never exits by itself. Exit 42 from the timeout is expected.
+- `scenario_ctrl_wheels.yaml` was not run. Owner-reported: headless `wokwi-cli` runs hit the Free-plan
+  CI minute quota on 2026-11-05. Whether the owner's VS Code captures used this scenario is not stated.
+  The scenario file's header comment still says the run needs B04 (#289) and B05 (#290) merged; both
+  are merged, so that comment is stale (tracked for B15, #284).
 - The scenario waits for `Sim starts at 15 deg`, pushes gyro Z to 30 deg/s for 4 s, sets it back to 0
   for 4 s, then waits 4 s more. The sim is headless only and is not a balance test.
 - The fall path needs `PLATFORMIO_BUILD_FLAGS="-D TTL_SERVO_FALL_TEST"` (low gains kp=2, kd=1). Not run.
 - Owner-reported: headless `wokwi-cli` runs hit the Free-plan CI minute quota on 2026-11-05. The
   owner's route is the VS Code Wokwi extension.
-- RFC2217: `wokwi.toml` sets `rfc2217ServerPort = 4002`. The port is plain TCP with no authentication,
-  and its bind address was not checked (the same accepted risk CLAUDE.md records for port 4000). The
-  three-listener case (4000, 4001 and 4002 at once) was never tried. Whether the VS Code listener stays
+- RFC2217: `wokwi.toml` sets `rfc2217ServerPort = 4002`. Port 4002 has the same exposure as the 4000
+  port: plain TCP with no authentication, and its bind address was not checked. The owner acceptance
+  recorded in CLAUDE.md (discussion 228) covers 4000 only and is not extended here. The three-listener
+  case (4000, 4001 and 4002 at once) was never tried. Whether the VS Code listener stays
   open on 4002 after a stop was not checked (it is observed for 4000 only).
 - Bridge read: `--port rfc2217://localhost:4002`. The start order (Webots, bridge, simulation) and the
   other bridge flags are in the
@@ -253,12 +275,13 @@ make sim-c3_ctrl_wheels-xiao_c3 WOKWI_ARGS="--scenario scenario_ctrl_wheels.yaml
 
 ## 9. Origins
 
-- Derived from `programs/c3_ctrl_wheel` (its single-wheel sibling, not changed by this program) and
-  `programs/ttl_servo`.
+- Derived from `programs/ttl_servo`, and the twin of `programs/c3_ctrl_wheel` (the single-wheel program,
+  not changed by this program).
 - Reused, unchanged: `lib/segway_sim` (plant and PD), `lib/imu_frame` (through `lib/wheels_frame`,
   which includes it), and the shared chips in `wokwi/chips/` (`wokwi-fe-urt-1`, `wokwi-ttl-servo`).
-  `main.cpp` includes `segway_sim.h` and `wheels_frame.h` directly. The `lib/dxl_units` dependency is
-  named in the origin notes, but it was not traced through `segway_sim` for this document.
+  `lib/dxl_units` is reached through `lib/segway_sim`: `segway_sim.h` includes `dxl_units.h`, and
+  `wheel_cmd_to_raw` calls `dxl_units::radSToRaw`. `main.cpp` includes `segway_sim.h` and
+  `wheels_frame.h` directly.
 - `lib/wheel_frame` (the single-wheel WHL v1 formatter) is unchanged and separate from
   `lib/wheels_frame` (WHL2).
 - The host-side parser in the FW repo was not checked from this repo. Agreement of the host parser
@@ -285,6 +308,7 @@ NOT RUN:
 - 3-failed-tick latch
 - bus-down state 2
 - one-ID write failure
+- the headless scenario run (`scenario_ctrl_wheels.yaml`)
 - a fall seen in WHL2 (state 1)
 - the ERR read path
 - a bring-up failure at ID 2
