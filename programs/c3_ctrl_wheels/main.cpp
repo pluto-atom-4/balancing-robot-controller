@@ -21,15 +21,19 @@
 // write. State 0 does not mean the writes succeeded. State 2 means bus_down is latched; it is the only fault
 // signal in the WHL2 line. Latch causes: a bring-up failure in setup() (state 2 is then reported from the
 // first WHL2 line that is written), a failed zero-velocity stop after a fall, or 3 failed ticks in a row.
-// State 2 reports 0 for both raws. The [dxl] write failed log is rate-limited (first failure and every 50th).
-// Evidence is not recorded in this file. Owner-reported headless and VS Code runs predate #282. The
-// two-read 10 Hz telemetry of #282 (merged) has not been run in a simulator. Nothing is run on hardware.
+// The two boot-time halts (no IMU, gyro calibration failure) print no WHL2 line at all: a consumer sees
+// silence, not state 2.
+// State 2 reports 0 for both raws. The [dxl] write failed log is rate-limited: write_fail counts failed
+// ticks (first failure and every 50th), and a tick where both wheels fail prints two lines with the same n.
+// No run evidence is recorded in this file. Earlier owner-reported headless and VS Code runs were on the build
+// before #282; the #282 two-read 10 Hz telemetry has not been run in a simulator; nothing on hardware.
 // This is a RELAY to Webots, NOT a closed loop through Webots: nothing is received from Webots.
 // Log tags are [ttl_servo], [dxl], [safe] and [ctrl_wheel]: kept from the single-wheel copy
 // (programs/c3_ctrl_wheel), not renamed. The program name does not appear in any tag. WHL2 lines carry no tag.
 // Both IDs are read at 10 Hz in the sim line: pos1/dpos1 (W[0], ID 1, left) and pos2/dpos2 (W[1], ID 2, right).
 // The [dxl] line keys are tx_ok tx_fail rd_ok1 rd_fail1 rd_ok2 rd_fail2 max_us; it prints once per second while
-// servo_ok, and once when the bus latches. Two blocking reads per 10 Hz tick are NOT measured.
+// servo_ok, and once when the bus latches. max_us is the longest single timed call (each write or read call
+// is one transaction; torque-off is not timed) since the last 1 Hz print. Two blocking reads per 10 Hz tick are NOT measured.
 // Reads never count toward write_fail or tick_fail_streak and never latch. On a dead or slow bus a tick can
 // stall at least twice the library read timeout if the library makes one attempt per call (the number of
 // attempts per call was not checked; the timeout value is not stated in this file and was not measured), which
@@ -161,7 +165,8 @@ static void whl_emit(float model_rad_s, int32_t rawL, int32_t rawR, uint8_t stat
 }
 
 // Twin helpers (SIM-ONLY, UNVERIFIED, not hardware-validated). tx_ok, tx_fail and max_us are shared
-// by all wheels. consec_fail is per-wheel: a consecutive-failure counter read only by its own 255 saturation guard (not used for the latch, any write decision, or any print). The write-failure log line (`[dxl] write failed`,
+// by all wheels. max_us covers write and read calls (each call is one timed transaction; torque-off is not timed).
+// consec_fail is per-wheel: a consecutive-failure counter read only by its own 255 saturation guard (not used for the latch, any write decision, or any print). The write-failure log line (`[dxl] write failed`,
 // write_fail) and the failed-tick latch live in loop(), not here.
 // Sign: see the note at the top (config block), applied only in write_goal_raw(). Do not multiply by .sign anywhere else.
 // Rule (see here, referred to in other comments): last_raw is the last value CONFIRMED on the chip;
@@ -274,7 +279,7 @@ static void latch_bus_down() {
 }
 
 // Bring-up for one wheel, in the order the chip needs: ping (fills the model that
-// Dynamixel2Arduino uses to resolve registers), torque off, velocity mode, goal 0, torque on.
+// Dynamixel2Arduino uses to resolve registers; library behaviour, not checked against the library source here), torque off, velocity mode, goal 0, torque on.
 // Each step runs only if the previous one passed. On any failure: best-effort torque off on
 // this id, and w.last_raw = INT32_MIN (chip state unknown). Runs at boot, before any latch.
 static bool bring_up_wheel(WheelCtx& w) {
@@ -329,7 +334,7 @@ void setup() {
   if (!mpu.begin(MPU_ADDR, &Wire)) {
     Serial.println("[ttl_servo] Failed to find MPU6050 chip");
     // Ping both ids first: Dynamixel2Arduino resolves registers through the model number a ping fills in,
-    // so a write without a prior ping fails even when the servo is present.
+    // so a write without a prior ping fails even when the servo is present (library behaviour, not checked against the library source here).
     for (uint8_t k = 0; k < 2; ++k) (void)dxl.ping(W[k].id);
     (void)stop_wheels_best_effort("no IMU", true);
     while (1) { delay(10); }
@@ -435,7 +440,7 @@ void loop() {
                     (unsigned long)W[f].id, W[f].sim.theta_rad);
       // Non-force stop: torque off on both ids only if a zero write failed; a stop where both zero
       // writes succeed leaves torque on at zero velocity.
-      // After a latch (servo_ok false) no stop is sent; the latch already forced torque off on both ids.
+      // After a latch (servo_ok false) no stop is sent; the latch attempted torque off on both ids (a failed attempt prints TORQUE OFF NOT CONFIRMED).
       // The 1 s hold and restart still run, and state stays 2.
       if (servo_ok) {
         if (!stop_wheels_best_effort("after fall")) latch_bus_down();
@@ -456,6 +461,7 @@ void loop() {
       } else {
         ++write_fail;
         // raw in this log is the UNSIGNED value passed to write_goal_raw; the wire value is sign * raw.
+        // write_fail counts failed ticks, not failed writes: a tick where both wheels fail prints two lines with the same n.
         if (write_fail == 1 || write_fail % 50 == 0) {
           if (!ok0)
             Serial.printf("[dxl] write failed id=%lu raw=%ld (n=%lu)\n",
@@ -490,10 +496,7 @@ void loop() {
     char dpos_s[2][12] = { "n/a", "n/a" };
     char cmd_s[12] = "NA";
     if (servo_ok) {
-      // Two blocking reads in this tick (ID 1, then ID 2). On a dead or slow bus the tick can stall at least
-      // twice the library read timeout if the library makes one attempt per call (attempts per call not checked;
-      // timeout value not stated here, not measured), delaying the 20 ms cadence;
-      // clamp_dt_s hides part of that stall from the sim.
+      // Two blocking reads per tick (ID 1, then ID 2); the stall caveat is in the header, not measured.
       for (uint8_t k = 0; k < 2; ++k) {
         uint32_t t0 = micros();
         int32_t pos = dxl.getPresentPosition(W[k].id);

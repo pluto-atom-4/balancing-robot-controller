@@ -20,10 +20,11 @@ Plan: https://github.com/pluto-atom-4/balancing-robot-controller/discussions/266
 
 Tracking: issue #267 (umbrella), issue #270 (this copy).
 
-Still planned, not present yet (task IDs from the plan and tracking issue #267):
-- B09 (#293, merged): helpers.
-- `docs/CTRL_WHEELS.md`
+Merged and present in `main.cpp`: B09 (#293, helpers) and B10 to B13 (bring-up, loop, WHL2 emit, two-ID telemetry). B14 (#283) is the header and comment pass on `main.cpp` (PR #300).
 
-B10 to B13 (bring-up, loop, WHL2 emit, two-ID telemetry) are merged and present in `main.cpp`. B14 (#283) is the header and comment pass on `main.cpp`.
+Still planned, not present yet (task IDs from the plan and tracking issue #267):
+- B15 (#284): scenario
+- B16 (#285): `docs/CTRL_WHEELS.md`
+- X01 (#286)
 
 The single-wheel `programs/c3_ctrl_wheel` is not changed by this copy.
