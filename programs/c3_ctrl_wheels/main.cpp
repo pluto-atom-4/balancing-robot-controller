@@ -25,6 +25,8 @@
 // 0 for both raws.
 // This is a RELAY to Webots, NOT a closed loop through Webots: nothing is received from Webots.
 // Log tags are [ttl_servo] and [dxl].
+// Both IDs are read at 10 Hz (sim-only, UNVERIFIED, not hardware-validated): two blocking reads per 10 Hz tick, timing not measured;
+// reads never count toward write_fail or tick_fail_streak and never latch.
 // -D TTL_SERVO_FALL_TEST: low gains (kp=2 kd=1) so the frame falls.
 // RFC2217 port is set in wokwi.toml.
 #include <Arduino.h>
@@ -69,10 +71,8 @@ float gyroZ_bias_rad_s = 0.0f;
 float gyroZ_filtered_rad_s = 0.0f;
 bool servo_ok = false;          // false: chip absent or setup failed, read-only sim
 uint32_t write_fail = 0;
-static uint32_t tx_ok, tx_fail, rd_ok, rd_fail, max_us;
+static uint32_t tx_ok, tx_fail, max_us;
 static uint32_t lastBusPrintMs;
-static int32_t last_pos = 0;
-static bool have_last_pos = false;
 static bool bus_down = false;        // latched: no Dynamixel calls until reset
 static uint8_t tick_fail_streak = 0; // consecutive failed ticks (a tick fails if either wheel's write fails)
 static bool holding = false;         // true for 1 s after a fall
@@ -87,18 +87,17 @@ static uint16_t whl_seq = 0;
 static uint32_t whl_sent = 0, whl_dropped = 0, whl_max_emit_us = 0, lastWhlPrintMs = 0;
 static char whl_buf[96];
 // Per-wheel state for the twin: W[0] is the left wheel (ID 1), W[1] the right (ID 2).
-// In use: id, sign, sim (each wheel's own plant), last_raw.
-// Not used: last_pos, have_last_pos, rd_ok, rd_fail. The 10 Hz read telemetry still uses the
-// globals of the same names.
+// In use: id, sign, sim (each wheel's own plant), last_raw, and the 10 Hz read state last_pos,
+// have_last_pos, rd_ok, rd_fail (read telemetry only; never used for the latch).
 struct WheelCtx {
   uint8_t  id;
   int8_t   sign;
   segway::SegwaySim sim;
   uint8_t  consec_fail;     // per-wheel consecutive failure count, saturates at 255; not used for the latch (tick_fail_streak is)
   int32_t  last_raw;       // last raw CONFIRMED on the chip (already signed); INT32_MIN = chip state unknown (initial value, and after any failed or unconfirmed step), so the next write_goal_raw always goes out
-  int32_t  last_pos;        // unused, see above
-  bool     have_last_pos;   // unused, see above
-  uint32_t rd_ok, rd_fail;  // unused, see above
+  int32_t  last_pos;        // position from the last successful 10 Hz read of this id
+  bool     have_last_pos;   // false after a failed read or before the first successful one
+  uint32_t rd_ok, rd_fail;  // 10 Hz read counters for this id (telemetry only)
   WheelCtx(uint8_t id_, int8_t sign_)
     : id(id_), sign(sign_), sim(SIM_INIT_THETA_RAD), consec_fail(0),
       last_raw(INT32_MIN), last_pos(0), have_last_pos(false), rd_ok(0), rd_fail(0) {}
@@ -256,9 +255,10 @@ static void latch_bus_down() {
   servo_ok = false;
   if (bus_down) return;
   bus_down = true;
-  Serial.printf("[dxl] tx_ok=%lu tx_fail=%lu rd_ok=%lu rd_fail=%lu max_us=%lu\n",
+  Serial.printf("[dxl] tx_ok=%lu tx_fail=%lu rd_ok1=%lu rd_fail1=%lu rd_ok2=%lu rd_fail2=%lu max_us=%lu\n",
                 (unsigned long)tx_ok, (unsigned long)tx_fail,
-                (unsigned long)rd_ok, (unsigned long)rd_fail,
+                (unsigned long)W[0].rd_ok, (unsigned long)W[0].rd_fail,
+                (unsigned long)W[1].rd_ok, (unsigned long)W[1].rd_fail,
                 (unsigned long)max_us);
   Serial.println("[safe] bus down (reset the board to retry)");
 }
@@ -475,43 +475,46 @@ void loop() {
   // 5. Telemetry (10 Hz)
   if (now_ms - lastPrintMs >= PRINT_PERIOD_MS) {
     lastPrintMs = now_ms;
-    char pos_s[12] = "NA";
-    char dpos_s[12] = "n/a";
+    char pos_s[2][12] = { "NA", "NA" };
+    char dpos_s[2][12] = { "n/a", "n/a" };
     char cmd_s[12] = "NA";
     if (servo_ok) {
-      uint32_t t0 = micros();
-      int32_t pos = dxl.getPresentPosition(W[0].id);
-      bool rd = (dxl.getLastLibErrCode() == DXL_LIB_OK);
-      uint32_t el = micros() - t0;
-      if (el > max_us) max_us = el;
-      if (rd) {
-        ++rd_ok;
-        snprintf(pos_s, sizeof(pos_s), "%ld", (long)pos);
-        if (have_last_pos) {
-          int32_t dpos = ((pos - last_pos + 6144) % 4096) - 2048;
-          snprintf(dpos_s, sizeof(dpos_s), "%ld", (long)dpos);
+      for (uint8_t k = 0; k < 2; ++k) {
+        uint32_t t0 = micros();
+        int32_t pos = dxl.getPresentPosition(W[k].id);
+        bool rd = (dxl.getLastLibErrCode() == DXL_LIB_OK);
+        uint32_t el = micros() - t0;
+        if (el > max_us) max_us = el;
+        if (rd) {
+          ++W[k].rd_ok;
+          snprintf(pos_s[k], sizeof(pos_s[k]), "%ld", (long)pos);
+          if (W[k].have_last_pos) {
+            int32_t dpos = ((pos - W[k].last_pos + 6144) % 4096) - 2048;
+            snprintf(dpos_s[k], sizeof(dpos_s[k]), "%ld", (long)dpos);
+          }
+          W[k].last_pos = pos;
+          W[k].have_last_pos = true;
+        } else {
+          ++W[k].rd_fail;
+          snprintf(pos_s[k], sizeof(pos_s[k]), "ERR");
+          W[k].have_last_pos = false;
         }
-        last_pos = pos;
-        have_last_pos = true;
-      } else {
-        ++rd_fail;
-        snprintf(pos_s, sizeof(pos_s), "ERR");
-        have_last_pos = false;
       }
     }
-    // pos and dpos are read from W[0] (left, SERVO_ID_LEFT) only; the read telemetry keeps the globals
-    // last_pos, have_last_pos, rd_ok and rd_fail. cmd = W[0].last_raw, the last value CONFIRMED on
-    // the left wheel; NA when that state is unknown (after a failed write or stop). bus=1 means both wheels
-    // came up at bring-up (servo_ok); bus=0 means bring-up failed or the bus is latched.
+    // pos1/dpos1 are W[0] (ID 1, left), pos2/dpos2 are W[1] (ID 2, right). Both IDs are read at 10 Hz,
+    // one blocking read each in order; reads never count toward write_fail or tick_fail_streak and never latch.
+    // cmd = W[0].last_raw, the last value CONFIRMED on the left wheel; NA when that state is unknown (after a
+    // failed write or stop). bus=1 means both wheels came up at bring-up (servo_ok); bus=0 means bring-up failed
+    // or the bus is latched.
     // During the post-fall hold the plants are frozen. The wheel is shown as 0 whether or not
     // the stop was confirmed.
     if (W[0].last_raw != INT32_MIN)
       snprintf(cmd_s, sizeof(cmd_s), "%ld", (long)W[0].last_raw);
     float wheel_shown = holding ? 0.0f : W[0].sim.wheel_vel_rad_s;
-    Serial.printf("[ttl_servo] sim theta=%.3f rate=%.3f wheel=%.2f cmd=%s pos=%s dpos=%s gyroZ=%.3f bus=%d\n",
+    Serial.printf("[ttl_servo] sim theta=%.3f rate=%.3f wheel=%.2f cmd=%s pos1=%s dpos1=%s pos2=%s dpos2=%s gyroZ=%.3f bus=%d\n",
                   W[0].sim.theta_rad, W[0].sim.theta_dot_rad_s,
                   wheel_shown, cmd_s,
-                  pos_s, dpos_s, gyroZ_filtered_rad_s, servo_ok ? 1 : 0);
+                  pos_s[0], dpos_s[0], pos_s[1], dpos_s[1], gyroZ_filtered_rad_s, servo_ok ? 1 : 0);
   }
 
   // Gate: 80 bytes of USB TX room, a sizing choice for this 1 Hz [ctrl_wheel] line (up to about 71
@@ -524,9 +527,10 @@ void loop() {
     lastWhlPrintMs = now_ms;
   }
   if (servo_ok && now_ms - lastBusPrintMs >= 1000) {
-    Serial.printf("[dxl] tx_ok=%lu tx_fail=%lu rd_ok=%lu rd_fail=%lu max_us=%lu\n",
+    Serial.printf("[dxl] tx_ok=%lu tx_fail=%lu rd_ok1=%lu rd_fail1=%lu rd_ok2=%lu rd_fail2=%lu max_us=%lu\n",
                   (unsigned long)tx_ok, (unsigned long)tx_fail,
-                  (unsigned long)rd_ok, (unsigned long)rd_fail,
+                  (unsigned long)W[0].rd_ok, (unsigned long)W[0].rd_fail,
+                  (unsigned long)W[1].rd_ok, (unsigned long)W[1].rd_fail,
                   (unsigned long)max_us);
     max_us = 0;
     lastBusPrintMs = now_ms;
