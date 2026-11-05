@@ -25,15 +25,17 @@
 // silence, not state 2.
 // State 2 reports 0 for both raws. The [dxl] write failed log is rate-limited: write_fail counts failed
 // ticks (first failure and every 50th), and a tick where both wheels fail prints two lines with the same n.
-// No run evidence is recorded in this file. Earlier owner-reported headless and VS Code runs were on the build
-// before #282; the #282 two-read 10 Hz telemetry has not been run in a simulator; nothing on hardware.
+// Run status is tracked in docs/CTRL_WHEELS.md (B16, #285) and umbrella #267, not in this file; nothing on hardware.
 // This is a RELAY to Webots, NOT a closed loop through Webots: nothing is received from Webots.
 // Log tags are [ttl_servo], [dxl], [safe] and [ctrl_wheel]: kept from the single-wheel copy
 // (programs/c3_ctrl_wheel), not renamed. The program name does not appear in any tag. WHL2 lines carry no tag.
 // Both IDs are read at 10 Hz in the sim line: pos1/dpos1 (W[0], ID 1, left) and pos2/dpos2 (W[1], ID 2, right).
 // The [dxl] line keys are tx_ok tx_fail rd_ok1 rd_fail1 rd_ok2 rd_fail2 max_us; it prints once per second while
-// servo_ok, and once when the bus latches. max_us is the longest single timed call (each write or read call
-// is one transaction; torque-off is not timed) since the last 1 Hz print. Two blocking reads per 10 Hz tick are NOT measured.
+// servo_ok, and once when the bus latches. max_us is the longest single timed call since the last 1 Hz print:
+// each write call (write_vel_zero_ctx attempts, write_goal_raw) and each 10 Hz read call is timed. Untimed calls:
+// torque-off (every torqueOff in stop_wheels_best_effort and the bring-up retries), the bring-up ping,
+// setOperatingMode, torqueOn, and the no-IMU ping. Read call times are included in max_us; the total tick stall
+// from the two reads on a dead or slow bus is not separately measured.
 // Reads never count toward write_fail or tick_fail_streak and never latch. On a dead or slow bus a tick can
 // stall at least twice the library read timeout if the library makes one attempt per call (the number of
 // attempts per call was not checked; the timeout value is not stated in this file and was not measured), which
@@ -496,7 +498,7 @@ void loop() {
     char dpos_s[2][12] = { "n/a", "n/a" };
     char cmd_s[12] = "NA";
     if (servo_ok) {
-      // Two blocking reads per tick (ID 1, then ID 2); the stall caveat is in the header, not measured.
+      // Two blocking reads per tick (ID 1, then ID 2); the stall caveat is in the header.
       for (uint8_t k = 0; k < 2; ++k) {
         uint32_t t0 = micros();
         int32_t pos = dxl.getPresentPosition(W[k].id);
