@@ -76,9 +76,9 @@ static uint16_t whl_seq = 0;
 static uint32_t whl_sent = 0, whl_dropped = 0, whl_max_emit_us = 0, lastWhlPrintMs = 0;
 static char whl_buf[96];
 // Per-wheel state for the twin: W[0] is the left wheel (ID 1), W[1] the right (ID 2).
-// Bring-up in setup() uses W[]. W duplicates the single-wheel globals above (segway_sim,
-// consec_fail, last_written_raw, last_pos, have_last_pos, rd_ok/rd_fail), which loop() still uses.
-// Do not use both at once.
+// Fields used here: id, sign, last_raw, and consec_fail (telemetry, updated by the write helpers).
+// Unused here: sim, last_pos, have_last_pos, rd_ok, rd_fail. The single-wheel globals above are
+// the ones loop() uses; do not mix the two in one code path.
 struct WheelCtx {
   uint8_t  id;
   int8_t   sign;
@@ -114,7 +114,8 @@ static float clamp_dt_s(uint32_t dt_ms) {
 
 // One WHL line per call. Written only if availableForWrite() reports room for the whole line.
 // Whether Serial.write can still block on the C3 USB CDC is NOT verified, and the loop's other
-// Serial prints (10 Hz line, [dxl], FELL) are unguarded, so they can block when the host stalls.
+// Serial prints (for example the 10 Hz line, the [dxl] lines and the FELL/restart prints) are
+// unguarded, so they can block when the host stalls.
 // wheel_frame::format also returns 0 for a non-finite model; that counts as dropped and whl_seq still advances.
 static void whl_emit(float model_rad_s, int32_t raw, uint8_t state) {
   uint32_t t0 = micros();
@@ -163,8 +164,9 @@ static bool stop_chip_best_effort(const char* why, bool force_torque_off = false
     if (!force_torque_off) return true;
   }
   bool off = false;
-  // Torque-off transactions are not counted in tx_ok/tx_fail/max_us.
-  // Bring-up ping and config calls are not counted either.
+  // Torque-off calls are not counted in tx_ok/tx_fail/max_us. Bring-up ping, torque-off, mode and
+  // torque-on calls are not counted either; the bring-up goal-0 write is counted (it goes through
+  // write_vel_zero_ctx).
   for (uint8_t i = 0; i < 3 && !off; ++i) off = dxl.torqueOff(DXL_ID);
   Serial.printf("[safe] torque off %s%s\n", why,
                 off ? "" : " (TORQUE OFF NOT CONFIRMED)");
@@ -174,7 +176,7 @@ static bool stop_chip_best_effort(const char* why, bool force_torque_off = false
 // Twin helpers (SIM-ONLY, UNVERIFIED, not hardware-validated). Their counters
 // mirror write_vel_zero_with_retries and the inline write in loop(). The write-failure log line
 // (`[dxl] write failed`, write_fail) and the 3-failure stop+latch stay in loop().
-// write_goal_raw has no caller yet, hence __attribute__((unused)) on it only.
+// write_goal_raw has no caller in this file, hence __attribute__((unused)) on it.
 // Sign: see the note at the top (config block), applied only in write_goal_raw(). Do not multiply by .sign anywhere else.
 // Rule (stated once, referred to below): last_raw is the last value CONFIRMED on the chip;
 // INT32_MIN means the chip state is unknown, so the next write_goal_raw always goes out.
@@ -207,9 +209,11 @@ static bool write_vel_zero_ctx(WheelCtx& w) {
 // Write on change: no bus call if the signed value equals the last confirmed one.
 // A failed write sets last_raw = INT32_MIN (a timed-out write may have landed; see the rule in the block header).
 // Refused after the bus latch: a normal command write must not go out once bus_down is set.
-// Does NOT latch. The rule that latches both wheels (a tick fails if either wheel's write fails,
-// 3 failed ticks in a row) is not in this helper and is not wired into loop() yet.
-// consec_fail here is per-wheel telemetry only.
+// Does NOT latch, and has no caller in this file. loop() ID 1 writes and stop_chip_best_effort do
+// not update W[0].last_raw, so write_goal_raw must not be called for ID 1 until loop() routes its
+// ID 1 write through it (otherwise write-on-change can skip a needed write).
+// The latch rule (a tick fails if either wheel's write fails; 3 failed ticks in a row latch both)
+// is not in this helper. consec_fail here is per-wheel telemetry only.
 static __attribute__((unused)) bool write_goal_raw(WheelCtx& w, int32_t raw) {
   if (bus_down) return false;
   int32_t wire = (int32_t)w.sign * raw;
@@ -346,12 +350,12 @@ void setup() {
   }
   servo_ok = all_ok;
   if (!servo_ok) {
-    Serial.println("[dxl] bring-up failed, read-only");
-    // Boot-block timing, unmeasured estimate (sim). Worst case: ID 1 fails at its last step with
-    // every transaction timing out. Its bring-up is ping, torque off, mode, goal 0 (3 tries),
-    // torque on and the best-effort torque off (8). The forced stop of both ids is 3 zero writes
-    // and up to 3 torque-offs each (12). About 20 timed-out transactions, roughly 400 ms at the
-    // 20 ms per timeout the earlier single-wheel estimate used (the old single-wheel worst case was 12).
+    Serial.println("[dxl] bring-up failed, bus down, no Dynamixel calls");
+    // Boot-block timing, unmeasured estimate (sim). Worst case: ID 1 comes up (5 transactions), then
+    // ID 2 fails at its last step with every retry timing out (8: ping, torque off, mode, goal 0 with
+    // 3 tries, torque on, best-effort torque off). The forced stop of both ids is up to 3 zero writes
+    // per wheel (6) and up to 3 torque-offs per id (6), 12. About 25 transactions, roughly 500 ms at
+    // an assumed 20 ms per timeout.
     (void)stop_wheels_best_effort("bring-up failed", true);
     latch_bus_down();
   }
@@ -390,9 +394,9 @@ void setup() {
   lastWhlPrintMs = lastLoopMs;
 }
 
-// Still the single-wheel loop: it drives ID 1 only (DXL_ID), through the inline write and
-// stop_chip_best_effort. ID 2 gets no goal writes here, and the stops here do not torque off ID 2.
-// It holds goal 0 with torque on from bring-up until the twin loop lands.
+// loop() drives and stops ID 1 only (DXL_ID), through the inline write and stop_chip_best_effort.
+// ID 2 holds goal 0 with torque on after a successful bring-up, and is not torqued off by a loop
+// fall or latch.
 void loop() {
   uint32_t now_ms = millis();
   uint32_t dt_ms = now_ms - lastLoopMs;
@@ -500,12 +504,15 @@ void loop() {
         have_last_pos = false;
       }
     }
-    // cmd = last value CONFIRMED written to the chip; stale (non-zero) after a failed stop.
-    // With bus=1, cmd=0 before the first loop write is the chip's real goal (bring-up confirmed goal 0);
-    // with bus=0 cmd only holds the last confirmed value and says nothing about the chip.
+    // cmd, pos and dpos describe ID 1 only. cmd = last value CONFIRMED written to ID 1; stale
+    // (non-zero) after a failed stop. With bus=1, cmd=0 before the first loop write matches the
+    // goal bring-up confirmed on ID 1. With bus=0 cmd only holds the last confirmed value and says
+    // nothing about the chip.
+    // bus=1 means both wheels came up at bring-up (servo_ok). bus=0 means bring-up failed or the bus
+    // is latched.
     // During the post-fall hold the plant is frozen. The wheel is shown as 0 whether or not
-    // the stop was confirmed; cmd shows the last confirmed goal and bus shows liveness
-    // (a failed stop leaves the chip on its last goal).
+    // the stop was confirmed; cmd shows the last confirmed goal (a failed stop leaves the chip on
+    // its last goal).
     float wheel_shown = holding ? 0.0f : segway_sim.wheel_vel_rad_s;
     Serial.printf("[ttl_servo] sim theta=%.3f rate=%.3f wheel=%.2f cmd=%ld pos=%s dpos=%s gyroZ=%.3f bus=%d\n",
                   segway_sim.theta_rad, segway_sim.theta_dot_rad_s,
@@ -513,7 +520,8 @@ void loop() {
                   pos_s, dpos_s, gyroZ_filtered_rad_s, servo_ok ? 1 : 0);
   }
 
-  // Gate: 80 bytes of USB TX room is a sizing choice for one ~70-byte line, not measured.
+  // Gate: 80 bytes of USB TX room, a sizing choice for this 1 Hz [ctrl_wheel] line (up to about 71
+  // bytes with 10-digit counters; not measured). The WHL line is gated separately in whl_emit.
   if (now_ms - lastWhlPrintMs >= 1000 && Serial.availableForWrite() >= 80) {
     Serial.printf("[ctrl_wheel] sent=%lu dropped=%lu max_emit_us=%lu\n",
                   (unsigned long)whl_sent, (unsigned long)whl_dropped,
