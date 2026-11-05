@@ -33,8 +33,8 @@
 // The [dxl] line keys are tx_ok tx_fail rd_ok1 rd_fail1 rd_ok2 rd_fail2 max_us; it prints once per second while
 // servo_ok, and once when the bus latches. max_us is the longest single timed call since the last 1 Hz print:
 // each write call (write_vel_zero_ctx attempts, write_goal_raw) and each 10 Hz read call is timed. Untimed calls:
-// torque-off (every torqueOff in stop_wheels_best_effort and the bring-up retries), the bring-up ping,
-// setOperatingMode, torqueOn, and the no-IMU ping. Read call times are included in max_us; the total tick stall
+// torqueOff in stop_wheels_best_effort (3-try loop) and in bring_up_wheel (the normal step and the best-effort
+// one after a failed step), the bring-up ping, setOperatingMode, torqueOn, and the no-IMU ping. Read call times are included in max_us; the total tick stall
 // from the two reads on a dead or slow bus is not separately measured.
 // Reads never count toward write_fail or tick_fail_streak and never latch. On a dead or slow bus a tick can
 // stall at least twice the library read timeout if the library makes one attempt per call (the number of
@@ -400,7 +400,7 @@ void setup() {
 
 // loop() drives both wheels (ID 1 left, ID 2 right, unconfirmed) and stops both on a fall or a latch.
 // A tick fails if either goal write fails; 3 failed ticks in a row force a stop of both ids, then
-// latch. Not exercised in the sim: the 3-failed-tick latch and bus-down state 2.
+// latch. Run status: docs/CTRL_WHEELS.md (B16, #285).
 // Ticking two plants per loop: the soft-float cost is unmeasured (sim).
 void loop() {
   uint32_t now_ms = millis();
