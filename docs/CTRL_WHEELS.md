@@ -464,8 +464,9 @@ this section does not claim that the scenario drives any preset.
 ### 11.5 Not covered
 
 - The library's real timeout and error code.
-- A failed zero write, a failed torque-off, and the `(TORQUE OFF NOT CONFIRMED)` suffix: no preset
-  reaches the stop path (see the header comment).
+- A failed zero write, a failed torque-off, and the `(TORQUE OFF NOT CONFIRMED)` suffix: no preset makes
+  a zero write or a torque-off fail, so the suffix is not reached. Presets 1 and 2 do run the stop path
+  (through the 3-failed-tick latch) with real writes (see the header comment).
 - Anything on hardware.
 
 ### 11.6 Capture guide (owner, VS Code Wokwi extension)
