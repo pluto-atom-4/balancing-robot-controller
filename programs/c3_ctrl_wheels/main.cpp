@@ -11,13 +11,13 @@
 // hold 1 s and restart both. A failed stop latches bus_down.
 // MPU6050 gyro Z is a disturbance rate injected into the sim tilt dynamics. Its IMU I2C is
 // on GPIO8/9, a sim-only Wokwi wiring choice (hardware tilt_servo and balance use GPIO6/7).
-// It also prints one line per 20 ms tick, WHL,<seq>,<t_us>,<model_rad_s>,<raw>,<state>*HH
-// (format in lib/wheel_frame/wheel_frame.h; state 0 run, 1 hold after a fall, 2 bus down), for
-// the freecad-workspace bridge poc/ctrl-wheel, plus a 1 Hz [ctrl_wheel] sent= dropped=
-// max_emit_us= line. The WHL line carries the LEFT wheel (W[0]) model only. model is the firmware's
-// lagged MODEL velocity, not a measurement. The WHL raw is the UNSIGNED forward raw recomputed from
-// that model; it equals the chip raw only while WHEEL_SIGN_LEFT is +1. No sign is applied to it here
-// (the sign is applied only in write_goal_raw).
+// It also prints one WHL2 line per 20 ms tick, WHL2,<seq>,<t_us>,<model_rad_s>,<rawL>,<rawR>,<state>*HH
+// (format in lib/wheels_frame/wheels_frame.h; state 0 run, 1 hold after a fall, 2 bus down), for the
+// freecad-workspace twin contract poc/ctrl-wheels (CONTRACT.md S1; the host side is planned), plus a
+// 1 Hz [ctrl_wheel] sent= dropped= max_emit_us= line. model is the LEFT wheel's (W[0]) lagged MODEL
+// velocity, not a measurement. rawL and rawR are the raw values last CONFIRMED on each chip, as written
+// (signed; the sign is applied once, in write_goal_raw). An unknown chip state is reported as 0, and
+// state 2 reports 0 for both.
 // This is a RELAY to Webots, NOT a closed loop through Webots: nothing is received from Webots.
 // Log tags in this copy still say [ttl_servo] and [dxl].
 // -D TTL_SERVO_FALL_TEST: low gains (kp=2 kd=1) so the frame falls.
@@ -28,7 +28,7 @@
 #include <Adafruit_Sensor.h>
 #include <Dynamixel2Arduino.h>
 #include <segway_sim.h>
-#include <wheel_frame.h>
+#include <wheels_frame.h>
 
 // ===== Configuration =====
 static constexpr uint8_t  I2C_SDA = 8;
@@ -72,8 +72,10 @@ static bool bus_down = false;        // latched: no Dynamixel calls until reset
 static uint8_t tick_fail_streak = 0; // consecutive failed ticks (a tick fails if either wheel's write fails)
 static bool holding = false;         // true for 1 s after a fall
 static uint32_t hold_until_ms = 0;
-// WHL stream (sim-only, UNVERIFIED). 96 is a sizing choice: a line is ~45 bytes;
-// wheel_frame::format returns 0 if it does not fit, and the line is then dropped. Not measured.
+// WHL2 stream (sim-only, UNVERIFIED). 96 is a sizing choice (the buffer includes the NUL). A WHL2 line
+// is about 61 bytes with a 9-character model (62 with a 10-character one; the largest fields are the
+// int32 raws and t_us), so the spare room covers a model text of up to about 40 characters.
+// wheels_frame::format returns 0 if it does not fit, and the line is then dropped. Not measured.
 // whl_seq is uint16_t: it wraps to 0 after 65536 ticks (about 22 min at 50 Hz). The host bridge
 // handles the 16-bit wrap in its sequence-gap logic.
 static uint16_t whl_seq = 0;
@@ -116,15 +118,22 @@ static float clamp_dt_s(uint32_t dt_ms) {
 }
 
 
-// One WHL line per call. Written only if availableForWrite() reports room for the whole line.
+// Raw reported in WHL2 for one wheel: the value last CONFIRMED on its chip (already signed, see
+// write_goal_raw). Unknown (INT32_MIN: before the first write, or after a failed write or any
+// torque-off attempt) is reported as 0.
+static int32_t whl2_raw(const WheelCtx& w) {
+  return (w.last_raw == INT32_MIN) ? 0 : w.last_raw;
+}
+
+// One WHL2 line per call. Written only if availableForWrite() reports room for the whole line.
 // Whether Serial.write can still block on the C3 USB CDC is NOT verified, and the loop's other
 // Serial prints (for example the 10 Hz line, the [dxl] lines and the FELL/restart prints) are
 // unguarded, so they can block when the host stalls.
-// wheel_frame::format also returns 0 for a non-finite model; that counts as dropped and whl_seq still advances.
-static void whl_emit(float model_rad_s, int32_t raw, uint8_t state) {
+// wheels_frame::format also returns 0 for a non-finite model; that counts as dropped and whl_seq still advances.
+static void whl_emit(float model_rad_s, int32_t rawL, int32_t rawR, uint8_t state) {
   uint32_t t0 = micros();
-  size_t n = wheel_frame::format(whl_buf, sizeof whl_buf, whl_seq, (uint32_t)micros(),
-                                 model_rad_s, raw, state);
+  size_t n = wheels_frame::format(whl_buf, sizeof whl_buf, whl_seq, (uint32_t)micros(),
+                                  model_rad_s, rawL, rawR, state);
   whl_seq++;
   bool written = false;
   if (n != 0) {
@@ -450,13 +459,14 @@ void loop() {
     }
   }
 
-  // 4b. WHL line, once per tick (after the 20 ms gate, outside the servo_ok chip branch). Left wheel (W[0]) only.
-  // whl_raw is the UNSIGNED raw recomputed from whl_model (no sign here). It equals the chip raw only
-  // while WHEEL_SIGN_LEFT is +1. The WHL2 task will report the per-wheel raws actually written.
+  // 4b. WHL2 line, once per tick (after the 20 ms gate, outside the servo_ok chip branch).
+  // model is the left wheel's (W[0]) lagged model, 0 while holding. The raws are the values last
+  // confirmed on each chip (signed as written); unknown is 0, and state 2 reports 0 for both.
   const float whl_model = holding ? 0.0f : W[0].sim.wheel_vel_rad_s;
-  const int32_t whl_raw = segway::wheel_cmd_to_raw(whl_model);
   const uint8_t whl_state = bus_down ? 2 : (holding ? 1 : 0);
-  whl_emit(whl_model, whl_raw, whl_state);
+  const int32_t whl_rawL = (whl_state == 2) ? 0 : whl2_raw(W[0]);
+  const int32_t whl_rawR = (whl_state == 2) ? 0 : whl2_raw(W[1]);
+  whl_emit(whl_model, whl_rawL, whl_rawR, whl_state);
 
   // 5. Telemetry (10 Hz)
   if (now_ms - lastPrintMs >= PRINT_PERIOD_MS) {
@@ -501,7 +511,7 @@ void loop() {
   }
 
   // Gate: 80 bytes of USB TX room, a sizing choice for this 1 Hz [ctrl_wheel] line (up to about 71
-  // bytes with 10-digit counters; not measured). The WHL line is gated separately in whl_emit.
+  // bytes with 10-digit counters; not measured). The WHL2 line is gated separately in whl_emit.
   if (now_ms - lastWhlPrintMs >= 1000 && Serial.availableForWrite() >= 80) {
     Serial.printf("[ctrl_wheel] sent=%lu dropped=%lu max_emit_us=%lu\n",
                   (unsigned long)whl_sent, (unsigned long)whl_dropped,
