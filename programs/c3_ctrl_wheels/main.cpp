@@ -28,7 +28,8 @@
 // Log tags are [ttl_servo] and [dxl].
 // Both IDs are read at 10 Hz (sim-only, UNVERIFIED, not hardware-validated): two blocking reads per 10 Hz tick, timing not measured;
 // reads never count toward write_fail or tick_fail_streak and never latch. Each telemetry tick adds two blocking
-// reads; on a dead or slow bus a tick can stall up to twice the library read timeout (the timeout value is not
+// reads; on a dead or slow bus a tick can stall at least twice the library read timeout if the library makes one
+// attempt per call (the number of attempts per call was not checked; the timeout value is not
 // stated in this file and was not measured), which delays the 20 ms physics/WHL2 cadence. clamp_dt_s caps the dt
 // the sim sees, so part of that stall is hidden.
 // -D TTL_SERVO_FALL_TEST: low gains (kp=2 kd=1) so the frame falls.
@@ -483,8 +484,9 @@ void loop() {
     char dpos_s[2][12] = { "n/a", "n/a" };
     char cmd_s[12] = "NA";
     if (servo_ok) {
-      // Two blocking reads in this tick (ID 1, then ID 2). On a dead or slow bus the tick can stall up to
-      // twice the library read timeout (value not stated here, not measured), delaying the 20 ms cadence;
+      // Two blocking reads in this tick (ID 1, then ID 2). On a dead or slow bus the tick can stall at least
+      // twice the library read timeout if the library makes one attempt per call (attempts per call not checked;
+      // timeout value not stated here, not measured), delaying the 20 ms cadence;
       // clamp_dt_s hides part of that stall from the sim.
       for (uint8_t k = 0; k < 2; ++k) {
         uint32_t t0 = micros();
@@ -511,7 +513,7 @@ void loop() {
     // pos1/dpos1 are W[0] (ID 1, left), pos2/dpos2 are W[1] (ID 2, right). Both IDs are read at 10 Hz,
     // one blocking read each in order; reads never count toward write_fail or tick_fail_streak and never latch.
     // cmd = W[0].last_raw, the last value CONFIRMED on the left wheel; NA when that state is unknown (after a
-    // failed write or stop). bus=1 means both wheels came up at bring-up (servo_ok); bus=0 means bring-up failed
+    // failed write or a torque-off attempt; a confirmed zero stop shows 0). bus=1 means both wheels came up at bring-up (servo_ok); bus=0 means bring-up failed
     // or the bus is latched.
     // During the post-fall hold the plants are frozen. The wheel is shown as 0 whether or not
     // the stop was confirmed.
