@@ -102,7 +102,7 @@ struct WheelCtx {
   uint8_t  id;
   int8_t   sign;
   segway::SegwaySim sim;
-  uint8_t  consec_fail;     // per-wheel consecutive failure count, saturates at 255; WRITE-ONLY (never read for a decision or printed); the latch uses tick_fail_streak
+  uint8_t  consec_fail;     // per-wheel consecutive-failure counter that saturates at 255; read only by its own 255 saturation guard; not used for the latch (tick_fail_streak is), any write decision, or any print
   int32_t  last_raw;       // last raw CONFIRMED on the chip (already signed); INT32_MIN = chip state unknown (initial value, and after any failed or unconfirmed step), so the next write_goal_raw always goes out
   int32_t  last_pos;        // position from the last successful 10 Hz read of this id
   bool     have_last_pos;   // false after a failed read or before the first successful one
@@ -161,7 +161,7 @@ static void whl_emit(float model_rad_s, int32_t rawL, int32_t rawR, uint8_t stat
 }
 
 // Twin helpers (SIM-ONLY, UNVERIFIED, not hardware-validated). tx_ok, tx_fail and max_us are shared
-// by all wheels. consec_fail is per-wheel and write-only (never read for a decision or printed). The write-failure log line (`[dxl] write failed`,
+// by all wheels. consec_fail is per-wheel: a consecutive-failure counter read only by its own 255 saturation guard (not used for the latch, any write decision, or any print). The write-failure log line (`[dxl] write failed`,
 // write_fail) and the failed-tick latch live in loop(), not here.
 // Sign: see the note at the top (config block), applied only in write_goal_raw(). Do not multiply by .sign anywhere else.
 // Rule (see here, referred to in other comments): last_raw is the last value CONFIRMED on the chip;
@@ -169,7 +169,7 @@ static void whl_emit(float model_rad_s, int32_t rawL, int32_t rawR, uint8_t stat
 
 // Zero goal velocity to w.id, up to 3 attempts. On success w.last_raw = 0 (confirmed);
 // if all 3 tries fail, w.last_raw = INT32_MIN (unknown, see the rule in the block header).
-// consec_fail is a per-wheel consecutive failure count, saturates at 255, and is write-only (never read or printed).
+// consec_fail is a per-wheel consecutive-failure counter that saturates at 255; it is read only by its own saturation guard, not for the latch, any write decision, or any print.
 // Not gated by bus_down: this is part of the kill/torque-off path, which must still try after a latch.
 static bool write_vel_zero_ctx(WheelCtx& w) {
   for (uint8_t i = 0; i < 3; ++i) {
