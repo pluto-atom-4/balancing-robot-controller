@@ -41,9 +41,9 @@ static constexpr float    SIM_INIT_THETA_RAD = 0.262f; // start leaning 15 deg
 static constexpr float    GYRO_FILTER_TAU_MS = 50.0f;  // gyro Z low-pass
 static constexpr int      GYRO_CAL_SAMPLES = 100;      // ~1 s at boot, sim at rest
 // Twin wheels (SIM-ONLY, UNVERIFIED). The ONLY place the wheel signs are defined.
-// The sign is applied in write_goal_raw() (new twin code, B09). The old inline write in loop()
-// is still unsigned until B11 retires it. IDs must match the servoId
-// attribute of the servo chips in diagram.json (B07 adds servo2 with servoId "2").
+// The sign is applied in write_goal_raw() only. The old inline write in loop() is unsigned and
+// drives ID 1 only (see the comment above loop()). IDs must match the servoId
+// attribute of the servo chips in diagram.json.
 // A servo chip with no servoId attribute answers as ID 1, so servo2 must carry servoId "2"
 // or it collides with servo1.
 static constexpr uint8_t SERVO_ID_LEFT    = 1;
@@ -75,10 +75,10 @@ static uint32_t hold_until_ms = 0;
 static uint16_t whl_seq = 0;
 static uint32_t whl_sent = 0, whl_dropped = 0, whl_max_emit_us = 0, lastWhlPrintMs = 0;
 static char whl_buf[96];
-// Per-wheel state for the twin. Not used yet: W duplicates the single-wheel globals above
-// (segway_sim, consec_fail, last_written_raw, last_pos, have_last_pos, rd_ok/rd_fail).
-// B09 adds the helpers below; B10 (bring-up) and B11 (loop) wire them in; B12 (emit) and
-// B13 (telemetry) follow. Do not use both at once.
+// Per-wheel state for the twin: W[0] is the left wheel (ID 1), W[1] the right (ID 2).
+// Bring-up in setup() uses W[]. W duplicates the single-wheel globals above (segway_sim,
+// consec_fail, last_written_raw, last_pos, have_last_pos, rd_ok/rd_fail), which loop() still uses.
+// Do not use both at once.
 struct WheelCtx {
   uint8_t  id;
   int8_t   sign;
@@ -171,10 +171,10 @@ static bool stop_chip_best_effort(const char* why, bool force_torque_off = false
   return force_torque_off ? off : false;
 }
 
-// Twin helpers (SIM-ONLY, UNVERIFIED, not hardware-validated). B10 (bring-up) and B11 (loop)
-// wire them in; until then nothing calls them, hence __attribute__((unused)). Their counters
+// Twin helpers (SIM-ONLY, UNVERIFIED, not hardware-validated). Their counters
 // mirror write_vel_zero_with_retries and the inline write in loop(). The write-failure log line
-// (`[dxl] write failed`, write_fail) and the 3-failure stop+latch stay in loop() and are left to B11.
+// (`[dxl] write failed`, write_fail) and the 3-failure stop+latch stay in loop().
+// write_goal_raw has no caller yet, hence __attribute__((unused)) on it only.
 // Sign: see the note at the top (config block), applied only in write_goal_raw(). Do not multiply by .sign anywhere else.
 // Rule (stated once, referred to below): last_raw is the last value CONFIRMED on the chip;
 // INT32_MIN means the chip state is unknown, so the next write_goal_raw always goes out.
@@ -183,7 +183,7 @@ static bool stop_chip_best_effort(const char* why, bool force_torque_off = false
 // if all 3 tries fail, w.last_raw = INT32_MIN (unknown, see the rule in the block header).
 // consec_fail is per-wheel telemetry only and saturates at 255.
 // Not gated by bus_down: this is part of the kill/torque-off path, which must still try after a latch.
-static __attribute__((unused)) bool write_vel_zero_ctx(WheelCtx& w) {
+static bool write_vel_zero_ctx(WheelCtx& w) {
   for (uint8_t i = 0; i < 3; ++i) {
     uint32_t t0 = micros();
     bool ok = dxl.setGoalVelocity(w.id, 0.0f, UNIT_RAW);
@@ -207,8 +207,9 @@ static __attribute__((unused)) bool write_vel_zero_ctx(WheelCtx& w) {
 // Write on change: no bus call if the signed value equals the last confirmed one.
 // A failed write sets last_raw = INT32_MIN (a timed-out write may have landed; see the rule in the block header).
 // Refused after the bus latch: a normal command write must not go out once bus_down is set.
-// Does NOT latch. Task B11 owns the rule: a tick fails if either wheel's write fails, and
-// 3 failed ticks in a row latch both. consec_fail here is per-wheel telemetry only.
+// Does NOT latch. The rule that latches both wheels (a tick fails if either wheel's write fails,
+// 3 failed ticks in a row) is not in this helper and is not wired into loop() yet.
+// consec_fail here is per-wheel telemetry only.
 static __attribute__((unused)) bool write_goal_raw(WheelCtx& w, int32_t raw) {
   if (bus_down) return false;
   int32_t wire = (int32_t)w.sign * raw;
@@ -240,7 +241,7 @@ static __attribute__((unused)) bool write_goal_raw(WheelCtx& w, int32_t raw) {
 // Every torque-off attempt (confirmed or not) sets last_raw = INT32_MIN for that wheel: the chip
 // state is unknown, and no real signed raw equals INT32_MIN (|raw| <= 125), so the next write_goal_raw
 // goes out, including after torque is re-enabled (see the rule in the block header).
-static __attribute__((unused)) bool stop_wheels_best_effort(const char* why, bool force_torque_off = false) {
+static bool stop_wheels_best_effort(const char* why, bool force_torque_off = false) {
   bool zok_all = true;
   for (uint8_t k = 0; k < 2; ++k) {
     bool zok = write_vel_zero_ctx(W[k]);
@@ -282,6 +283,37 @@ static void latch_bus_down() {
 
 
 
+// Bring-up for one wheel, in the order the chip needs: ping (fills the model that
+// Dynamixel2Arduino uses to resolve registers), torque off, velocity mode, goal 0, torque on.
+// Each step runs only if the previous one passed. On any failure: best-effort torque off on
+// this id, and w.last_raw = INT32_MIN (chip state unknown). Runs at boot, before any latch.
+static bool bring_up_wheel(WheelCtx& w) {
+  bool ok = dxl.ping(w.id);
+  Serial.printf("[dxl] ping id=%lu %s\n", (unsigned long)w.id, ok ? "ok" : "FAILED");
+  if (ok) {
+    ok = dxl.torqueOff(w.id);
+    Serial.printf("[dxl] torque_off id=%lu ok=%d\n", (unsigned long)w.id, ok ? 1 : 0);
+  }
+  if (ok) {
+    ok = dxl.setOperatingMode(w.id, OP_VELOCITY);
+    Serial.printf("[dxl] mode_velocity id=%lu ok=%d\n", (unsigned long)w.id, ok ? 1 : 0);
+  }
+  if (ok) {
+    ok = write_vel_zero_ctx(w);
+    Serial.printf("[dxl] goal0 id=%lu ok=%d\n", (unsigned long)w.id, ok ? 1 : 0);
+  }
+  if (ok) {
+    ok = dxl.torqueOn(w.id);
+    Serial.printf("[dxl] torque_on id=%lu ok=%d\n", (unsigned long)w.id, ok ? 1 : 0);
+  }
+  if (!ok) {
+    (void)dxl.torqueOff(w.id);  // best effort, a failed step may have landed
+    w.last_raw = INT32_MIN;
+    Serial.printf("[dxl] bring-up id=%lu failed\n", (unsigned long)w.id);
+  }
+  return ok;
+}
+
 // ===== Arduino entry points =====
 void setup() {
   Serial.begin(115200);
@@ -294,42 +326,33 @@ void setup() {
 
   if (!mpu.begin(MPU_ADDR, &Wire)) {
     Serial.println("[ttl_servo] Failed to find MPU6050 chip");
-    // Ping first: Dynamixel2Arduino resolves registers through the model number a ping fills in,
+    // Ping both ids first: Dynamixel2Arduino resolves registers through the model number a ping fills in,
     // so a write without a prior ping fails even when the servo is present.
-    (void)dxl.ping(DXL_ID);
-    (void)stop_chip_best_effort("no IMU", true);
+    for (uint8_t k = 0; k < 2; ++k) (void)dxl.ping(W[k].id);
+    (void)stop_wheels_best_effort("no IMU", true);
     while (1) { delay(10); }
   }
   mpu.setGyroRange(MPU6050_RANGE_250_DEG);
 
   // Servo bring-up before the (blocking) calibration; the bus was begun above.
-  bool ping_ok = dxl.ping(DXL_ID);
-  Serial.printf("[dxl] ping %s\n", ping_ok ? "ok" : "FAILED");
-  if (!ping_ok) {
-    Serial.println("[dxl] servo not responding, read-only");
-  } else {
-    // The chip boots in position mode: OP_VELOCITY must be set before any
-    // velocity write. Each step is skipped (reported 0) once one fails.
-    bool w1 = dxl.torqueOff(DXL_ID);
-    Serial.printf("[dxl] torque_off=%d\n", w1);
-    bool w2 = w1 && dxl.setOperatingMode(DXL_ID, OP_VELOCITY);
-    Serial.printf("[dxl] mode_velocity=%d\n", w2);
-    bool w3 = w2 && dxl.setGoalVelocity(DXL_ID, 0.0f, UNIT_RAW);
-    Serial.printf("[dxl] goal0=%d\n", w3);
-    bool w4 = w3 && dxl.torqueOn(DXL_ID);
-    Serial.printf("[dxl] torque_on=%d\n", w4);
-    servo_ok = w4;
-    if (!servo_ok) {
-      (void)dxl.torqueOff(DXL_ID);  // best effort, torqueOn may have landed
-      Serial.println("[dxl] config failed, read-only");
+  // Both wheels in order, stopping at the first failure: the stop below forces torque off on
+  // both ids and the bus latches. servo_ok only when both wheels came up.
+  bool all_ok = true;
+  for (uint8_t k = 0; k < 2; ++k) {
+    if (!bring_up_wheel(W[k])) {
+      all_ok = false;
+      break;
     }
   }
+  servo_ok = all_ok;
   if (!servo_ok) {
-    // Blocks boot while the servo is absent. Worst case about 7 timed-out
-    // transactions (ping, 3 zero writes, 3 torque-off), roughly 140 ms in the sim;
-    // up to 12 (about 240 ms) if ping answers and the config fails at its last step
-    // (ping + 4 config steps + the config-fail torque-off + 3 zero writes + 3 torque-off).
-    (void)stop_chip_best_effort("bring-up failed", true);
+    Serial.println("[dxl] bring-up failed, read-only");
+    // Boot-block timing, unmeasured estimate (sim). Worst case: ID 1 fails at its last step with
+    // every transaction timing out. Its bring-up is ping, torque off, mode, goal 0 (3 tries),
+    // torque on and the best-effort torque off (8). The forced stop of both ids is 3 zero writes
+    // and up to 3 torque-offs each (12). About 20 timed-out transactions, roughly 400 ms at the
+    // 20 ms per timeout the earlier single-wheel estimate used (the old single-wheel worst case was 12).
+    (void)stop_wheels_best_effort("bring-up failed", true);
     latch_bus_down();
   }
 
@@ -346,7 +369,7 @@ void setup() {
   }
   if (good < GYRO_CAL_SAMPLES / 2) {
     Serial.println("[ttl_servo] gyro calibration failed (IMU reads), halting");
-    if (!bus_down) (void)stop_chip_best_effort("gyro cal failed", true);
+    if (!bus_down) (void)stop_wheels_best_effort("gyro cal failed", true);
     while (1) { delay(10); }
   }
   gyroZ_bias_rad_s = sum / (float)good;
@@ -367,6 +390,9 @@ void setup() {
   lastWhlPrintMs = lastLoopMs;
 }
 
+// Still the single-wheel loop: it drives ID 1 only (DXL_ID), through the inline write and
+// stop_chip_best_effort. ID 2 gets no goal writes here, and the stops here do not torque off ID 2.
+// It holds goal 0 with torque on from bring-up until the twin loop lands.
 void loop() {
   uint32_t now_ms = millis();
   uint32_t dt_ms = now_ms - lastLoopMs;
