@@ -236,17 +236,19 @@ Log tags are the ones kept from the single-wheel copy: `[ttl_servo]`, `[dxl]`, `
 ```bash
 make wokwi-chips                      # builds the shared chips; the sim target depends on them (needs network on first use)
 pio run -e c3_ctrl_wheels-xiao_c3     # builds the env; not run for this document
-make sim-c3_ctrl_wheels-xiao_c3 WOKWI_ARGS="--scenario scenario_ctrl_wheels.yaml --timeout 20000"   # needs WOKWI_CLI_TOKEN
+make sim-c3_ctrl_wheels-xiao_c3 WOKWI_ARGS="--scenario scenario_ctrl_wheels.yaml --timeout 40000"   # needs WOKWI_CLI_TOKEN
 ```
 
 - The headless run never exits by itself. Exit 42 from the timeout is expected.
 - `scenario_ctrl_wheels.yaml` was not run. Owner-reported: headless `wokwi-cli` runs hit the Free-plan
   CI minute quota on 2026-11-05. Whether the owner's VS Code captures used this scenario is not stated.
 - The scenario waits for `ping id=1 ok` and `ping id=2 ok` (in print order) and then `Sim starts at 15 deg`,
-  then runs about 12 s: 4 s wait, 4 s at 30 deg/s, 4 s at 0. The 20000 ms `--timeout` may be too short if the sim runs
-  slower than real time (see the scenario header); raise it if the last wait is cut off. The sim is headless
+  then runs about 12 s: 4 s wait, 4 s at 30 deg/s, 4 s at 0. The suggested `--timeout` is 40000 ms; the
+  reasoning is in the scenario header (`programs/c3_ctrl_wheels/scenario_ctrl_wheels.yaml`). In short: 40000 ms
+  is a judgement chosen to leave room, not derived or measured, and the sim ran slower than real time (about 31
+  WHL2 lines per second, computed from the 777 WHL2 lines in the 25 s capture of section 10, row b). Not run. The sim is headless
   only and is not a balance test. A failed or missing wait ends at `--timeout` (exit 42), so exit code 42
-  does not prove the pings matched.
+  does not prove the pings matched. A deliberately wrong wait-serial string run (recording the real exit code of a failed wait) is planned in V01 (#304), not run.
 - The fall path needs `PLATFORMIO_BUILD_FLAGS="-D TTL_SERVO_FALL_TEST"` (low gains kp=2, kd=1). Not run.
 - The owner's route is the VS Code Wokwi extension (see the quota note above). Whether the extension
   executes scenario files is not known.
@@ -295,7 +297,7 @@ Owner-reported, sim only. None of these is a hardware result.
 | Run | Build and conditions | Result |
 | --- | --- | --- |
 | (a) VS Code Wokwi capture, 2026-11-05 | Build before #282 (single-ID reads) | 773 WHL2 lines parsed by the FW parser; no gaps; `rawL == -rawR`. |
-| (b) VS Code Wokwi capture, 2026-11-05 | After #282 / B13, 25 s | 777 WHL2 lines parsed; 0 parse failures; 0 seq gaps; `rawL == -rawR`; state 0 only; 155 sim lines with numeric `pos1` and `pos2` and no `ERR`. Last `[dxl]` line: `tx_ok=832 tx_fail=0 rd_ok1=152 rd_fail1=0 rd_ok2=152 rd_fail2=0 max_us=5814`. `max_us` is on the simulated clock and is one longest transaction, not a real-bus number. Tags seen: `[ctrl_wheel]`, `[dxl]`, `[ttl_servo]`. The sim ran slower than real time (about 31 WHL2 lines per second). |
+| (b) VS Code Wokwi capture, 2026-11-05 (scenario not identified; section 7 says it is not stated whether the scenario was used) | After #282 / B13, 25 s | 777 WHL2 lines parsed; 0 parse failures; 0 seq gaps; `rawL == -rawR`; state 0 only; 155 sim lines with numeric `pos1` and `pos2` and no `ERR`. Last `[dxl]` line: `tx_ok=832 tx_fail=0 rd_ok1=152 rd_fail1=0 rd_ok2=152 rd_fail2=0 max_us=5814`. `max_us` is on the simulated clock and is one longest transaction, not a real-bus number. Tags seen: `[ctrl_wheel]`, `[dxl]`, `[ttl_servo]`. The sim ran slower than real time (about 31 WHL2 lines per second). |
 | (c) Webots plus bridge, 60 s | Bridge `--port rfc2217://localhost:4002`, owner run | Both wheels turned together; bridge exit code 0 (as the FW README states). Direction against sign is not settled. |
 
 Also:
