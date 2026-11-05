@@ -2,7 +2,8 @@
 // SIM-ONLY, UNVERIFIED.
 //
 // Golden lines: the 11 accept lines of freecad-workspace
-// poc/ctrl-wheels/CONTRACT.md S7. This test only shows that the formatter
+// poc/ctrl-wheels/CONTRACT.md S7 (literals compared with S7 on freecad-workspace
+// origin/main 9ea88a4; the two sets are equal). This test only shows that the formatter
 // reproduces them; each line's checksum is also recomputed here by body_xor.
 // The reject lines in S7 are parser territory (the WHL2 parser, freecad-workspace
 // ctrl_wheels_msg.py, PR #511) and are not used here.
