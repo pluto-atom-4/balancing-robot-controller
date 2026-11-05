@@ -1,22 +1,27 @@
-// c3_ctrl_wheel: Wokwi program copied from programs/ttl_servo. SIM-ONLY, UNVERIFIED,
+// c3_ctrl_wheels: twin-wheel Wokwi program, copied from programs/ttl_servo. SIM-ONLY, UNVERIFIED,
 // not hardware-validated. No balance claim.
-// It keeps the closed-loop Segway physics PD sim (lib/segway_sim) and the Dynamixel
-// XL330 chip write exactly as ttl_servo does: servo bus Serial1 GPIO20 (RX) / GPIO21 (TX),
-// 57600 baud, protocol 2.0, through the FE-URT-1 adapter (direction handled in hardware),
-// velocity mode. The goal is the simulated wheel's lagged velocity in raw units, capped on
-// the host. Fall: zero-velocity stop (3 tries, torque off if all fail), then hold 1 s and
-// restart. 3 failed writes in a row: stop the chip first (velocity 0, torque off if needed),
-// then latch bus_down (no Dynamixel calls; reset the board to retry).
+// Both wheels: two Dynamixel XL330 chips, ID 1 (left, W[0]) and ID 2 (right, W[1], unconfirmed), on one servo bus,
+// Serial1 GPIO20 (RX) / GPIO21 (TX), 57600 baud, protocol 2.0, through the FE-URT-1 adapter (direction
+// handled in hardware), velocity mode. Each wheel has its own lib/segway_sim plant, ticked with the same
+// MPU6050 gyro Z disturbance and dt. Each goal is that plant's lagged wheel velocity in raw units, capped
+// on the host; the wheel sign is applied in write_goal_raw only.
+// A tick is failed if either write fails. 3 failed ticks in a row: forced torque-off on both ids (zero
+// velocity first), then latch bus_down (no Dynamixel calls; reset the board to retry).
+// Fall (either plant): zero-velocity stop on both ids, torque off on both if a zero write failed; then
+// hold 1 s and restart both. A failed stop latches bus_down.
 // MPU6050 gyro Z is a disturbance rate injected into the sim tilt dynamics. Its IMU I2C is
 // on GPIO8/9, a sim-only Wokwi wiring choice (hardware tilt_servo and balance use GPIO6/7).
-// In addition it prints one line per 20 ms tick, WHL,<seq>,<t_us>,<model_rad_s>,<raw>,<state>*HH
+// It also prints one line per 20 ms tick, WHL,<seq>,<t_us>,<model_rad_s>,<raw>,<state>*HH
 // (format in lib/wheel_frame/wheel_frame.h; state 0 run, 1 hold after a fall, 2 bus down), for
 // the freecad-workspace bridge poc/ctrl-wheel, plus a 1 Hz [ctrl_wheel] sent= dropped=
-// max_emit_us= line. model is the firmware's lagged MODEL velocity, not a measurement.
+// max_emit_us= line. The WHL line carries the LEFT wheel (W[0]) model only. model is the firmware's
+// lagged MODEL velocity, not a measurement. The WHL raw is the UNSIGNED forward raw recomputed from
+// that model; it equals the chip raw only while WHEEL_SIGN_LEFT is +1. No sign is applied to it here
+// (the sign is applied only in write_goal_raw).
 // This is a RELAY to Webots, NOT a closed loop through Webots: nothing is received from Webots.
 // Log tags in this copy still say [ttl_servo] and [dxl].
 // -D TTL_SERVO_FALL_TEST: low gains (kp=2 kd=1) so the frame falls.
-// RFC2217 port 4001 is set in wokwi.toml.
+// RFC2217 port is set in wokwi.toml.
 #include <Arduino.h>
 #include <Wire.h>
 #include <Adafruit_MPU6050.h>
@@ -29,7 +34,6 @@
 static constexpr uint8_t  I2C_SDA = 8;
 static constexpr uint8_t  I2C_SCL = 9;
 static constexpr uint8_t  MPU_ADDR = 0x68;
-static constexpr uint8_t  DXL_ID = 1;
 static constexpr float    DXL_PROTO = 2.0f;
 static constexpr uint32_t DXL_BAUD = 57600;
 static constexpr int      DXL_DIR_PIN = -1;   // FE-URT-1 handles direction in hardware
@@ -41,8 +45,8 @@ static constexpr float    SIM_INIT_THETA_RAD = 0.262f; // start leaning 15 deg
 static constexpr float    GYRO_FILTER_TAU_MS = 50.0f;  // gyro Z low-pass
 static constexpr int      GYRO_CAL_SAMPLES = 100;      // ~1 s at boot, sim at rest
 // Twin wheels (SIM-ONLY, UNVERIFIED). The ONLY place the wheel signs are defined.
-// The sign is applied in write_goal_raw() only. The old inline write in loop() is unsigned and
-// drives ID 1 only (see the comment above loop()). IDs must match the servoId
+// The sign is applied in write_goal_raw() only. Goal writes go through write_goal_raw() (loop) or
+// write_vel_zero_ctx() (stops and bring-up). IDs must match the servoId
 // attribute of the servo chips in diagram.json.
 // A servo chip with no servoId attribute answers as ID 1, so servo2 must carry servoId "2"
 // or it collides with servo1.
@@ -54,47 +58,47 @@ static constexpr int8_t  WHEEL_SIGN_RIGHT = -1;  // unconfirmed mirror
 // ===== Globals =====
 Adafruit_MPU6050 mpu;
 Dynamixel2Arduino dxl(Serial1, DXL_DIR_PIN);
-segway::SegwaySim segway_sim(SIM_INIT_THETA_RAD);
 uint32_t lastLoopMs = 0;
 uint32_t lastPrintMs = 0;
 float gyroZ_bias_rad_s = 0.0f;
 float gyroZ_filtered_rad_s = 0.0f;
 bool servo_ok = false;          // false: chip absent or setup failed, read-only sim
-int32_t last_written_raw = 0;   // raw goal velocity most recently accepted by the chip
 uint32_t write_fail = 0;
 static uint32_t tx_ok, tx_fail, rd_ok, rd_fail, max_us;
 static uint32_t lastBusPrintMs;
 static int32_t last_pos = 0;
 static bool have_last_pos = false;
 static bool bus_down = false;        // latched: no Dynamixel calls until reset
-static uint8_t consec_fail = 0;      // consecutive failed writes (reset on success)
+static uint8_t tick_fail_streak = 0; // consecutive failed ticks (a tick fails if either wheel's write fails)
 static bool holding = false;         // true for 1 s after a fall
 static uint32_t hold_until_ms = 0;
 // WHL stream (sim-only, UNVERIFIED). 96 is a sizing choice: a line is ~45 bytes;
 // wheel_frame::format returns 0 if it does not fit, and the line is then dropped. Not measured.
+// whl_seq is uint16_t: it wraps to 0 after 65536 ticks (about 22 min at 50 Hz). The host bridge
+// handles the 16-bit wrap in its sequence-gap logic.
 static uint16_t whl_seq = 0;
 static uint32_t whl_sent = 0, whl_dropped = 0, whl_max_emit_us = 0, lastWhlPrintMs = 0;
 static char whl_buf[96];
 // Per-wheel state for the twin: W[0] is the left wheel (ID 1), W[1] the right (ID 2).
-// Fields used here: id, sign, last_raw, and consec_fail (telemetry, updated by the write helpers).
-// Unused here: sim, last_pos, have_last_pos, rd_ok, rd_fail. The single-wheel globals above are
-// the ones loop() uses; do not mix the two in one code path.
+// Used: id, sign, sim (each wheel's own plant), last_raw, and consec_fail (per-wheel consecutive
+// failure count, not used for the latch; the latch uses tick_fail_streak).
+// Unused: last_pos, have_last_pos, rd_ok, rd_fail. The 10 Hz read telemetry still uses the
+// globals of the same names.
 struct WheelCtx {
   uint8_t  id;
   int8_t   sign;
   segway::SegwaySim sim;
-  uint8_t  consec_fail;     // failed writes in a row
-  int32_t  last_raw;        // last raw CONFIRMED on the chip (already signed); INT32_MIN = chip state unknown (initial value, and after any failed or unconfirmed step), so the next write_goal_raw always goes out
-  int32_t  last_pos;        // telemetry
-  bool     have_last_pos;
-  uint32_t rd_ok, rd_fail;
+  uint8_t  consec_fail;     // per-wheel consecutive failure count (not used for the latch; the latch uses tick_fail_streak)
+  int32_t  last_raw;       // last raw CONFIRMED on the chip (already signed); INT32_MIN = chip state unknown (initial value, and after any failed or unconfirmed step), so the next write_goal_raw always goes out
+  int32_t  last_pos;        // unused, see above
+  bool     have_last_pos;   // unused, see above
+  uint32_t rd_ok, rd_fail;  // unused, see above
   WheelCtx(uint8_t id_, int8_t sign_)
     : id(id_), sign(sign_), sim(SIM_INIT_THETA_RAD), consec_fail(0),
       last_raw(INT32_MIN), last_pos(0), have_last_pos(false), rd_ok(0), rd_fail(0) {}
 };
 static WheelCtx W[2] = { WheelCtx(SERVO_ID_LEFT, WHEEL_SIGN_LEFT),
                          WheelCtx(SERVO_ID_RIGHT, WHEEL_SIGN_RIGHT) };
-
 
 // ===== Helpers =====
 static float ema_update(float prev, float raw, uint32_t dt_ms) {
@@ -135,55 +139,16 @@ static void whl_emit(float model_rad_s, int32_t raw, uint8_t state) {
   if (el > whl_max_emit_us) whl_max_emit_us = el;
 }
 
-// Goal velocity 0, up to 3 attempts. Each attempt is timed and counted.
-static bool write_vel_zero_with_retries() {
-  for (uint8_t i = 0; i < 3; ++i) {
-    uint32_t t0 = micros();
-    bool ok = dxl.setGoalVelocity(DXL_ID, 0.0f, UNIT_RAW);
-    uint32_t el = micros() - t0;
-    if (el > max_us) max_us = el;
-    if (ok) {
-      ++tx_ok;
-      consec_fail = 0;
-      return true;
-    }
-    ++tx_fail;
-    ++consec_fail;
-  }
-  return false;
-}
-
-// force_torque_off: also run the torque-off sequence after a successful zero
-// write (the chip may be in position mode); returns true only if torque-off
-// was confirmed in that case.
-static bool stop_chip_best_effort(const char* why, bool force_torque_off = false) {
-  bool zok = write_vel_zero_with_retries();
-  Serial.printf("[dxl] stop vel=0 ok=%d\n", zok ? 1 : 0);
-  if (zok) {
-    last_written_raw = 0;
-    if (!force_torque_off) return true;
-  }
-  bool off = false;
-  // Torque-off calls are not counted in tx_ok/tx_fail/max_us. Bring-up ping, torque-off, mode and
-  // torque-on calls are not counted either; the bring-up goal-0 write is counted (it goes through
-  // write_vel_zero_ctx).
-  for (uint8_t i = 0; i < 3 && !off; ++i) off = dxl.torqueOff(DXL_ID);
-  Serial.printf("[safe] torque off %s%s\n", why,
-                off ? "" : " (TORQUE OFF NOT CONFIRMED)");
-  return force_torque_off ? off : false;
-}
-
-// Twin helpers (SIM-ONLY, UNVERIFIED, not hardware-validated). Their counters
-// mirror write_vel_zero_with_retries and the inline write in loop(). The write-failure log line
-// (`[dxl] write failed`, write_fail) and the 3-failure stop+latch stay in loop().
-// write_goal_raw has no caller in this file, hence __attribute__((unused)) on it.
+// Twin helpers (SIM-ONLY, UNVERIFIED, not hardware-validated). tx_ok, tx_fail and max_us are shared
+// by all wheels. consec_fail is per-wheel (not used for the latch). The write-failure log line (`[dxl] write failed`,
+// write_fail) and the failed-tick latch live in loop(), not here.
 // Sign: see the note at the top (config block), applied only in write_goal_raw(). Do not multiply by .sign anywhere else.
-// Rule (stated once, referred to below): last_raw is the last value CONFIRMED on the chip;
-// INT32_MIN means the chip state is unknown, so the next write_goal_raw always goes out.
+// Rule (see here, referred to in other comments): last_raw is the last value CONFIRMED on the chip;
+// INT32_MIN means the chip state is unknown, so the next write for that wheel always goes out.
 
 // Zero goal velocity to w.id, up to 3 attempts. On success w.last_raw = 0 (confirmed);
 // if all 3 tries fail, w.last_raw = INT32_MIN (unknown, see the rule in the block header).
-// consec_fail is per-wheel telemetry only and saturates at 255.
+// consec_fail is a per-wheel consecutive failure count (not used for the latch) and saturates at 255.
 // Not gated by bus_down: this is part of the kill/torque-off path, which must still try after a latch.
 static bool write_vel_zero_ctx(WheelCtx& w) {
   for (uint8_t i = 0; i < 3; ++i) {
@@ -204,17 +169,15 @@ static bool write_vel_zero_ctx(WheelCtx& w) {
   return false;
 }
 
-// Sign: see the note at the top, applied only here. raw is the unsigned forward raw from
+// Goal write for one wheel, called from loop(). raw is the UNSIGNED forward raw from
 // segway::wheel_cmd_to_raw, already capped at +-segway::kWheelCapRaw; do not re-cap here.
-// Write on change: no bus call if the signed value equals the last confirmed one.
-// A failed write sets last_raw = INT32_MIN (a timed-out write may have landed; see the rule in the block header).
+// The wire value is w.sign * raw, applied here and nowhere else.
+// Write on change: no bus call if the signed value equals w.last_raw (the last value confirmed on the chip).
+// A failed write sets w.last_raw = INT32_MIN, so the next call for that wheel always goes out
+// (a timed-out write may have landed; see the rule in the block header).
 // Refused after the bus latch: a normal command write must not go out once bus_down is set.
-// Does NOT latch, and has no caller in this file. loop() ID 1 writes and stop_chip_best_effort do
-// not update W[0].last_raw, so write_goal_raw must not be called for ID 1 until loop() routes its
-// ID 1 write through it (otherwise write-on-change can skip a needed write).
-// The latch rule (a tick fails if either wheel's write fails; 3 failed ticks in a row latch both)
-// is not in this helper. consec_fail here is per-wheel telemetry only.
-static __attribute__((unused)) bool write_goal_raw(WheelCtx& w, int32_t raw) {
+// Does NOT latch. The tick rule (either write fails = failed tick; 3 in a row latch both) is in loop().
+static bool write_goal_raw(WheelCtx& w, int32_t raw) {
   if (bus_down) return false;
   int32_t wire = (int32_t)w.sign * raw;
   if (wire == w.last_raw) return true;
@@ -234,14 +197,16 @@ static __attribute__((unused)) bool write_goal_raw(WheelCtx& w, int32_t raw) {
   return false;
 }
 
-// Stops BOTH wheels, W[0] then W[1]; both are always attempted. Zero velocity with retries per
-// wheel. Then, if any zero write failed or force_torque_off, torque off on EACH id (up to 3 tries
-// each, both ids always attempted). Not gated by bus_down: this is the kill/torque-off path, which
-// must still try after a latch. Does not latch. Same retry counts as stop_chip_best_effort; prints
-// are one line per wheel (stop) and one line per id (torque off).
-// Return: non-force returns true only if both zero writes were ok. Force returns the torque-off
-// result only (off_all), ignoring the zero-write result, as stop_chip_best_effort does, because
+// Stops BOTH wheels, W[0] then W[1]; both are always attempted. Zero velocity with up to 3 tries per
+// wheel (write_vel_zero_ctx). Then, if any zero write failed or force_torque_off, torque off on EACH id
+// (up to 3 tries each, both ids always attempted). Not gated by bus_down: this is the kill/torque-off
+// path, which must still try after a latch. Does not latch. Prints one line per wheel (stop) and one
+// line per id (torque off).
+// Return: non-force returns true only if both zero writes were ok (torque off is then not sent).
+// Force returns the torque-off result only (off_all), ignoring the zero-write result, because
 // torque-off is the stronger stop.
+// Cost on a dead bus (unmeasured, sim): up to 12 transactions (6 zero writes, 6 torque-offs) before
+// the caller latches.
 // Every torque-off attempt (confirmed or not) sets last_raw = INT32_MIN for that wheel: the chip
 // state is unknown, and no real signed raw equals INT32_MIN (|raw| <= 125), so the next write_goal_raw
 // goes out, including after torque is re-enabled (see the rule in the block header).
@@ -253,7 +218,7 @@ static bool stop_wheels_best_effort(const char* why, bool force_torque_off = fal
     if (!zok) zok_all = false;
   }
   if (zok_all && !force_torque_off) return true;
-  // Torque-off transactions are not counted in tx_ok/tx_fail/max_us, as in stop_chip_best_effort.
+  // Torque-off transactions are not counted in tx_ok/tx_fail/max_us.
   bool off_all = true;
   for (uint8_t k = 0; k < 2; ++k) {
     bool off = false;
@@ -285,8 +250,6 @@ static void latch_bus_down() {
   Serial.println("[safe] bus down (reset the board to retry)");
 }
 
-
-
 // Bring-up for one wheel, in the order the chip needs: ping (fills the model that
 // Dynamixel2Arduino uses to resolve registers), torque off, velocity mode, goal 0, torque on.
 // Each step runs only if the previous one passed. On any failure: best-effort torque off on
@@ -316,6 +279,18 @@ static bool bring_up_wheel(WheelCtx& w) {
     Serial.printf("[dxl] bring-up id=%lu failed\n", (unsigned long)w.id);
   }
   return ok;
+}
+
+// Both plants back to the initial lean. The -D TTL_SERVO_FALL_TEST gains are applied at boot and on
+// every restart (this helper runs in both places).
+static void reset_sims() {
+  for (uint8_t k = 0; k < 2; ++k) {
+    W[k].sim.reset(SIM_INIT_THETA_RAD);
+#ifdef TTL_SERVO_FALL_TEST
+    W[k].sim.params.kp = 2.0f;
+    W[k].sim.params.kd = 1.0f;
+#endif
+  }
 }
 
 // ===== Arduino entry points =====
@@ -380,10 +355,8 @@ void setup() {
   Serial.printf("[ttl_servo] gyro Z bias=%.4f rad/s (keep the slider at 0 during boot)\n",
                 gyroZ_bias_rad_s);
 
-  segway_sim.reset(SIM_INIT_THETA_RAD);
+  reset_sims();
 #ifdef TTL_SERVO_FALL_TEST
-  segway_sim.params.kp = 2.0f;
-  segway_sim.params.kd = 1.0f;
   Serial.println("[ttl_servo] FALL TEST: kp=2 kd=1 (expect FELL within ~6 s)");
 #endif
   Serial.println("[ttl_servo] Sim starts at 15 deg; PD should settle to 0. Move gyro Z to push.\n");
@@ -394,9 +367,10 @@ void setup() {
   lastWhlPrintMs = lastLoopMs;
 }
 
-// loop() drives and stops ID 1 only (DXL_ID), through the inline write and stop_chip_best_effort.
-// ID 2 holds goal 0 with torque on after a successful bring-up, and is not torqued off by a loop
-// fall or latch.
+// loop() drives both wheels (ID 1 left, ID 2 right, unconfirmed) and stops both on a fall or a latch.
+// A tick fails if either goal write fails; 3 failed ticks in a row force a stop of both ids, then
+// latch. Not exercised in the sim: the 3-failed-tick latch and bus-down state 2.
+// Ticking two plants per loop: the soft-float cost is unmeasured (sim).
 void loop() {
   uint32_t now_ms = millis();
   uint32_t dt_ms = now_ms - lastLoopMs;
@@ -406,10 +380,9 @@ void loop() {
   }
   lastLoopMs = now_ms;
 
-
   // 1. Real gyro Z (bias removed, filtered) is the disturbance rate.
   sensors_event_t accel, gyro, temp;
-  // On a failed read keep the previous filtered value rather than stale data.
+  // On a failed read keep the previous filtered value rather than a bogus sample.
   if (mpu.getEvent(&accel, &gyro, &temp)) {
     float gz = gyro.gyro.z - gyroZ_bias_rad_s;
     gyroZ_filtered_rad_s = ema_update(gyroZ_filtered_rad_s, gz, dt_ms);
@@ -420,60 +393,67 @@ void loop() {
   // 2. Hold after a fall: physics frozen, wheel stays stopped, then restart.
   if (holding) {
     if ((int32_t)(now_ms - hold_until_ms) >= 0) {
-      segway_sim.reset(SIM_INIT_THETA_RAD);
-#ifdef TTL_SERVO_FALL_TEST
-      segway_sim.params.kp = 2.0f;
-      segway_sim.params.kd = 1.0f;
-#endif
+      reset_sims();
       holding = false;
+      tick_fail_streak = 0;
       Serial.println("[ttl_servo] restart");
     }
   } else {
-    // 3. PD -> physics, same code the native tests exercise. The returned PD
-    // command is ignored: the chip gets the plant's lagged wheel velocity.
+    // 3. PD -> physics, same code the native tests exercise, once per plant with the same gyro Z
+    // and dt. The returned PD commands are ignored: each chip gets its plant's lagged wheel velocity.
     float dt_s = clamp_dt_s(dt_ms);
-    (void)segway_sim.tick_cmd(gyroZ_filtered_rad_s, dt_s);
+    for (uint8_t k = 0; k < 2; ++k) (void)W[k].sim.tick_cmd(gyroZ_filtered_rad_s, dt_s);
 
-    if (segway_sim.has_fallen) {
-      // 4. Fall first, so a fall tick never writes the lagged velocity.
-      Serial.printf("[ttl_servo] FELL theta=%.3f\n", segway_sim.theta_rad);
+    if (W[0].sim.has_fallen || W[1].sim.has_fallen) {
+      // 4. Fall first, so a fall tick never writes the lagged velocity. Either plant falling stops both.
+      uint8_t f = W[0].sim.has_fallen ? 0 : 1;
+      Serial.printf("[ttl_servo] FELL id=%lu theta=%.3f\n",
+                    (unsigned long)W[f].id, W[f].sim.theta_rad);
+      // Non-force stop: torque off on both ids only if a zero write failed; a stop where both zero
+      // writes succeed leaves torque on at zero velocity.
+      // After a latch (servo_ok false) no stop is sent; the latch already forced torque off on both ids.
+      // The 1 s hold and restart still run, and state stays 2.
       if (servo_ok) {
-        if (!stop_chip_best_effort("after fall")) latch_bus_down();
+        if (!stop_wheels_best_effort("after fall")) latch_bus_down();
       }
       hold_until_ms = millis() + 1000;
       holding = true;
     } else if (servo_ok) {
-      // Goal velocity to the chip. Only on change, only if the chip is live.
-      int32_t raw = segway::wheel_cmd_to_raw(segway_sim.wheel_vel_rad_s);
-      if (raw != last_written_raw) {
-        uint32_t t0 = micros();
-        bool wok = dxl.setGoalVelocity(DXL_ID, (float)raw, UNIT_RAW);
-        uint32_t el = micros() - t0;
-        if (el > max_us) max_us = el;
-        if (wok) {
-          ++tx_ok;
-          consec_fail = 0;
-          last_written_raw = raw;
-        } else {
-          ++tx_fail;
-          ++write_fail;
-          ++consec_fail;
-          if (write_fail == 1 || write_fail % 50 == 0)
-            Serial.printf("[dxl] write failed raw=%ld (n=%lu)\n",
-                          (long)raw, (unsigned long)write_fail);
-          if (consec_fail >= 3) {
-            (void)stop_chip_best_effort("before bus latch");
-            latch_bus_down();
-          }
+      // Unsigned raw per wheel; the sign is applied in write_goal_raw. Both writes are always
+      // attempted. A tick fails if either write fails. A failed wheel keeps last_raw = INT32_MIN,
+      // so it retries on every tick; a tick with no bus call (write on change) is not a failure,
+      // so it resets the streak.
+      int32_t raw0 = segway::wheel_cmd_to_raw(W[0].sim.wheel_vel_rad_s);
+      int32_t raw1 = segway::wheel_cmd_to_raw(W[1].sim.wheel_vel_rad_s);
+      bool ok0 = write_goal_raw(W[0], raw0);
+      bool ok1 = write_goal_raw(W[1], raw1);
+      if (ok0 && ok1) {
+        tick_fail_streak = 0;
+      } else {
+        ++write_fail;
+        // raw in this log is the UNSIGNED value passed to write_goal_raw; the wire value is sign * raw.
+        if (write_fail == 1 || write_fail % 50 == 0) {
+          if (!ok0)
+            Serial.printf("[dxl] write failed id=%lu raw=%ld (n=%lu)\n",
+                          (unsigned long)W[0].id, (long)raw0, (unsigned long)write_fail);
+          if (!ok1)
+            Serial.printf("[dxl] write failed id=%lu raw=%ld (n=%lu)\n",
+                          (unsigned long)W[1].id, (long)raw1, (unsigned long)write_fail);
+        }
+        ++tick_fail_streak;
+        if (tick_fail_streak >= 3) {
+          // Forced torque-off on both ids, then the latch.
+          (void)stop_wheels_best_effort("before bus latch", true);
+          latch_bus_down();
         }
       }
     }
   }
 
-
-
-  // 4b. WHL line, once per tick (after the 20 ms gate, outside the servo_ok chip branch)
-  const float whl_model = holding ? 0.0f : segway_sim.wheel_vel_rad_s;
+  // 4b. WHL line, once per tick (after the 20 ms gate, outside the servo_ok chip branch). Left wheel (W[0]) only.
+  // whl_raw is the UNSIGNED raw recomputed from whl_model (no sign here). It equals the chip raw only
+  // while WHEEL_SIGN_LEFT is +1. The WHL2 task will report the per-wheel raws actually written.
+  const float whl_model = holding ? 0.0f : W[0].sim.wheel_vel_rad_s;
   const int32_t whl_raw = segway::wheel_cmd_to_raw(whl_model);
   const uint8_t whl_state = bus_down ? 2 : (holding ? 1 : 0);
   whl_emit(whl_model, whl_raw, whl_state);
@@ -483,9 +463,10 @@ void loop() {
     lastPrintMs = now_ms;
     char pos_s[12] = "NA";
     char dpos_s[12] = "n/a";
+    char cmd_s[12] = "NA";
     if (servo_ok) {
       uint32_t t0 = micros();
-      int32_t pos = dxl.getPresentPosition(DXL_ID);
+      int32_t pos = dxl.getPresentPosition(W[0].id);
       bool rd = (dxl.getLastLibErrCode() == DXL_LIB_OK);
       uint32_t el = micros() - t0;
       if (el > max_us) max_us = el;
@@ -504,19 +485,18 @@ void loop() {
         have_last_pos = false;
       }
     }
-    // cmd, pos and dpos describe ID 1 only. cmd = last value CONFIRMED written to ID 1; stale
-    // (non-zero) after a failed stop. With bus=1, cmd=0 before the first loop write matches the
-    // goal bring-up confirmed on ID 1. With bus=0 cmd only holds the last confirmed value and says
-    // nothing about the chip.
-    // bus=1 means both wheels came up at bring-up (servo_ok). bus=0 means bring-up failed or the bus
-    // is latched.
-    // During the post-fall hold the plant is frozen. The wheel is shown as 0 whether or not
-    // the stop was confirmed; cmd shows the last confirmed goal (a failed stop leaves the chip on
-    // its last goal).
-    float wheel_shown = holding ? 0.0f : segway_sim.wheel_vel_rad_s;
-    Serial.printf("[ttl_servo] sim theta=%.3f rate=%.3f wheel=%.2f cmd=%ld pos=%s dpos=%s gyroZ=%.3f bus=%d\n",
-                  segway_sim.theta_rad, segway_sim.theta_dot_rad_s,
-                  wheel_shown, (long)last_written_raw,
+    // pos and dpos are read from W[0] (left, SERVO_ID_LEFT) only; the read telemetry keeps the globals
+    // last_pos, have_last_pos, rd_ok and rd_fail. cmd = W[0].last_raw, the last value CONFIRMED on
+    // the left wheel; NA when that state is unknown (after a failed write or stop). bus=1 means both wheels
+    // came up at bring-up (servo_ok); bus=0 means bring-up failed or the bus is latched.
+    // During the post-fall hold the plants are frozen. The wheel is shown as 0 whether or not
+    // the stop was confirmed.
+    if (W[0].last_raw != INT32_MIN)
+      snprintf(cmd_s, sizeof(cmd_s), "%ld", (long)W[0].last_raw);
+    float wheel_shown = holding ? 0.0f : W[0].sim.wheel_vel_rad_s;
+    Serial.printf("[ttl_servo] sim theta=%.3f rate=%.3f wheel=%.2f cmd=%s pos=%s dpos=%s gyroZ=%.3f bus=%d\n",
+                  W[0].sim.theta_rad, W[0].sim.theta_dot_rad_s,
+                  wheel_shown, cmd_s,
                   pos_s, dpos_s, gyroZ_filtered_rad_s, servo_ok ? 1 : 0);
   }
 
