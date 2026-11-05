@@ -1,4 +1,4 @@
-// c3_ctrl_wheels: twin-wheel Wokwi program, copied from programs/ttl_servo. SIM-ONLY, UNVERIFIED,
+// c3_ctrl_wheels: twin-wheel Wokwi program, derived from programs/ttl_servo. SIM-ONLY, UNVERIFIED,
 // not hardware-validated. No balance claim.
 // Both wheels: two Dynamixel XL330 chips, ID 1 (left, W[0]) and ID 2 (right, W[1], unconfirmed), on one servo bus,
 // Serial1 GPIO20 (RX) / GPIO21 (TX), 57600 baud, protocol 2.0, through the FE-URT-1 adapter (direction
@@ -16,10 +16,11 @@
 // freecad-workspace twin contract poc/ctrl-wheels (CONTRACT.md S1; the host side is planned), plus a
 // 1 Hz [ctrl_wheel] sent= dropped= max_emit_us= line. model is the LEFT wheel's (W[0]) lagged MODEL
 // velocity, not a measurement. rawL and rawR are the raw values last CONFIRMED on each chip, as written
-// (signed; the sign is applied once, in write_goal_raw). An unknown chip state is reported as 0, and
-// state 2 reports 0 for both.
+// (signed; the sign is applied once, in write_goal_raw). An unknown chip state and a confirmed 0 both
+// report 0, so a consumer cannot tell them apart; the state field and the [dxl] write failed log show
+// faults. State 2 reports 0 for both raws.
 // This is a RELAY to Webots, NOT a closed loop through Webots: nothing is received from Webots.
-// Log tags in this copy still say [ttl_servo] and [dxl].
+// Log tags are [ttl_servo] and [dxl].
 // -D TTL_SERVO_FALL_TEST: low gains (kp=2 kd=1) so the frame falls.
 // RFC2217 port is set in wokwi.toml.
 #include <Arduino.h>
@@ -72,25 +73,24 @@ static bool bus_down = false;        // latched: no Dynamixel calls until reset
 static uint8_t tick_fail_streak = 0; // consecutive failed ticks (a tick fails if either wheel's write fails)
 static bool holding = false;         // true for 1 s after a fall
 static uint32_t hold_until_ms = 0;
-// WHL2 stream (sim-only, UNVERIFIED). 96 is a sizing choice (the buffer includes the NUL). A WHL2 line
-// is about 61 bytes with a 9-character model (62 with a 10-character one; the largest fields are the
-// int32 raws and t_us), so the spare room covers a model text of up to about 40 characters.
-// wheels_frame::format returns 0 if it does not fit, and the line is then dropped. Not measured.
-// whl_seq is uint16_t: it wraps to 0 after 65536 ticks (about 22 min at 50 Hz). The host bridge
-// handles the 16-bit wrap in its sequence-gap logic.
+// WHL2 stream (sim-only, UNVERIFIED). 96 is a sizing choice (the buffer includes the NUL). Worst case
+// is about 61 bytes with int32 raws (11 chars each) and a 9-character model; real raws stay within
+// +-125, so a typical line is about 47-48 bytes. wheels_frame::format returns 0 if it does not fit,
+// and the line is then dropped. Not measured.
+// whl_seq is uint16_t: it wraps to 0 after 65536 ticks (about 22 min at 50 Hz). t_us is uint32 micros(),
+// which wraps after about 71.6 min. The host side must handle both wraps; this repo's tests do not show that.
 static uint16_t whl_seq = 0;
 static uint32_t whl_sent = 0, whl_dropped = 0, whl_max_emit_us = 0, lastWhlPrintMs = 0;
 static char whl_buf[96];
 // Per-wheel state for the twin: W[0] is the left wheel (ID 1), W[1] the right (ID 2).
-// Used: id, sign, sim (each wheel's own plant), last_raw, and consec_fail (per-wheel consecutive
-// failure count, not used for the latch; the latch uses tick_fail_streak).
-// Unused: last_pos, have_last_pos, rd_ok, rd_fail. The 10 Hz read telemetry still uses the
+// In use: id, sign, sim (each wheel's own plant), last_raw.
+// Not used: last_pos, have_last_pos, rd_ok, rd_fail. The 10 Hz read telemetry still uses the
 // globals of the same names.
 struct WheelCtx {
   uint8_t  id;
   int8_t   sign;
   segway::SegwaySim sim;
-  uint8_t  consec_fail;     // per-wheel consecutive failure count (not used for the latch; the latch uses tick_fail_streak)
+  uint8_t  consec_fail;     // per-wheel consecutive failure count, saturates at 255; not used for the latch (tick_fail_streak is)
   int32_t  last_raw;       // last raw CONFIRMED on the chip (already signed); INT32_MIN = chip state unknown (initial value, and after any failed or unconfirmed step), so the next write_goal_raw always goes out
   int32_t  last_pos;        // unused, see above
   bool     have_last_pos;   // unused, see above
@@ -336,10 +336,10 @@ void setup() {
   if (!servo_ok) {
     Serial.println("[dxl] bring-up failed, bus down, no Dynamixel calls");
     // Boot-block timing, unmeasured estimate (sim). Worst case: ID 1 comes up (5 transactions), then
-    // ID 2 fails at its last step with every retry timing out (8: ping, torque off, mode, goal 0 with
-    // 3 tries, torque on, best-effort torque off). The forced stop of both ids is up to 3 zero writes
-    // per wheel (6) and up to 3 torque-offs per id (6), 12. About 25 transactions, roughly 500 ms at
-    // an assumed 20 ms per timeout.
+    // ID 2 fails at goal 0 with every retry timing out (7: ping, torque off, mode, goal 0 with 3 tries,
+    // best-effort torque off; torque on is unreachable after a failed goal 0). The forced stop of both
+    // ids is up to 3 zero writes per wheel (6) and up to 3 torque-offs per id (6), 12. About 24
+    // transactions (5 + 7 + 12), roughly 480 ms at an assumed 20 ms per timeout.
     (void)stop_wheels_best_effort("bring-up failed", true);
     latch_bus_down();
   }
