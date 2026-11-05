@@ -243,7 +243,8 @@ make sim-c3_ctrl_wheels-xiao_c3 WOKWI_ARGS="--scenario scenario_ctrl_wheels.yaml
 - `scenario_ctrl_wheels.yaml` was not run. Owner-reported: headless `wokwi-cli` runs hit the Free-plan
   CI minute quota on 2026-11-05. Whether the owner's VS Code captures used this scenario is not stated.
 - The scenario waits for `ping id=1 ok` and `ping id=2 ok` (in print order) and then `Sim starts at 15 deg`,
-  waits 4 s, then pushes gyro Z to 30 deg/s for 4 s, sets it back to 0 for 4 s, then waits 4 s more. The sim is headless
+  then runs about 12 s: 4 s wait, 4 s at 30 deg/s, 4 s at 0. The 20000 ms `--timeout` may be too short if the sim runs
+  slower than real time (see the scenario header); raise it if the last wait is cut off. The sim is headless
   only and is not a balance test. A failed or missing wait ends at `--timeout` (exit 42), so exit code 42
   does not prove the pings matched.
 - The fall path needs `PLATFORMIO_BUILD_FLAGS="-D TTL_SERVO_FALL_TEST"` (low gains kp=2, kd=1). Not run.
