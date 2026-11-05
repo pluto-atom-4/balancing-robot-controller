@@ -325,16 +325,16 @@ NOT RUN:
 ## 11. Failure-injection presets (V01, sim-only)
 
 > **Status: SIM-ONLY, opt-in, not hardware-validated, not run.** The presets below have not been run.
-> This section records what `programs/c3_ctrl_wheels/main.cpp` says each preset does and which lines to
-> look for. It records no result and no pass. Results are tracked in #304; keep or remove is #309.
+> V01 is the failure-path verification set, tracked in #304 (results). Keep or remove is #309. This
+> section records what `programs/c3_ctrl_wheels/main.cpp` says each preset does and which lines to look
+> for. It records no result and no pass.
 
 ### 11.1 What it is
 
 - `-D C3_CTRL_WHEELS_TEST=1..4` is an opt-in, SIM-ONLY, UNVERIFIED failure injection for the twin-wheel
   fault paths. Default OFF. Set it only through `PLATFORMIO_BUILD_FLAGS`. Not hardware-validated.
-- `test_tick` counts live, non-holding 20 ms passes (1-based). It is incremented right before the goal
-  writes, only in the servo-live non-holding branch. So the fall pass is not counted, and `test_tick`
-  does not advance while holding.
+- The windows below count `test_tick`: live, non-holding 20 ms passes, 1-based. A fall pass and a hold
+  do not advance it.
 
 | Preset | Injected failure | Window in `test_tick` (M = `C3_CTRL_WHEELS_TEST_AFTER`) |
 | --- | --- | --- |
@@ -344,21 +344,14 @@ NOT RUN:
 | 4 | 10 Hz position-read verdict for ID 2 fails (the real read still goes out) | Ticks in [M, M+50): about 1 s of sim time, about 10 reads at 10 Hz |
 
 - `C3_CTRL_WHEELS_TEST_AFTER` (M) defaults to 100, about 2 s of live time at 50 Hz (the sim may run
-  slower). `#error` if below 0. It has no effect without `C3_CTRL_WHEELS_TEST`, because the test block
-  is gated on it.
+  slower; not measured). Without the TEST flag it has no effect, except that a negative value is an
+  `#error` even then.
 - AFTER=0 means every live pass from tick 1. Presets 1 and 2 fail on every such pass. Preset 3 fails only
   on the first pass (window [0, 2) over the 1-based counter). Preset 4 fails on passes 1 to 49 (derived
   from the window; not run).
-- A preset 4 read-fail window stays active through a hold: `test_tick` does not move while holding, and
-  the 10 Hz read block is not gated by `holding`.
-- Injected failures run through the real bookkeeping. They count in `tx_fail`, `write_fail`,
-  `consec_fail` and `rd_fail1` / `rd_fail2`, so the `[dxl]` counters are NOT bus-only numbers. A forced
-  write failure skips the bus call and bypasses write-on-change, so it is attempted even when the signed
-  value equals `last_raw`.
-- Presets 1 and 2 reach the 3-failed-tick latch, and its stop uses real zero and torque-off writes (not
-  injected). Presets 3 and 4 do not latch. No stop path is injected.
-- During the failing ticks, a failed wheel's `last_raw` is unknown, so its `rawL` or `rawR` prints 0 at
-  state 0. A 0 there can mean unknown.
+- Injected failures are counted by the real `[dxl]` bookkeeping, so the counters are NOT bus-only numbers.
+- The full counting, latch and read rules are in the `C3_CTRL_WHEELS_TEST` comment block at the top of
+  `main.cpp`; this section does not repeat them.
 
 ### 11.2 Build
 
@@ -369,10 +362,13 @@ PLATFORMIO_BUILD_FLAGS="-D C3_CTRL_WHEELS_TEST=1" pio run -e c3_ctrl_wheels-xiao
 - Use the one-shot prefix. Do not `export` it; an exported value stays in the shell and affects later
   builds.
 - To set AFTER, add it to the same string, for example `-D C3_CTRL_WHEELS_TEST=2 -D C3_CTRL_WHEELS_TEST_AFTER=50`.
-- A value outside 0..4 is an `#error`, and AFTER below 0 is an `#error`. A non-numeric value counts as 0
-  (off) and silently builds the normal firmware.
-- After testing, rebuild the default env with no flag. The VS Code run uses the same build directory, so
-  a stale test build is the leak risk.
+- A value outside 0..4 is an `#error`, and AFTER below 0 is an `#error`. `-D C3_CTRL_WHEELS_TEST` with no
+  value defines it as 1 (preset 1). An empty value (`-D C3_CTRL_WHEELS_TEST=`) is a loud preprocessor
+  error. A non-numeric token counts as 0 (off) and should build the normal firmware; this follows from the
+  preprocessor rules and was not checked by a build.
+- After testing, rebuild the default env with no flag. The VS Code run is expected to use the same build
+  directory (from the owner's note; unverified). Check the firmware path in
+  `programs/c3_ctrl_wheels/wokwi.toml`, because a stale test build is the leak risk.
 
 ```bash
 pio run -e c3_ctrl_wheels-xiao_c3
@@ -405,7 +401,7 @@ runs the forced stop and latches.
 | Line to look for | Expected from the source |
 | --- | --- |
 | `[dxl] write failed id=1 raw=<raw> (n=1)` | Printed on the first failed tick only. Ticks M+1 and M+2 print nothing (n=2 and n=3 are not printed). |
-| `[dxl] write failed id=2 raw=<raw> (n=1)` | Same tick, same n. `raw` is the unsigned forward value, before the wheel sign. |
+| `[dxl] write failed id=2 raw=<raw> (n=1)` | Same tick, same n. `raw` is the value passed to `write_goal_raw`, before the wheel sign is applied (it can be negative). |
 | `[dxl] stop id=1 vel=0 ok=1` and `[dxl] stop id=2 vel=0 ok=1` | Real zero writes, not injected. |
 | `[safe] torque off before bus latch id=1` and `... id=2` | Printed with no suffix when the torque-off is confirmed; the suffix ` (TORQUE OFF NOT CONFIRMED)` is added only when it is not. |
 | `[dxl] tx_ok=<n> tx_fail=<n> rd_ok1=<n> rd_fail1=<n> rd_ok2=<n> rd_fail2=<n> max_us=<n>` | The latch line. `tx_fail=6` (2 per failed tick, 3 ticks) if nothing else failed. |
@@ -443,9 +439,9 @@ same one-shot and rebuild rules as section 11.2. Do not add the `C3_CTRL_WHEELS_
 | Line to look for | Expected from the source |
 | --- | --- |
 | `[ttl_servo] FALL TEST: kp=2 kd=1 (expect FELL within ~6 s)` | Boot line, printed after the gyro calibration. |
-| `[ttl_servo] FELL id=<1 or 2> theta=<n>` | `id` is the first plant that fell. |
+| `[ttl_servo] FELL id=1 theta=<n>` | `id=1` is expected: `W[0]` is checked first, and both plants get the same input and dt. `id=2` is not expected; it is reachable only if the plants diverged. |
 | `[dxl] stop id=1 vel=0 ok=1` and `[dxl] stop id=2 vel=0 ok=1` | Non-forced stop. No `[safe] torque off` line is expected when both zero writes succeed (torque stays on at zero velocity). |
-| WHL2 lines ending `,0,0,1*HH` | State 1 for about 1 s of `t_us`, with `model` 0.000000, `rawL` 0 and `rawR` 0. Judge the hold by `t_us`, not by line count; the sim runs slower than real time. |
+| WHL2 lines ending `,0,0,1*HH` | State 1 for about 1 s of `t_us`, with `model` 0.000000, `rawL` 0 and `rawR` 0. Judge the hold by `t_us`, not by line count; the sim may run slower (not measured; the section 10 row (b) capture gave about 31 WHL2 lines per second). |
 | `[ttl_servo] restart` | After the 1 s hold. The state returns to 0. |
 
 #### Item 5: read ERR (preset 4)
@@ -467,10 +463,9 @@ this section does not claim that the scenario drives any preset.
 
 ### 11.5 Not covered
 
-- The library's real timeout and error code. The injection replaces the verdict or skips the bus call, so
-  the library's own failure path is not exercised.
-- A failed zero write, a failed torque-off, and the `(TORQUE OFF NOT CONFIRMED)` suffix. No preset fails
-  the stop path, and the header says these lines are not covered.
+- The library's real timeout and error code.
+- A failed zero write, a failed torque-off, and the `(TORQUE OFF NOT CONFIRMED)` suffix: no preset
+  reaches the stop path (see the header comment).
 - Anything on hardware.
 
 ### 11.6 Capture guide (owner, VS Code Wokwi extension)
@@ -488,8 +483,14 @@ Not run. Steps:
    gone.
 
 Optional bring-up variant (not observed): in the VS Code diagram editor, delete `servo2` and its wires.
-Do not commit that change. Expected from the source: `[dxl] ping id=2 FAILED`, `[dxl] bring-up id=2
-failed`, `[dxl] bring-up failed, bus down, no Dynamixel calls`, and WHL2 state 2 from the first WHL2 line.
-The forced stop before the latch sends real writes to the missing chip, so `[dxl] stop id=2 vel=0 ok=0`
-and `[safe] torque off bring-up failed id=2` are also expected from the source, possibly with the
-`(TORQUE OFF NOT CONFIRMED)` suffix if the library reports the missing chip as a failure (not checked).
+Do not commit that change. Expected from the source, in order:
+
+- ID 1 comes up first: `[dxl] ping id=1 ok`, `[dxl] torque_off id=1 ok=1`, `[dxl] mode_velocity id=1 ok=1`,
+  `[dxl] goal0 id=1 ok=1`, `[dxl] torque_on id=1 ok=1`.
+- ID 2 fails: `[dxl] ping id=2 FAILED`, then `[dxl] bring-up id=2 failed`.
+- `[dxl] bring-up failed, bus down, no Dynamixel calls` is printed BEFORE the forced stop, and the forced
+  stop does make Dynamixel calls: `[dxl] stop id=1 vel=0 ok=1`, `[dxl] stop id=2 vel=0 ok=0`,
+  `[safe] torque off bring-up failed id=1`, then `[safe] torque off bring-up failed id=2`, with
+  ` (TORQUE OFF NOT CONFIRMED)` appended if the library reports the missing chip as a failure (not checked).
+- Then the latch lines (`[dxl] tx_ok=...`, `[safe] bus down (reset the board to retry)`), and WHL2 state 2
+  from the first WHL2 line.
