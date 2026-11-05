@@ -43,7 +43,9 @@
 // -D TTL_SERVO_FALL_TEST: low gains (kp=2 kd=1) so the frame falls.
 // -D C3_CTRL_WHEELS_TEST=1..4 (default OFF, set only via PLATFORMIO_BUILD_FLAGS): SIM-ONLY, UNVERIFIED failure
 // injection for the twin-wheel fault paths, not hardware-validated. The #error range check catches numbers
-// outside 0..4 only; a non-numeric value counts as 0 (off). Tick M is C3_CTRL_WHEELS_TEST_AFTER (default 100;
+// outside 0..4 only; a non-numeric value counts as 0 (off). A result run counts as a preset run ONLY if the serial
+// log shows the banner line `[ttl_servo] TEST INJECT ON preset=N after=M ...`; a log without that banner is the
+// default firmware. Tick M is C3_CTRL_WHEELS_TEST_AFTER (default 100;
 // #error if below 0). AFTER=0 means every live pass from tick 1: presets 1 and 2 fail on every such pass,
 // preset 3 fails only on the first (window [0, 2) over the 1-based counter).
 // Presets: 1 both goal writes fail from tick M on; 2 goal writes of ID 2 fail from tick M on; 3 goal writes of
