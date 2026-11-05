@@ -41,6 +41,33 @@
 // attempts per call was not checked; the timeout value is not stated in this file and was not measured), which
 // delays the 20 ms physics/WHL2 cadence. clamp_dt_s caps the dt the sim sees, so part of that stall is hidden.
 // -D TTL_SERVO_FALL_TEST: low gains (kp=2 kd=1) so the frame falls.
+// -D C3_CTRL_WHEELS_TEST=1..4 (default OFF, set only via PLATFORMIO_BUILD_FLAGS): SIM-ONLY, UNVERIFIED failure
+// injection for the twin-wheel fault paths, not hardware-validated. The #error range check catches numbers
+// outside 0..4 only; a non-numeric value counts as 0 (off). A result run counts as a preset run ONLY if the serial
+// log, captured from reset, shows the banner `[ttl_servo] TEST INJECT ON preset=N after=M ...`; a log without the
+// banner is not counted as a preset run and is not proof of default firmware (the banner is printed once at boot,
+// so a capture started later can miss it). Record the banner line with each result. Tick M is C3_CTRL_WHEELS_TEST_AFTER (default 100;
+// #error if below 0). AFTER=0 means every live pass from tick 1: presets 1 and 2 fail on every such pass,
+// preset 3 fails only on the first (window [0, 2) over the 1-based counter).
+// Presets: 1 both goal writes fail from tick M on; 2 goal writes of ID 2 fail from tick M on; 3 goal writes of
+// ID 2 fail for ticks [M, M+2) then recover; 4 the 10 Hz position read verdict for ID 2 fails for ticks [M, M+50).
+// test_tick counts live non-holding 20 ms passes (1-based). It is incremented only in the servo_ok non-holding
+// write branch, right before the goal writes, so the fall pass is not counted and test_tick does not advance
+// while holding. Preset 4's window is therefore about 1 s of sim time and about 10 reads at 10 Hz (not 50 reads),
+// and an active read-fail window stays active through a hold.
+// Injected failures run through the real bookkeeping: tx_fail, write_fail, consec_fail, rd_fail1/rd_fail2 and the
+// [dxl] counters include injected events, so they are NOT bus-only numbers. A forced write failure bypasses
+// write-on-change: it is attempted even when the signed value equals last_raw, and the setGoalVelocity call is skipped.
+// Presets 1 and 2 reach the 3-failed-tick latch, and its stop uses real zero and torque-off writes (not injected).
+// Presets 3 and 4 do not latch. No stop path is injected. It does not cover the library's real timeout or error
+// code, a failed zero write or torque-off, or the TORQUE OFF NOT CONFIRMED lines. Keep or remove: issue #309.
+// Results: #304.
+#if defined(C3_CTRL_WHEELS_TEST) && ((C3_CTRL_WHEELS_TEST < 0) || (C3_CTRL_WHEELS_TEST > 4))
+#error "C3_CTRL_WHEELS_TEST must be 0 (off) or 1..4"
+#endif
+#if defined(C3_CTRL_WHEELS_TEST_AFTER) && (C3_CTRL_WHEELS_TEST_AFTER < 0)
+#error "C3_CTRL_WHEELS_TEST_AFTER must be 0 or more"
+#endif
 // RFC2217 port is set in wokwi.toml.
 #include <Arduino.h>
 #include <Wire.h>
@@ -119,6 +146,39 @@ struct WheelCtx {
 };
 static WheelCtx W[2] = { WheelCtx(SERVO_ID_LEFT, WHEEL_SIGN_LEFT),
                          WheelCtx(SERVO_ID_RIGHT, WHEEL_SIGN_RIGHT) };
+
+#if defined(C3_CTRL_WHEELS_TEST) && (C3_CTRL_WHEELS_TEST > 0)
+// SIM-ONLY failure injection (see the header comment). test_tick is 1-based for the current pass.
+#ifndef C3_CTRL_WHEELS_TEST_AFTER
+#define C3_CTRL_WHEELS_TEST_AFTER 100
+#endif
+static uint32_t test_tick = 0;
+static bool test_fail_write(const WheelCtx& w) {
+#if C3_CTRL_WHEELS_TEST == 1
+  const uint32_t m = (uint32_t)C3_CTRL_WHEELS_TEST_AFTER;
+  (void)w;
+  return test_tick >= m;
+#elif C3_CTRL_WHEELS_TEST == 2
+  const uint32_t m = (uint32_t)C3_CTRL_WHEELS_TEST_AFTER;
+  return w.id == SERVO_ID_RIGHT && test_tick >= m;
+#elif C3_CTRL_WHEELS_TEST == 3
+  const uint32_t m = (uint32_t)C3_CTRL_WHEELS_TEST_AFTER;
+  return w.id == SERVO_ID_RIGHT && test_tick >= m && test_tick < m + 2;
+#else
+  (void)w;
+  return false;
+#endif
+}
+static bool test_fail_read(const WheelCtx& w) {
+#if C3_CTRL_WHEELS_TEST == 4
+  const uint32_t m = (uint32_t)C3_CTRL_WHEELS_TEST_AFTER;
+  return w.id == SERVO_ID_RIGHT && test_tick >= m && test_tick < m + 50;
+#else
+  (void)w;
+  return false;
+#endif
+}
+#endif
 
 // ===== Helpers =====
 static float ema_update(float prev, float raw, uint32_t dt_ms) {
@@ -200,7 +260,8 @@ static bool write_vel_zero_ctx(WheelCtx& w) {
 // Goal write for one wheel, called from loop(). raw is the UNSIGNED forward raw from
 // segway::wheel_cmd_to_raw, already capped at +-segway::kWheelCapRaw; do not re-cap here.
 // The wire value is w.sign * raw, applied here and nowhere else.
-// Write on change: no bus call if the signed value equals w.last_raw (the last value confirmed on the chip).
+// Write on change: no bus call if the signed value equals w.last_raw (the last value confirmed on the chip)
+// (test builds: a forced failure is attempted even when unchanged).
 // A failed write sets w.last_raw = INT32_MIN, so the next call for that wheel always goes out
 // (a timed-out write may have landed; see the rule in the block header).
 // Refused after the bus latch: a normal command write must not go out once bus_down is set.
@@ -208,9 +269,17 @@ static bool write_vel_zero_ctx(WheelCtx& w) {
 static bool write_goal_raw(WheelCtx& w, int32_t raw) {
   if (bus_down) return false;
   int32_t wire = (int32_t)w.sign * raw;
+#if defined(C3_CTRL_WHEELS_TEST) && (C3_CTRL_WHEELS_TEST > 0)
+  // SIM-ONLY failure injection: a forced failure skips the bus call and is counted as a failed write.
+  bool force_fail = test_fail_write(w);
+  if (!force_fail && wire == w.last_raw) return true;
+  uint32_t t0 = micros();
+  bool ok = force_fail ? false : dxl.setGoalVelocity(w.id, (float)wire, UNIT_RAW);
+#else
   if (wire == w.last_raw) return true;
   uint32_t t0 = micros();
   bool ok = dxl.setGoalVelocity(w.id, (float)wire, UNIT_RAW);
+#endif
   uint32_t el = micros() - t0;
   if (el > max_us) max_us = el;
   if (ok) {
@@ -332,6 +401,10 @@ void setup() {
   Wire.begin(I2C_SDA, I2C_SCL);
 
   Serial.println("\n[ttl_servo] Segway physics sim (Wokwi, SIM-ONLY, UNVERIFIED)");
+#if defined(C3_CTRL_WHEELS_TEST) && (C3_CTRL_WHEELS_TEST > 0)
+  Serial.printf("[ttl_servo] TEST INJECT ON preset=%d after=%d (SIM-ONLY, remove before any other use)\n",
+                (int)C3_CTRL_WHEELS_TEST, (int)C3_CTRL_WHEELS_TEST_AFTER);
+#endif
 
   if (!mpu.begin(MPU_ADDR, &Wire)) {
     Serial.println("[ttl_servo] Failed to find MPU6050 chip");
@@ -456,6 +529,10 @@ void loop() {
       // so it resets the streak.
       int32_t raw0 = segway::wheel_cmd_to_raw(W[0].sim.wheel_vel_rad_s);
       int32_t raw1 = segway::wheel_cmd_to_raw(W[1].sim.wheel_vel_rad_s);
+#if defined(C3_CTRL_WHEELS_TEST) && (C3_CTRL_WHEELS_TEST > 0)
+      // SIM-ONLY failure injection: once per servo-live, non-holding pass (this branch), before the goal writes.
+      ++test_tick;
+#endif
       bool ok0 = write_goal_raw(W[0], raw0);
       bool ok1 = write_goal_raw(W[1], raw1);
       if (ok0 && ok1) {
@@ -503,6 +580,10 @@ void loop() {
         uint32_t t0 = micros();
         int32_t pos = dxl.getPresentPosition(W[k].id);
         bool rd = (dxl.getLastLibErrCode() == DXL_LIB_OK);
+#if defined(C3_CTRL_WHEELS_TEST) && (C3_CTRL_WHEELS_TEST > 0)
+        // SIM-ONLY failure injection: the real read above still went out; only the verdict is overridden.
+        rd = rd && !test_fail_read(W[k]);
+#endif
         uint32_t el = micros() - t0;
         if (el > max_us) max_us = el;
         if (rd) {
