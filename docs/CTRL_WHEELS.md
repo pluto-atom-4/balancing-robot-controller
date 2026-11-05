@@ -154,7 +154,7 @@ path; the owner captures in section 10 only cover the normal running path.
 - **Fall (either plant `has_fallen`).** A zero-velocity stop on both IDs. Torque off is sent only if a
   zero write failed. If the stop returns false (any zero write failed), the bus latches. Then a 1 s
   hold: the plants are frozen and no writes go out. Then both plants restart and the failure streak
-  resets. Not run in a simulator (no state 1 in WHL2 was seen).
+  resets. Not run in a simulator (the owner-reported capture (b) in section 10 shows state 0 only).
 - **After a latch.** No goal writes, and no stop is sent on a fall. The hold and restart still run,
   and the state stays 2.
 - **No IMU at boot (`Failed to find MPU6050 chip`).** The firmware pings both IDs (the ping result is
@@ -247,8 +247,7 @@ make sim-c3_ctrl_wheels-xiao_c3 WOKWI_ARGS="--scenario scenario_ctrl_wheels.yaml
 - The scenario waits for `Sim starts at 15 deg`, pushes gyro Z to 30 deg/s for 4 s, sets it back to 0
   for 4 s, then waits 4 s more. The sim is headless only and is not a balance test.
 - The fall path needs `PLATFORMIO_BUILD_FLAGS="-D TTL_SERVO_FALL_TEST"` (low gains kp=2, kd=1). Not run.
-- Owner-reported: headless `wokwi-cli` runs hit the Free-plan CI minute quota on 2026-11-05. The
-  owner's route is the VS Code Wokwi extension.
+- The owner's route is the VS Code Wokwi extension (see the quota note above).
 - RFC2217: `wokwi.toml` sets `rfc2217ServerPort = 4002`. Port 4002 has the same exposure as the 4000
   port: plain TCP with no authentication, and its bind address was not checked. The owner acceptance
   recorded in CLAUDE.md (discussion 228) covers 4000 only and is not extended here. The three-listener
