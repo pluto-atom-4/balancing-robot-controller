@@ -15,7 +15,8 @@
 // (format in lib/wheels_frame/wheels_frame.h; state 0 run, 1 hold after a fall, 2 bus down), for the
 // freecad-workspace twin contract poc/ctrl-wheels (CONTRACT.md S1; the host parser is ctrl_wheels_msg.py
 // there). Evidence so far is the owner's simulator runs only (headless wokwi-cli, VS Code Wokwi over
-// RFC2217 port 4002): 773 WHL2 lines parsed without errors or seq gaps; nothing on hardware. Plus a
+// RFC2217 port 4002): 773 WHL2 lines parsed without errors or seq gaps, for the build BEFORE #282 (single-ID
+// reads); the two-read 10 Hz telemetry of #282 has NOT been run in a simulator; nothing on hardware. Plus a
 // 1 Hz [ctrl_wheel] sent= dropped= max_emit_us= line. model is the LEFT wheel's (W[0]) lagged MODEL
 // velocity, not a measurement. rawL and rawR are the raw values last CONFIRMED on each chip, as written
 // (signed; the sign is applied once, in write_goal_raw). An unknown chip state and a confirmed 0 both
@@ -26,7 +27,10 @@
 // This is a RELAY to Webots, NOT a closed loop through Webots: nothing is received from Webots.
 // Log tags are [ttl_servo] and [dxl].
 // Both IDs are read at 10 Hz (sim-only, UNVERIFIED, not hardware-validated): two blocking reads per 10 Hz tick, timing not measured;
-// reads never count toward write_fail or tick_fail_streak and never latch.
+// reads never count toward write_fail or tick_fail_streak and never latch. Each telemetry tick adds two blocking
+// reads; on a dead or slow bus a tick can stall up to twice the library read timeout (the timeout value is not
+// stated in this file and was not measured), which delays the 20 ms physics/WHL2 cadence. clamp_dt_s caps the dt
+// the sim sees, so part of that stall is hidden.
 // -D TTL_SERVO_FALL_TEST: low gains (kp=2 kd=1) so the frame falls.
 // RFC2217 port is set in wokwi.toml.
 #include <Arduino.h>
@@ -479,6 +483,9 @@ void loop() {
     char dpos_s[2][12] = { "n/a", "n/a" };
     char cmd_s[12] = "NA";
     if (servo_ok) {
+      // Two blocking reads in this tick (ID 1, then ID 2). On a dead or slow bus the tick can stall up to
+      // twice the library read timeout (value not stated here, not measured), delaying the 20 ms cadence;
+      // clamp_dt_s hides part of that stall from the sim.
       for (uint8_t k = 0; k < 2; ++k) {
         uint32_t t0 = micros();
         int32_t pos = dxl.getPresentPosition(W[k].id);
