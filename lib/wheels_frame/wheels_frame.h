@@ -7,9 +7,9 @@
 //   model in rad/s as %.6f (a non-finite model is REFUSED: format returns 0 and
 //   writes no frame; a finite value whose printed text is -0 drops its sign).
 //   rawL and rawR are the raw goal velocities as passed in, as signed decimals
-//   (int32). The firmware will pass the values it writes to each chip (task
-//   B12 wires this in). The formatter does no sign logic and no clamping; no
-//   sign claim is made here (wheel signs unconfirmed).
+//   (int32). The c3_ctrl_wheels firmware passes the values it wrote to each
+//   chip. The formatter does no sign logic and no clamping; no sign claim is
+//   made here (wheel signs unconfirmed).
 //   state: ONE decimal digit 0..2 for both wheels. The formatter does not
 //   enforce that both wheels latch together; the caller is responsible.
 //   0 = run, 1 = hold after a fall, 2 = bus down.
