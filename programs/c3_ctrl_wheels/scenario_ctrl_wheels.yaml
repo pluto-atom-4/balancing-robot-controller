@@ -2,10 +2,14 @@
 # Applied AFTER the boot gyro calibration, so it is not absorbed as bias.
 # Path is relative to the project dir (programs/c3_ctrl_wheels). Run: make sim-c3_ctrl_wheels-xiao_c3 WOKWI_ARGS="--scenario scenario_ctrl_wheels.yaml --timeout 20000"
 # wait-serial matches the two ping lines and the banner printed by programs/c3_ctrl_wheels/main.cpp (bring_up_wheel and setup()); change main.cpp and this file together.
-# This scenario has not been run by the author or the owner. The headless wokwi-cli is blocked by the Free-plan CI minute quota (owner-reported 2026-11-05).
+# Not run headless (quota-blocked, owner-reported 2026-11-05); whether the owner's VS Code route ever ran it is not known (see docs/CTRL_WHEELS.md section 7).
 # A missing ping line makes the run hang until --timeout, which is also exit 42, so a typo would look like the normal timeout.
-# rotationZ is in deg/s (30 deg/s = 0.524 rad/s). Steps total ~12 s after the banner; the run does not
-# end by itself, so --timeout stops it (exit 42 is expected). 20000 ms leaves roughly 7 s margin for boot.
+# rotationZ is in deg/s (30 deg/s = 0.524 rad/s). The steps total about 12 s after the banner. Boot before the banner
+# takes at least about 2 s from code alone (setup() delay(1000) plus the gyro calibration of 100 reads with delay(10)),
+# plus both bring-up sequences with an unmeasured library timeout per transaction. It is not known whether --timeout is
+# wall-clock or simulation time, and the owner-reported sim ran slower than real time (about 31 WHL2 lines per second
+# against 50 nominal), so 20000 ms may be too short: raise --timeout if the final wait is cut off. The run does not
+# end by itself, so --timeout stops it (exit 42 is expected).
 name: c3_ctrl_wheels gyro Z push
 version: 1
 steps:
