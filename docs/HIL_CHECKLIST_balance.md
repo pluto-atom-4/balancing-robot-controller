@@ -80,6 +80,13 @@ hardware or is a sim-model value; none is a C3 measurement.
   supply OFF instead of unplugging a powered bus.
 - **G9. Do not disable a firmware kill path** to get a test through. Changing `programs/balance/config.h`
   or a kill path needs a design issue [CLAUDE.md, "Balance safety design"].
+- **G10. No simulator test macro in a flashed firmware.** The sim-only injection macro `C3_CTRL_WHEELS_TEST`
+  (program `programs/c3_ctrl_wheels`, Wokwi only; kept by the owner's decision in
+  `pluto-atom-4/balancing-robot-controller#309` to keep improving the simulation) must be REMOVED before any
+  firmware is uploaded to a physical dev board. The balance env does not contain it, so for `balance-xiao_c3`
+  this is a leak check: the ELF must have 0 `TEST INJECT` strings (the check is in step 2). If the owner ever
+  flashes `c3_ctrl_wheels` to a board, first remove the macro (its block in `programs/c3_ctrl_wheels/main.cpp`)
+  and rebuild without `PLATFORMIO_BUILD_FLAGS`. Do not skip this to get a test through.
 
 Commands (from `CLAUDE.md`, "Development Commands" and "Serial Debugging"): the upload form is
 `pio run -e <env> -t upload`; the monitor form is `pio device monitor -e <env>` at 115200 baud. The
@@ -123,6 +130,8 @@ Running this step is the acceptance; see open decision (e).
 **Action.**
 ```bash
 cd ~/Documents/platform-io-workspace/balancing-robot-controller
+pio run -e balance-xiao_c3
+strings .pio/build/balance-xiao_c3/firmware.elf | grep -c "TEST INJECT"   # expect 0 (G10)
 pio run -e balance-xiao_c3 -t upload
 pio device monitor -e balance-xiao_c3 | tee balance_boot.log
 ```
@@ -156,7 +165,7 @@ step 3), so whether the write happened is NOT CHECKED; record the Operating Mode
 
 **Record.** Paste the boot lines. ID 1 answered / not answered / unknown. ID 2 answered / not answered /
 unknown. Gyro bias y: ____ rad/s.
-- `PASS` only if the `[wheel] XL330 ready ... ids=1/2` line, `[imu] ready` and `[imu] bias ok` all appear.
+- `PASS` only if the ELF has 0 `TEST INJECT` strings (G10), the `[wheel] XL330 ready ... ids=1/2` line, `[imu] ready` and `[imu] bias ok` all appear.
 - `FAIL` otherwise (write the missing or faulted line).
 - `NOT CHECKED` if the boot was not captured.
 
