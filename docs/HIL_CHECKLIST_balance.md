@@ -80,7 +80,7 @@ hardware or is a sim-model value; none is a C3 measurement.
   supply OFF instead of unplugging a powered bus.
 - **G9. Do not disable a firmware kill path** to get a test through. Changing `programs/balance/config.h`
   or a kill path needs a design issue [CLAUDE.md, "Balance safety design"].
-- **G10. No simulator test macro in a flashed firmware.** The sim-only injection macro `C3_CTRL_WHEELS_TEST`
+- **G10. The balance build excludes the sim test macro; do not flash `c3_ctrl_wheels-xiao_c3` in this run.** The sim-only injection macro `C3_CTRL_WHEELS_TEST`
   (program `programs/c3_ctrl_wheels`, Wokwi only) is kept for simulation work by the owner's decision of
   2026-11-05, recorded in a comment on `pluto-atom-4/balancing-robot-controller#309`, and must be REMOVED
   before any firmware is uploaded to a physical dev board. The balance env builds only `programs/balance`
@@ -89,7 +89,8 @@ hardware or is a sim-model value; none is a C3 measurement.
   reaches any build), and the ELF has 0 `TEST INJECT` strings. They do not detect a macro in sim source.
   If the owner ever flashes `c3_ctrl_wheels` to a board, first remove the macro code from
   `programs/c3_ctrl_wheels/main.cpp` (a code change with its own issue and review) and build without the flag.
-  Do not skip this to get a test through.
+  This checklist flashes only `balance-xiao_c3` / `balance-xiao_c3-pid` (and the c3_probe / c3_facts bench envs); do not flash
+  `c3_ctrl_wheels-xiao_c3` in this run. Do not skip this to get a test through.
 
 Commands (from `CLAUDE.md`, "Development Commands" and "Serial Debugging"): the upload form is
 `pio run -e <env> -t upload`; the monitor form is `pio device monitor -e <env>` at 115200 baud. The
@@ -133,7 +134,7 @@ Running this step is the acceptance; see open decision (e).
 **Action.**
 ```bash
 cd ~/Documents/platform-io-workspace/balancing-robot-controller
-env | grep PLATFORMIO_BUILD_FLAGS   # expect no output (G10)
+env | grep PLATFORMIO_BUILD_FLAGS   # expect no output (G10); if it prints, run `unset PLATFORMIO_BUILD_FLAGS`, repeat until silent, record the printed value on the G10 line
 pio run -e balance-xiao_c3
 strings .pio/build/balance-xiao_c3/firmware.elf | grep -c "TEST INJECT"   # expect 0 (G10)
 pio run -e balance-xiao_c3 -t upload
