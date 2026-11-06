@@ -245,11 +245,11 @@ make sim-c3_ctrl_wheels-xiao_c3 WOKWI_ARGS="--scenario scenario_ctrl_wheels.yaml
 - The scenario waits for `ping id=1 ok` and `ping id=2 ok` (in print order) and then `Sim starts at 15 deg`,
   then runs about 12 s: 4 s wait, 4 s at 30 deg/s, 4 s at 0. The suggested `--timeout` is 40000 ms; the
   reasoning is in the scenario header (`programs/c3_ctrl_wheels/scenario_ctrl_wheels.yaml`). In short: 40000 ms
-  is a judgement chosen to leave room, not derived or measured. The WHL2 rate differed between runs (host time): about 31
-  WHL2 lines per second in section 10 row (b) (777 lines in a 25 s capture), about 47 in row (d) (999 lines in about 21.4 s), and about 51 during the row (f) holds (51 lines in about 1.00 s each). It is not known whether --timeout is wall-clock or sim time. Scenario not run. The sim is headless
+  is a judgement chosen to leave room, not derived or measured.
+  It is not known whether --timeout is wall-clock or sim time, and the simulator ran between 0.63 and 0.98 of host time in the five captured runs (table in the section 10 note), so it can run slower than real time and the speed differs between runs. Scenario not run. The sim is headless
   only and is not a balance test. A failed or missing wait ends at `--timeout` (exit 42), so exit code 42
   does not prove the pings matched. A deliberately wrong wait-serial string run (recording the real exit code of a failed wait) is planned in V01 (#304), not run.
-- The fall path needs `PLATFORMIO_BUILD_FLAGS="-D TTL_SERVO_FALL_TEST"` (low gains kp=2, kd=1). Run: section 10 row (f), owner-reported.
+- The fall path needs `PLATFORMIO_BUILD_FLAGS="-D TTL_SERVO_FALL_TEST"` (low gains kp=2, kd=1). Run: section 10 row (f), captured by the owner (see section 10).
 - The owner's route is the VS Code Wokwi extension (see the quota note above). Whether the extension
   executes scenario files is not known.
 - RFC2217: `wokwi.toml` sets `rfc2217ServerPort = 4002`. Port 4002 has the same exposure as the 4000
@@ -292,12 +292,12 @@ make sim-c3_ctrl_wheels-xiao_c3 WOKWI_ARGS="--scenario scenario_ctrl_wheels.yaml
 
 ## 10. Verification status
 
-Owner-reported, sim only. None of these is a hardware result.
+Sim only. Rows (b) and (d) to (h) were captured by the owner with a host-side pyserial script over rfc2217://localhost:4002; the numbers were then checked by the main session against the saved capture files. Rows (a) and (c) are owner-reported. None of these is a hardware result.
 
 | Run | Build and conditions | Result |
 | --- | --- | --- |
 | (a) VS Code Wokwi capture, 2026-11-05 | Build before #282 (single-ID reads) | 773 WHL2 lines parsed by the FW parser; no gaps; `rawL == -rawR`. |
-| (b) VS Code Wokwi capture, 2026-11-05 (scenario not identified; section 7 says it is not stated whether the scenario was used) | After #282 / B13, 25 s | 777 WHL2 lines parsed; 0 parse failures; 0 seq gaps; `rawL == -rawR`; state 0 only; 155 sim lines with numeric `pos1` and `pos2` and no `ERR`. Last `[dxl]` line: `tx_ok=832 tx_fail=0 rd_ok1=152 rd_fail1=0 rd_ok2=152 rd_fail2=0 max_us=5814`. `max_us` is on the simulated clock and is one longest transaction, not a real-bus number. The last 1 Hz `[dxl]` line (rd_ok1=152) precedes the final 3 of the 155 sim lines in that capture. Tags seen: `[ctrl_wheel]`, `[dxl]`, `[ttl_servo]`. The WHL2 rate differed between runs (about 31 WHL2 lines per second in this capture, host time; rows (d) and (f) gave about 47 and about 51). |
+| (b) VS Code Wokwi capture, 2026-11-05 (scenario not identified; section 7 says it is not stated whether the scenario was used) | After #282 / B13, 25 s | 777 WHL2 lines parsed; 0 parse failures; 0 seq gaps; `rawL == -rawR`; state 0 only; 155 sim lines with numeric `pos1` and `pos2` and no `ERR`. Last `[dxl]` line: `tx_ok=832 tx_fail=0 rd_ok1=152 rd_fail1=0 rd_ok2=152 rd_fail2=0 max_us=5814`. `max_us` is on the simulated clock and is one longest transaction, not a real-bus number. The last 1 Hz `[dxl]` line (rd_ok1=152) precedes the final 3 of the 155 sim lines in that capture. Tags seen: `[ctrl_wheel]`, `[dxl]`, `[ttl_servo]`. The t_us span of the WHL2 lines is 16.496 s (777 lines, about 47 per sim second); the 25 s host capture window began before the sim produced lines, so no host-time ratio is given for this run (see the table in the note below). |
 | (c) Webots plus bridge, 60 s | Bridge `--port rfc2217://localhost:4002`, owner run | Both wheels turned together; bridge exit code 0 (as the FW README states). Direction against sign is not settled. |
 | (d) preset 1 (counted run) | `-D C3_CTRL_WHEELS_TEST=1`, banner `[ttl_servo] TEST INJECT ON preset=1 after=100 (SIM-ONLY, remove before any other use)` seen in a capture from reset | 999 WHL2 lines (101 state 0, 898 state 2), 0 seq gaps. `[dxl] write failed id=1 raw=92 (n=1)` and `id=2 raw=92 (n=1)` once each; `[dxl] stop id=1 vel=0 ok=1` and `id=2 vel=0 ok=1`; `[safe] torque off before bus latch id=1` and `id=2` with no suffix; latch line `tx_ok=192 tx_fail=6 rd_ok1=20 rd_fail1=0 rd_ok2=20 rd_fail2=0 max_us=5814`; `[safe] bus down (reset the board to retry)`. WHL2 seq 99 and 100: state 0 with rawL 0 and rawR 0 (the two failing ticks, raws unknown); state 2 from seq 101 (the latch tick), 898 state-2 lines with rawL and rawR 0 and a nonzero changing model, seq contiguous across the latch. After the latch the 10 Hz line shows `cmd=NA pos1=NA dpos1=n/a pos2=NA dpos2=n/a bus=0` and only the three `[dxl] tx_ok` lines (two before, one latch) appear in the capture. |
 | (e) preset 4 (counted run) | `-D C3_CTRL_WHEELS_TEST=4`, banner `[ttl_servo] TEST INJECT ON preset=4 after=100 (SIM-ONLY, remove before any other use)` seen from reset | 622 WHL2 lines, all state 0, 0 seq gaps. 10 sim lines with `pos2=ERR dpos2=n/a` while `pos1` stayed numeric; last 1 Hz line `rd_fail1=0 rd_fail2=10 tx_fail=0`; no `[safe]` line and no write-failed line. First good line after the window: `pos2=2274 dpos2=n/a`; the next: `pos2=2374 dpos2=100`. |
@@ -306,6 +306,18 @@ Owner-reported, sim only. None of these is a hardware result.
 | (h) preset 3 (NOT counted) | `-D C3_CTRL_WHEELS_TEST=3`; capture started after boot, no banner | Not a counted preset run. Observations only: 719 WHL2 lines, all state 0, 0 seq gaps; one `[dxl] write failed id=2 raw=-117 (n=1)`; no stop line, no `[safe]` line, no bus down; later 1 Hz lines show `tx_fail=2`; WHL2 seq 99 and 100 show rawL -117 with rawR 0, and rawR returns to 116 at seq 101. |
 
 Notes on rows (d) to (h): after each test run the owner rebuilt the default env and counted `TEST INJECT` strings in the ELF (0). The section 11.2 boot-log check (no banner line at boot after the rebuild) was not done. The counters (`tx_fail`, `rd_fail`) in (d) to (h) include injected failures. The injection skips the bus call, so these runs do not exercise the library's real timeout or error code.
+
+Simulator speed against host time, for the five captured runs. Ratio = t_us span of the WHL2 lines over the host-time span from the first to the last WHL2 line. Captured by the owner with a host-side pyserial script over rfc2217://localhost:4002; checked by the main session against the saved capture files. Sim only.
+
+| Capture | WHL2 lines | Sim span (s) | Host span (s) | Sim / host | WHL2 per sim s |
+| --- | --- | --- | --- | --- | --- |
+| row (d) preset 1 | 999 | 20.181 | 21.425 | 0.94 | 49.5 |
+| row (g) preset 2 (not counted) | 1218 | 24.454 | 24.833 | 0.985 | 49.8 |
+| row (h) preset 3 (not counted) | 719 | 15.703 | 24.830 | 0.63 | 45.8 |
+| row (e) preset 4 | 622 | 13.635 | 21.224 | 0.64 | 45.6 |
+| row (f) fall | 765 | 16.359 | 22.024 | 0.74 | 46.8 |
+
+The simulator ran between 0.63 and 0.98 of host time, so it can run slower than real time, and the speed differs from run to run. It is not known whether `--timeout` counts wall-clock or sim time.
 
 Also:
 
@@ -356,8 +368,8 @@ NOT RUN (a run that is recorded above as observed is not listed; presets 2 and 3
 | 3 | Goal writes of ID 2 fail, then recover | Ticks in [M, M+2): 2 ticks |
 | 4 | 10 Hz position-read verdict for ID 2 fails (the real read still goes out) | Ticks in [M, M+50): about 1 s of sim time, about 10 reads at 10 Hz; holds do not advance the count, so the window stays active through a hold |
 
-- `C3_CTRL_WHEELS_TEST_AFTER` (M) defaults to 100, about 2 s of live time at 50 Hz (the WHL2 rate differs between runs;
-  see section 7). Without the TEST flag it has no effect, except that a negative value is an
+- `C3_CTRL_WHEELS_TEST_AFTER` (M) defaults to 100, about 2 s of live time at 50 Hz (the sim speed differs between runs;
+  see the table in section 10). Without the TEST flag it has no effect, except that a negative value is an
   `#error` even then.
 - AFTER=0 means every live pass from tick 1. Presets 1 and 2 fail on every such pass. Preset 3 fails only
   on the first pass (window [0, 2) over the 1-based counter). Preset 4 fails on passes 1 to 49 (derived
@@ -453,7 +465,7 @@ same one-shot and rebuild rules as section 11.2. Do not add the `C3_CTRL_WHEELS_
 | `[ttl_servo] FALL TEST: kp=2 kd=1 (expect FELL within ~6 s)` | Boot line, printed after the gyro calibration. |
 | `[ttl_servo] FELL id=1 theta=<n>` | `id=1` is expected: `W[0]` is checked first, and both plants get the same input and dt. `id=2` is not expected; it is reachable only if the plants diverged. |
 | `[dxl] stop id=1 vel=0 ok=1` and `[dxl] stop id=2 vel=0 ok=1` | Non-forced stop. No `[safe] torque off` line is expected when both zero writes succeed (torque stays on at zero velocity). |
-| WHL2 lines ending `,0,0,1*HH` | State 1 for about 1 s of `t_us`, with `model` 0.000000, `rawL` 0 and `rawR` 0. Judge the hold by `t_us`, not by line count; the WHL2 rate differed between runs (section 7: about 31 per second in row (b), about 47 in row (d), about 51 in the row (f) holds, host time). |
+| WHL2 lines ending `,0,0,1*HH` | State 1 for about 1 s of `t_us`, with `model` 0.000000, `rawL` 0 and `rawR` 0. Judge the hold by `t_us`, not by line count; the simulator ran between 0.63 and 0.98 of host time across the five captured runs (table in section 10), so judge the hold by `t_us`. |
 | `[ttl_servo] restart` | After the 1 s hold. The state returns to 0. |
 
 #### Item 5: read ERR (preset 4)
@@ -483,14 +495,14 @@ this section does not claim that the scenario drives any preset.
 
 ### 11.6 Capture guide (owner, VS Code Wokwi extension)
 
-Not run. Steps:
+Steps (used by the owner for the section 10 rows (d) to (h), 2026-11-05):
 
 1. The main session builds the preset ELF with the one-shot prefix (section 11.2).
 2. Start the simulator for `programs/c3_ctrl_wheels`. The RFC2217 port is 4002 (`wokwi.toml`).
 3. Start a small `python3 -I` pyserial script before (re)starting the sim, so the boot banner is captured.
    The script opens `rfc2217://localhost:4002`, retries until the port opens, prefixes each line with the
    host time, writes `cap_<item>.log`, and stops after about 25 s. pyserial is needed; not checked here.
-   Keep the script outside the repo.
+   The capture script (`cap.py`) and the check script (`chk.py`) live outside this repo on the owner's machine and are not part of any PR.
 4. Paste back `grep -v '^WHL2' cap_<item>.log | head -80`, plus the WHL2 lines around the event.
 5. Restore the default build afterwards (section 11.2): rebuild without the flag and confirm the banner is
    gone.
