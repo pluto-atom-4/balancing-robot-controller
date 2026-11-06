@@ -299,6 +299,13 @@ Owner-reported, sim only. None of these is a hardware result.
 | (a) VS Code Wokwi capture, 2026-11-05 | Build before #282 (single-ID reads) | 773 WHL2 lines parsed by the FW parser; no gaps; `rawL == -rawR`. |
 | (b) VS Code Wokwi capture, 2026-11-05 (scenario not identified; section 7 says it is not stated whether the scenario was used) | After #282 / B13, 25 s | 777 WHL2 lines parsed; 0 parse failures; 0 seq gaps; `rawL == -rawR`; state 0 only; 155 sim lines with numeric `pos1` and `pos2` and no `ERR`. Last `[dxl]` line: `tx_ok=832 tx_fail=0 rd_ok1=152 rd_fail1=0 rd_ok2=152 rd_fail2=0 max_us=5814`. `max_us` is on the simulated clock and is one longest transaction, not a real-bus number. Tags seen: `[ctrl_wheel]`, `[dxl]`, `[ttl_servo]`. The sim ran slower than real time (about 31 WHL2 lines per second). |
 | (c) Webots plus bridge, 60 s | Bridge `--port rfc2217://localhost:4002`, owner run | Both wheels turned together; bridge exit code 0 (as the FW README states). Direction against sign is not settled. |
+| (d) preset 1 (counted run) | `-D C3_CTRL_WHEELS_TEST=1`, banner `TEST INJECT ON preset=1 after=100` seen in a capture from reset | 999 WHL2 lines (101 state 0, 898 state 2), 0 seq gaps. `[dxl] write failed id=1 raw=92 (n=1)` and `id=2 raw=92 (n=1)` once each; `[dxl] stop id=1 vel=0 ok=1` and `id=2 vel=0 ok=1`; `[safe] torque off before bus latch id=1` and `id=2` with no suffix; latch line `tx_ok=192 tx_fail=6 rd_ok1=20 rd_fail1=0 rd_ok2=20 rd_fail2=0 max_us=5814`; `[safe] bus down (reset the board to retry)`. WHL2 seq 99 and 100: state 0 with rawL 0 and rawR 0 (the two failing ticks, raws unknown); state 2 from seq 101 (the latch tick), 898 state-2 lines with rawL and rawR 0 and a nonzero changing model, seq contiguous across the latch. After the latch the 10 Hz line shows `cmd=NA pos1=NA dpos1=n/a pos2=NA dpos2=n/a bus=0` and only the three `[dxl] tx_ok` lines (two before, one latch) appear in the capture. |
+| (e) preset 4 (counted run) | `-D C3_CTRL_WHEELS_TEST=4`, banner `preset=4 after=100` seen from reset | 622 WHL2 lines, all state 0, 0 seq gaps. 10 sim lines with `pos2=ERR dpos2=n/a` while `pos1` stayed numeric; last 1 Hz line `rd_fail1=0 rd_fail2=10 tx_fail=0`; no `[safe]` line and no write-failed line. First good line after the window: `pos2=2274 dpos2=n/a`; the next: `pos2=2374 dpos2=100`. |
+| (f) fall | `-D TTL_SERVO_FALL_TEST`, no injection (no banner expected) | 765 WHL2 lines (510 state 0, 255 state 1), 0 seq gaps. Boot line `[ttl_servo] FALL TEST: kp=2 kd=1 (expect FELL within ~6 s)`; 5 `[ttl_servo] FELL id=1 theta=...` lines (`\|theta\|` 0.79 to 0.83) and 5 `[ttl_servo] restart` lines; 10 stop lines, all `ok=1` (id=1 and id=2); no `[safe] torque off` line; no bus down. 5 state-1 holds of 51 WHL2 lines each, t_us span 0.988 to 1.002 s, model 0 and rawL and rawR 0 in all of them. |
+| (g) preset 2 (NOT counted) | `-D C3_CTRL_WHEELS_TEST=2`; the capture started after boot (first captured WHL2 is seq 10), so the banner is not in the log | Not a counted preset run under the banner rule. Observations only: 1218 WHL2 lines (91 state 0, 1127 state 2), 0 seq gaps; one `[dxl] write failed id=2 raw=61 (n=1)` and no id=1 line; stop lines and `[safe] torque off before bus latch id=1` and `id=2`; latch line `tx_fail=3`; WHL2 seq 99 and 100 show rawL 61 and 68 (still updated) with rawR 0 at state 0; state 2 from seq 101 with raws 0. |
+| (h) preset 3 (NOT counted) | `-D C3_CTRL_WHEELS_TEST=3`; capture started after boot, no banner | Not a counted preset run. Observations only: 719 WHL2 lines, all state 0, 0 seq gaps; one `[dxl] write failed id=2 raw=-117 (n=1)`; no stop line, no `[safe]` line, no bus down; later 1 Hz lines show `tx_fail=2`; WHL2 seq 99 and 100 show rawL -117 with rawR 0, and rawR returns to 116 at seq 101. |
+
+Notes on rows (d) to (h): after each test run the owner rebuilt the default env and reported 0 `TEST INJECT` strings in the elf. The counters (`tx_fail`, `rd_fail`) in (d) to (h) include injected failures. The injection skips the bus call, so these runs do not exercise the library's real timeout or error code.
 
 Also:
 
@@ -308,12 +315,12 @@ Also:
 
 NOT RUN:
 
-- 3-failed-tick latch
-- bus-down state 2
-- one-ID write failure
+- 3-failed-tick latch with a REAL (not injected) bus failure
+- bus-down state 2 after a real bus failure
+- one-ID write failure counted as a preset run (preset 2 and 3 captures lacked the banner; re-run from reset)
 - the headless scenario run (`scenario_ctrl_wheels.yaml`)
-- a fall seen in WHL2 (state 1)
-- the ERR read path
+- bring-up variant with servo2 deleted
+- a failed zero write or torque-off (not injected)
 - a bring-up failure at ID 2
 - gyro-cal or no-IMU halt
 - RFC2217 with three listeners
@@ -326,10 +333,12 @@ NOT RUN:
 
 ## 11. Failure-injection presets (V01, sim-only)
 
-> **Status: SIM-ONLY, opt-in, not hardware-validated, not run.** The presets below have not been run.
+> **Status: SIM-ONLY, opt-in, not hardware-validated.** First owner-reported results (2026-11-05) are in
+> section 10 rows (d) to (h). Anything not in those rows has not been run.
 > V01 is the failure-path verification set, tracked in #304 (results). Keep or remove is #309. This
 > section records what `programs/c3_ctrl_wheels/main.cpp` says each preset does and which lines to look
-> for. It records no result and no pass.
+> for. The lines below are expected from the source, not observed, except where section 10 records an
+> observation. No hardware result.
 
 ### 11.1 What it is
 
