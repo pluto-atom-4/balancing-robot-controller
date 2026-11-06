@@ -83,7 +83,8 @@ hardware or is a sim-model value; none is a C3 measurement.
 - **G10. The balance build excludes the sim test macro; do not flash `c3_ctrl_wheels-xiao_c3` in this run.** The sim-only injection macro `C3_CTRL_WHEELS_TEST`
   (program `programs/c3_ctrl_wheels`, Wokwi only) is kept for simulation work by the owner's decision of
   2026-11-05, recorded in a comment on `pluto-atom-4/balancing-robot-controller#309`, and must be REMOVED
-  before any firmware is uploaded to a physical dev board. The balance env builds only `programs/balance`
+  before the firmware that contains it (`c3_ctrl_wheels`) is uploaded to a physical dev board. The balance
+  firmware never contains it. The balance env builds only `programs/balance`
   (`build_src_filter` in `platformio.ini`), so it cannot contain the macro code. The step 2 checks therefore
   only confirm two things: no `PLATFORMIO_BUILD_FLAGS` is set in the shell (so no `-D C3_CTRL_WHEELS_TEST`
   reaches any build), and the ELF has 0 `TEST INJECT` strings. They do not detect a macro in sim source.
@@ -170,7 +171,7 @@ step 3), so whether the write happened is NOT CHECKED; record the Operating Mode
 
 **Record.** Paste the boot lines. ID 1 answered / not answered / unknown. ID 2 answered / not answered /
 unknown. Gyro bias y: ____ rad/s.
-- `PASS` only if `PLATFORMIO_BUILD_FLAGS` is unset and the ELF has 0 `TEST INJECT` strings (G10), the `[wheel] XL330 ready ... ids=1/2` line, `[imu] ready` and `[imu] bias ok` all appear.
+- `PASS` only if `PLATFORMIO_BUILD_FLAGS` is unset by the time of the build (a set-then-unset run is a PASS with the printed value recorded on the G10 line) and the ELF has 0 `TEST INJECT` strings (G10), the `[wheel] XL330 ready ... ids=1/2` line, `[imu] ready` and `[imu] bias ok` all appear.
 - `FAIL` otherwise (write the missing or faulted line).
 - `NOT CHECKED` if the boot was not captured.
 
@@ -517,7 +518,7 @@ Post the filled template as a results comment (see "Where results go"). Do not f
 - Per step, one line each, with `PASS` / `FAIL` / `NOT CHECKED`. `DEFERRED` appears ONLY for step 5 and the
   sign-off block: 1a, 1b, 2, 3, 4a, 4b, 4c, 5 (FAIL / NOT CHECKED / DEFERRED only; no PASS), 6, 7 (PASS only per the step 7 owner-decision rule: Running from arming, reading at least 30 s after arming), 8.1, 8.2, 8.3,
   8b (items 1 to 6, status OPTIONAL), 9.
-- G10 check (step 2): `PLATFORMIO_BUILD_FLAGS` unset yes / no; ELF `TEST INJECT` count: ____
+- G10 check (step 2): value of `PLATFORMIO_BUILD_FLAGS` printed before unset (blank if none): ____; unset at build yes / no; ELF `TEST INJECT` count: ____
 - NOT CHECKED list (every step or sub-step not run, and why): ____
 
 ---
