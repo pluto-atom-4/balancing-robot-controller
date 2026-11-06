@@ -257,8 +257,9 @@ static bool write_vel_zero_ctx(WheelCtx& w) {
   return false;
 }
 
-// Goal write for one wheel, called from loop(). raw is the UNSIGNED forward raw from
-// segway::wheel_cmd_to_raw, already capped at +-segway::kWheelCapRaw; do not re-cap here.
+// Goal write for one wheel, called from loop(). raw is the raw before the wheel sign (signed by
+// plant velocity, clamped to +-125, can be negative) from segway::wheel_cmd_to_raw,
+// already capped at +-segway::kWheelCapRaw; do not re-cap here.
 // The wire value is w.sign * raw, applied here and nowhere else.
 // Write on change: no bus call if the signed value equals w.last_raw (the last value confirmed on the chip)
 // (test builds: a forced failure is attempted even when unchanged).
@@ -523,7 +524,8 @@ void loop() {
       hold_until_ms = millis() + 1000;
       holding = true;
     } else if (servo_ok) {
-      // Unsigned raw per wheel; the sign is applied in write_goal_raw. Both writes are always
+      // Raw per wheel before the wheel sign (signed by plant velocity, clamped to +-125, can be
+      // negative); the sign is applied in write_goal_raw. Both writes are always
       // attempted. A tick fails if either write fails. A failed wheel keeps last_raw = INT32_MIN,
       // so it retries on every tick; a tick with no bus call (write on change) is not a failure,
       // so it resets the streak.
@@ -539,7 +541,8 @@ void loop() {
         tick_fail_streak = 0;
       } else {
         ++write_fail;
-        // raw in this log is the UNSIGNED value passed to write_goal_raw; the wire value is sign * raw.
+        // raw in this log is the value passed to write_goal_raw, before the wheel sign (signed by plant
+        // velocity, clamped to +-125, can be negative); the wire value is sign * raw.
         // write_fail counts failed ticks, not failed writes: a tick where both wheels fail prints two lines with the same n.
         if (write_fail == 1 || write_fail % 50 == 0) {
           if (!ok0)
