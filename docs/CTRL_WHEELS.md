@@ -246,7 +246,7 @@ make sim-c3_ctrl_wheels-xiao_c3 WOKWI_ARGS="--scenario scenario_ctrl_wheels.yaml
   then runs about 12 s: 4 s wait, 4 s at 30 deg/s, 4 s at 0. The suggested `--timeout` is 40000 ms; the
   reasoning is in the scenario header (`programs/c3_ctrl_wheels/scenario_ctrl_wheels.yaml`). In short: 40000 ms
   is a judgement chosen to leave room, not derived or measured.
-  It is not known whether --timeout is wall-clock or sim time, and the simulator ran between 0.63 and 0.985 of host time in the seven captured runs (table in the section 10 note), so it can run slower than real time and the speed differs between runs. Scenario not run. The sim is headless
+  It is not known whether --timeout is wall-clock or sim time, and the simulator ran between 0.63 and 1.00 of host time in the eight captured runs (table in the section 10 note), so it can run slower than real time and the speed differs between runs. Scenario not run. The sim is headless
   only and is not a balance test. A failed or missing wait ends at `--timeout` (exit 42), so exit code 42
   does not prove the pings matched. A deliberately wrong wait-serial string run (recording the real exit code of a failed wait) is planned in V01 (#304), not run.
 - The fall path needs `PLATFORMIO_BUILD_FLAGS="-D TTL_SERVO_FALL_TEST"` (low gains kp=2, kd=1). Run: section 10 row (f), captured by the owner (see section 10).
@@ -310,7 +310,7 @@ Sim only. Rows (b) and (d) to (k) were captured by the owner with a host-side py
 
 Notes on rows (d) to (k): after each test run the owner rebuilt the default env and counted `TEST INJECT` strings in the ELF (0). The section 11.2 boot-log check (no banner line at boot after the rebuild) was done once, for the row (j) bring-up capture on the modified diagram (servo2 deleted; no banner in the log); it was not done for a run on the unmodified diagram after a rebuild. In this document, "non-injected failure" means a failure that is not injected; row (j) is a non-injected failure (a missing chip at bring-up). The counters (`tx_fail`, `rd_fail`) in rows (d), (e), (g), (h), (i) and (k) include injected failures (row (j) has no injection; its failures come from the missing chip). The injection skips the bus call, so these runs do not exercise the library's real timeout or error code.
 
-Simulator speed against host time, for the seven captured runs. Ratio = t_us span of the WHL2 lines over the host-time span from the first to the last WHL2 line. Captured by the owner with a host-side pyserial script over rfc2217://localhost:4002; checked by the main session against the saved capture files. Sim only.
+Simulator speed against host time, for the eight captured runs. Ratio = t_us span of the WHL2 lines over the host-time span from the first to the last WHL2 line. Captured by the owner with a host-side pyserial script over rfc2217://localhost:4002; checked by the main session against the saved capture files. Sim only.
 
 | Capture | WHL2 lines | Sim span (s) | Host span (s) | Sim / host | WHL2 per sim s |
 | --- | --- | --- | --- | --- | --- |
@@ -321,8 +321,9 @@ Simulator speed against host time, for the seven captured runs. Ratio = t_us spa
 | row (f) fall | 765 | 16.359 | 22.024 | 0.74 | 46.8 |
 | row (i) preset 2 (counted re-run) | 992 | 20.033 | 21.227 | 0.944 | 49.5 |
 | row (k) preset 3 (counted re-run) | 708 | 15.474 | 20.620 | 0.75 | 45.8 |
+| row (j) bring-up variant, servo2 deleted | 1052 | 21.022 | 21.027 | 1.00 | 50.0 |
 
-The simulator ran between 0.63 and 0.985 of host time, so it can run slower than real time, and the speed differs from run to run. It is not known whether `--timeout` counts wall-clock or sim time.
+The simulator ran between 0.63 and 1.00 of host time, so it can run slower than real time, and the speed differs from run to run. It is not known whether `--timeout` counts wall-clock or sim time.
 
 Also:
 
@@ -471,7 +472,7 @@ same one-shot and rebuild rules as section 11.2. Do not add the `C3_CTRL_WHEELS_
 | `[ttl_servo] FALL TEST: kp=2 kd=1 (expect FELL within ~6 s)` | Boot line, printed after the gyro calibration. |
 | `[ttl_servo] FELL id=1 theta=<n>` | `id=1` is expected: `W[0]` is checked first, and both plants get the same input and dt. `id=2` is not expected; it is reachable only if the plants diverged. |
 | `[dxl] stop id=1 vel=0 ok=1` and `[dxl] stop id=2 vel=0 ok=1` | Non-forced stop. No `[safe] torque off` line is expected when both zero writes succeed (torque stays on at zero velocity). |
-| WHL2 lines ending `,0,0,1*HH` | State 1 for about 1 s of `t_us`, with `model` 0.000000, `rawL` 0 and `rawR` 0. Judge the hold by `t_us`, not by line count; the simulator ran between 0.63 and 0.985 of host time across the seven captured runs (table in section 10), so judge the hold by `t_us`. |
+| WHL2 lines ending `,0,0,1*HH` | State 1 for about 1 s of `t_us`, with `model` 0.000000, `rawL` 0 and `rawR` 0. Judge the hold by `t_us`, not by line count; the simulator ran between 0.63 and 1.00 of host time across the eight captured runs (table in section 10), so judge the hold by `t_us`. |
 | `[ttl_servo] restart` | After the 1 s hold. The state returns to 0. |
 
 #### Item 5: read ERR (preset 4)
