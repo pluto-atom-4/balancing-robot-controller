@@ -49,6 +49,7 @@
 // so a capture started later can miss it). Record the banner line with each result. Tick M is C3_CTRL_WHEELS_TEST_AFTER (default 100;
 // #error if below 0). AFTER=0 means every live pass from tick 1: presets 1 and 2 fail on every such pass,
 // preset 3 fails only on the first (window [0, 2) over the 1-based counter).
+// The banner says to remove this macro before uploading to a physical board (HIL gate G10).
 // Presets: 1 both goal writes fail from tick M on; 2 goal writes of ID 2 fail from tick M on; 3 goal writes of
 // ID 2 fail for ticks [M, M+2) then recover; 4 the 10 Hz position read verdict for ID 2 fails for ticks [M, M+50).
 // test_tick counts live non-holding 20 ms passes (1-based). It is incremented only in the servo_ok non-holding
@@ -403,7 +404,7 @@ void setup() {
 
   Serial.println("\n[ttl_servo] Segway physics sim (Wokwi, SIM-ONLY, UNVERIFIED)");
 #if defined(C3_CTRL_WHEELS_TEST) && (C3_CTRL_WHEELS_TEST > 0)
-  Serial.printf("[ttl_servo] TEST INJECT ON preset=%d after=%d (SIM-ONLY, remove before any other use)\n",
+  Serial.printf("[ttl_servo] TEST INJECT ON preset=%d after=%d (SIM-ONLY, remove before uploading to a physical board)\n",
                 (int)C3_CTRL_WHEELS_TEST, (int)C3_CTRL_WHEELS_TEST_AFTER);
 #endif
 
