@@ -329,11 +329,10 @@ Also:
 
 - The single-wheel-era scratch runs described in `programs/c3_ctrl_wheels/README.md` predate the twin
   firmware. They are not evidence for this program.
-- The native test `test/test_wheels_frame` was not run by the author of this document.
+- The native test `test/test_wheels_frame` was run by the main session on 2026-11-05: 11 of 11 test cases passed on main 8883d15 (`pio test -e test -f test_wheels_frame`), and the full `pio test -e test` passed 345 of 345 (20 suites) on main 394885c. Native tests check the formatter only and do not validate the firmware or hardware.
 
 NOT RUN (a run that is recorded above as observed is not listed; presets 2 and 3 were each first captured without the banner (rows (g), (h), not counted) and re-run from reset (rows (i), (k), counted)):
 
-- the native test `test/test_wheels_frame` (not run by the author of this document)
 - the preset 4 AFTER=0 variant
 - 3-failed-tick latch from a non-injected failure of a chip that was working (row (j) is a bring-up failure with a missing chip, not the 3-tick path)
 - bus-down state 2 after a non-injected failure of a chip that was working (state 2 after a non-injected bring-up failure is in row (j))
