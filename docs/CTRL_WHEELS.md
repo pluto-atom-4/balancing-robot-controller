@@ -105,7 +105,7 @@ State notes:
 - **State 2 reports 0 for both raws.** The model is not zeroed in state 2 (only while holding).
 - **State 1 (hold).** The model prints 0. The raws print 0 as well: the fall stop sets each `last_raw`
   to 0 when confirmed, or to unknown (printed 0), and no writes happen during the hold. This is read
-  from the source; not run.
+  from the source. State 1 was observed in section 10 row (f) (model 0, rawL and rawR 0 in the holds).
 - **OPEN limitation: the 0 in `rawL` and `rawR` is ambiguous.** It can mean a confirmed zero, an
   unknown chip state (before the first write, after a failed write, or after a torque-off attempt),
   or state 2. A host cannot tell these apart from the line. No code change is planned in this
@@ -138,7 +138,7 @@ Checksum: XOR of the body bytes, same routine as `lib/imu_frame` (reused through
 ## 5. Stop and latch rules
 
 Each rule is marked with its simulator status. "Not run in a simulator" means no run has shown the
-path; the owner captures in section 10 only cover the normal running path.
+path; the owner captures in section 10 cover the normal running path, the fall path (row (f)), the per-tick failure lines only with INJECTED failures (rows (d), (g), (h)), and the three-failed-tick latch only with INJECTED failures (rows (d) and (g)). None of these was run with a real bus failure.
 
 - **Bring-up (`setup()`).** For ID 1 then ID 2: ping, torque off, velocity mode, goal 0, torque on.
   It stops at the first failure, so ID 2 is not tried if ID 1 fails. On any failure the firmware sends
@@ -147,16 +147,16 @@ path; the owner captures in section 10 only cover the normal running path.
   simulator.
 - **Per tick (`loop()`).** Both goal writes are always attempted. A tick fails if either write fails.
   A write on change (the signed value equals `last_raw`) makes no bus call and counts as a success.
-  The write path is seen in section 10 (state 0). The failure path is not run in a simulator.
+  The write path is seen in section 10 (state 0). The failure path was seen only with INJECTED failures (rows (d), (g), (h)); not run with a real bus failure.
 - **Three failed ticks in a row.** A forced torque-off on both IDs (zero velocity first, up to 3
   tries per step), then the latch `bus_down`. The latch is terminal: no Dynamixel calls, reset the
-  board to retry. Not run in a simulator.
+  board to retry. Seen only with INJECTED failures (rows (d) and (g); (g) is uncounted); not run with a real bus failure.
 - **Fall (either plant `has_fallen`).** A zero-velocity stop on both IDs. Torque off is sent only if a
   zero write failed. If the stop returns false (any zero write failed), the bus latches. Then a 1 s
   hold: the plants are frozen and no writes go out. Then both plants restart and the failure streak
-  resets. Not run in a simulator (the owner-reported capture (b) in section 10 shows state 0 only).
+  resets. Observed in section 10 row (f) (no injection): 5 FELL, restarts and ok=1 stops. Not run with a real bus failure; the branch where a zero write fails and the bus latches was not run.
 - **After a latch.** No goal writes, and no stop is sent on a fall. The hold and restart still run,
-  and the state stays 2.
+  and the state stays 2. Not run in a simulator (source only): no capture shows a fall after a latch.
 - **No IMU at boot (`Failed to find MPU6050 chip`).** The firmware pings both IDs (the ping result is
   not printed), sends the forced stop to both IDs without a `bus_down` check, then halts in a loop. It
   does not call `latch_bus_down`. Not run in a simulator.
@@ -217,7 +217,7 @@ Other lines (not exhaustive):
 
 - Bring-up, per ID: `[dxl] ping id=.. ok` or `[dxl] ping id=.. FAILED`; `[dxl] torque_off id=.. ok=..`;
   `[dxl] mode_velocity id=.. ok=..`; `[dxl] goal0 id=.. ok=..`; `[dxl] torque_on id=.. ok=..`;
-  `[dxl] bring-up id=.. failed`; and once for the whole bring-up, `[dxl] bring-up failed, bus down, no Dynamixel calls`.
+  `[dxl] bring-up id=.. failed`; and once for the whole bring-up, `[dxl] bring-up failed, bus down, no Dynamixel calls` (printed before the forced stop, which does make Dynamixel calls).
 - Boot: `[ttl_servo] gyro Z bias=.. rad/s (keep the slider at 0 during boot)`;
   `[ttl_servo] Failed to find MPU6050 chip`; `[ttl_servo] gyro calibration failed (IMU reads), halting`;
   `[ttl_servo] FALL TEST: kp=2 kd=1 (expect FELL within ~6 s)` (only with `TTL_SERVO_FALL_TEST`).
@@ -245,11 +245,11 @@ make sim-c3_ctrl_wheels-xiao_c3 WOKWI_ARGS="--scenario scenario_ctrl_wheels.yaml
 - The scenario waits for `ping id=1 ok` and `ping id=2 ok` (in print order) and then `Sim starts at 15 deg`,
   then runs about 12 s: 4 s wait, 4 s at 30 deg/s, 4 s at 0. The suggested `--timeout` is 40000 ms; the
   reasoning is in the scenario header (`programs/c3_ctrl_wheels/scenario_ctrl_wheels.yaml`). In short: 40000 ms
-  is a judgement chosen to leave room, not derived or measured, and the sim ran slower than real time (about 31
-  WHL2 lines per second, computed from the 777 WHL2 lines in the 25 s capture of section 10, row b). Not run. The sim is headless
+  is a judgement chosen to leave room, not derived or measured.
+  It is not known whether --timeout is wall-clock or sim time, and the simulator ran between 0.63 and 0.985 of host time in the five captured runs (table in the section 10 note), so it can run slower than real time and the speed differs between runs. Scenario not run. The sim is headless
   only and is not a balance test. A failed or missing wait ends at `--timeout` (exit 42), so exit code 42
   does not prove the pings matched. A deliberately wrong wait-serial string run (recording the real exit code of a failed wait) is planned in V01 (#304), not run.
-- The fall path needs `PLATFORMIO_BUILD_FLAGS="-D TTL_SERVO_FALL_TEST"` (low gains kp=2, kd=1). Not run.
+- The fall path needs `PLATFORMIO_BUILD_FLAGS="-D TTL_SERVO_FALL_TEST"` (low gains kp=2, kd=1). Run: section 10 row (f), captured by the owner (see section 10).
 - The owner's route is the VS Code Wokwi extension (see the quota note above). Whether the extension
   executes scenario files is not known.
 - RFC2217: `wokwi.toml` sets `rfc2217ServerPort = 4002`. Port 4002 has the same exposure as the 4000
@@ -292,13 +292,32 @@ make sim-c3_ctrl_wheels-xiao_c3 WOKWI_ARGS="--scenario scenario_ctrl_wheels.yaml
 
 ## 10. Verification status
 
-Owner-reported, sim only. None of these is a hardware result.
+Sim only. Rows (b) and (d) to (h) were captured by the owner with a host-side pyserial script over rfc2217://localhost:4002; the numbers were then checked by the main session against the saved capture files. Rows (a) and (c) are owner-reported. None of these is a hardware result.
 
 | Run | Build and conditions | Result |
 | --- | --- | --- |
 | (a) VS Code Wokwi capture, 2026-11-05 | Build before #282 (single-ID reads) | 773 WHL2 lines parsed by the FW parser; no gaps; `rawL == -rawR`. |
-| (b) VS Code Wokwi capture, 2026-11-05 (scenario not identified; section 7 says it is not stated whether the scenario was used) | After #282 / B13, 25 s | 777 WHL2 lines parsed; 0 parse failures; 0 seq gaps; `rawL == -rawR`; state 0 only; 155 sim lines with numeric `pos1` and `pos2` and no `ERR`. Last `[dxl]` line: `tx_ok=832 tx_fail=0 rd_ok1=152 rd_fail1=0 rd_ok2=152 rd_fail2=0 max_us=5814`. `max_us` is on the simulated clock and is one longest transaction, not a real-bus number. Tags seen: `[ctrl_wheel]`, `[dxl]`, `[ttl_servo]`. The sim ran slower than real time (about 31 WHL2 lines per second). |
+| (b) VS Code route, pyserial capture, 2026-11-05 (scenario not identified; section 7 says it is not stated whether the scenario was used) | After #282 / B13, 25 s | 777 WHL2 lines parsed; 0 parse failures; 0 seq gaps; `rawL == -rawR`; state 0 only; 155 sim lines with numeric `pos1` and `pos2` and no `ERR`. Last `[dxl]` line: `tx_ok=832 tx_fail=0 rd_ok1=152 rd_fail1=0 rd_ok2=152 rd_fail2=0 max_us=5814`. `max_us` is on the simulated clock and is one longest transaction, not a real-bus number. The last 1 Hz `[dxl]` line (rd_ok1=152) precedes the final 3 of the 155 sim lines in that capture. Tags seen: `[ctrl_wheel]`, `[dxl]`, `[ttl_servo]`. The t_us span of the WHL2 lines is 16.496 s (777 lines, about 47 per sim second); the 25 s host capture window began before the sim produced lines, so no host-time ratio is given for this run (see the table in the note below). |
 | (c) Webots plus bridge, 60 s | Bridge `--port rfc2217://localhost:4002`, owner run | Both wheels turned together; bridge exit code 0 (as the FW README states). Direction against sign is not settled. |
+| (d) preset 1 (counted run) | `-D C3_CTRL_WHEELS_TEST=1`, banner `[ttl_servo] TEST INJECT ON preset=1 after=100 (SIM-ONLY, remove before any other use)` seen in a capture from reset | 999 WHL2 lines (101 state 0, 898 state 2), 0 seq gaps. `[dxl] write failed id=1 raw=92 (n=1)` and `id=2 raw=92 (n=1)` once each; `[dxl] stop id=1 vel=0 ok=1` and `id=2 vel=0 ok=1`; `[safe] torque off before bus latch id=1` and `id=2` with no suffix; latch line `tx_ok=192 tx_fail=6 rd_ok1=20 rd_fail1=0 rd_ok2=20 rd_fail2=0 max_us=5814`; `[safe] bus down (reset the board to retry)`. WHL2 seq 99 and 100: state 0 with rawL 0 and rawR 0 (the two failing ticks, raws unknown); state 2 from seq 101 (the latch tick), 898 state-2 lines with rawL and rawR 0 and a nonzero changing model, seq contiguous across the latch. After the latch the 10 Hz line shows `cmd=NA pos1=NA dpos1=n/a pos2=NA dpos2=n/a gyroZ=.. bus=0` and only the three `[dxl] tx_ok` lines (two before, one latch) appear in the capture. |
+| (e) preset 4 (counted run) | `-D C3_CTRL_WHEELS_TEST=4`, banner `[ttl_servo] TEST INJECT ON preset=4 after=100 (SIM-ONLY, remove before any other use)` seen from reset | 622 WHL2 lines, all state 0, 0 seq gaps. 10 sim lines with `pos2=ERR dpos2=n/a` while `pos1` stayed numeric; last 1 Hz line `rd_fail1=0 rd_fail2=10 tx_fail=0`; no `[safe]` line and no write-failed line. First good line after the window: `pos2=2274 dpos2=n/a`; the next: `pos2=2374 dpos2=100`. |
+| (f) fall | `-D TTL_SERVO_FALL_TEST`, no injection (no banner expected) | 765 WHL2 lines (510 state 0, 255 state 1), 0 seq gaps. Boot line `[ttl_servo] FALL TEST: kp=2 kd=1 (expect FELL within ~6 s)`; 5 `[ttl_servo] FELL id=1 theta=...` lines (`\|theta\|` 0.785 to 0.832) and 5 `[ttl_servo] restart` lines; 10 stop lines, all `ok=1` (id=1 and id=2); no `[safe] torque off` line; no bus down. 5 state-1 holds of 51 WHL2 lines each, t_us span per hold 0.988, 0.988, 0.991, 0.991 and 1.002 s, model 0 and rawL and rawR 0 in all of them. |
+| (g) preset 2 (NOT counted) | `-D C3_CTRL_WHEELS_TEST=2`; the capture started after boot (first captured WHL2 is seq 10), so the banner is not in the log | Not a counted preset run under the banner rule. Observations only: 1218 WHL2 lines (91 state 0, 1127 state 2), 0 seq gaps; one `[dxl] write failed id=2 raw=61 (n=1)` and no id=1 line; stop lines and `[safe] torque off before bus latch id=1` and `id=2`; latch line `tx_fail=3`; WHL2 seq 99 and 100 show rawL 61 and 68 (still updated) with rawR 0 at state 0; state 2 from seq 101 with raws 0. |
+| (h) preset 3 (NOT counted) | `-D C3_CTRL_WHEELS_TEST=3`; capture started after boot, no banner | Not a counted preset run. Observations only: 719 WHL2 lines, all state 0, 0 seq gaps; one `[dxl] write failed id=2 raw=-117 (n=1)`; no stop line, no `[safe]` line, no bus down; later 1 Hz lines show `tx_fail=2`; WHL2 seq 99 and 100 show rawL -117 with rawR 0, and rawR returns to 116 at seq 101. |
+
+Notes on rows (d) to (h): after each test run the owner rebuilt the default env and counted `TEST INJECT` strings in the ELF (0). The section 11.2 boot-log check (no banner line at boot after the rebuild) was not done. The counters (`tx_fail`, `rd_fail`) in (d) to (h) include injected failures. The injection skips the bus call, so these runs do not exercise the library's real timeout or error code.
+
+Simulator speed against host time, for the five captured runs. Ratio = t_us span of the WHL2 lines over the host-time span from the first to the last WHL2 line. Captured by the owner with a host-side pyserial script over rfc2217://localhost:4002; checked by the main session against the saved capture files. Sim only.
+
+| Capture | WHL2 lines | Sim span (s) | Host span (s) | Sim / host | WHL2 per sim s |
+| --- | --- | --- | --- | --- | --- |
+| row (d) preset 1 | 999 | 20.181 | 21.425 | 0.94 | 49.5 |
+| row (g) preset 2 (not counted) | 1218 | 24.454 | 24.833 | 0.985 | 49.8 |
+| row (h) preset 3 (not counted) | 719 | 15.703 | 24.830 | 0.63 | 45.8 |
+| row (e) preset 4 | 622 | 13.635 | 21.224 | 0.64 | 45.6 |
+| row (f) fall | 765 | 16.359 | 22.024 | 0.74 | 46.8 |
+
+The simulator ran between 0.63 and 0.985 of host time, so it can run slower than real time, and the speed differs from run to run. It is not known whether `--timeout` counts wall-clock or sim time.
 
 Also:
 
@@ -306,15 +325,19 @@ Also:
   firmware. They are not evidence for this program.
 - The native test `test/test_wheels_frame` was not run by the author of this document.
 
-NOT RUN:
+NOT RUN (a run that is recorded above as observed is not listed; presets 2 and 3 were run but are not counted, see rows (g) and (h)):
 
-- 3-failed-tick latch
-- bus-down state 2
-- one-ID write failure
+- 3-failed-tick latch with a REAL (not injected) bus failure
+- bus-down state 2 after a real bus failure
+- one-ID write failure counted as a preset run (preset 2 and 3 captures lacked the banner; re-run from reset)
 - the headless scenario run (`scenario_ctrl_wheels.yaml`)
-- a fall seen in WHL2 (state 1)
-- the ERR read path
+- the planned wrong-wait-serial scenario run (#304)
+- the section 11.2 boot-log check that the banner is gone after the rebuild (the owner counted the ELF strings instead; see the note after the table)
+- bring-up variant with servo2 deleted
+- a failed zero write or torque-off (not injected)
 - a bring-up failure at ID 2
+- a bring-up failure at ID 1
+- a fall hold after a latch (source only)
 - gyro-cal or no-IMU halt
 - RFC2217 with three listeners
 - a simulator restart mid-run and the firmware restart seq jump
@@ -326,10 +349,12 @@ NOT RUN:
 
 ## 11. Failure-injection presets (V01, sim-only)
 
-> **Status: SIM-ONLY, opt-in, not hardware-validated, not run.** The presets below have not been run.
+> **Status: SIM-ONLY, opt-in, not hardware-validated.** First owner-reported results (2026-11-05) are in
+> section 10 rows (d) to (h). Anything not in those rows has not been run.
 > V01 is the failure-path verification set, tracked in #304 (results). Keep or remove is #309. This
 > section records what `programs/c3_ctrl_wheels/main.cpp` says each preset does and which lines to look
-> for. It records no result and no pass.
+> for. The lines below are expected from the source, not observed, except where section 10 records an
+> observation. No hardware result.
 
 ### 11.1 What it is
 
@@ -341,16 +366,16 @@ NOT RUN:
 | Preset | Injected failure | Window in `test_tick` (M = `C3_CTRL_WHEELS_TEST_AFTER`) |
 | --- | --- | --- |
 | 1 | Goal writes of both IDs fail | Ticks >= M, no end |
-| 2 | Goal writes of ID 2 fail | Ticks >= M, no end |
+| 2 | Goal writes of ID 2 fail | Ticks >= M, no end (the latch at M+2 stops the writes; row (g)) |
 | 3 | Goal writes of ID 2 fail, then recover | Ticks in [M, M+2): 2 ticks |
-| 4 | 10 Hz position-read verdict for ID 2 fails (the real read still goes out) | Ticks in [M, M+50): about 1 s of sim time, about 10 reads at 10 Hz |
+| 4 | 10 Hz position-read verdict for ID 2 fails (the real read still goes out) | Ticks in [M, M+50): about 1 s of sim time, about 10 reads at 10 Hz; holds do not advance the count, so the window stays active through a hold |
 
-- `C3_CTRL_WHEELS_TEST_AFTER` (M) defaults to 100, about 2 s of live time at 50 Hz (the sim may run
-  slower; not measured). Without the TEST flag it has no effect, except that a negative value is an
+- `C3_CTRL_WHEELS_TEST_AFTER` (M) defaults to 100, about 2 s of live time at 50 Hz (the sim speed differs between runs;
+  see the table in section 10). Without the TEST flag it has no effect, except that a negative value is an
   `#error` even then.
 - AFTER=0 means every live pass from tick 1. Presets 1 and 2 fail on every such pass. Preset 3 fails only
   on the first pass (window [0, 2) over the 1-based counter). Preset 4 fails on passes 1 to 49 (derived
-  from the window; not run).
+  from the window; the AFTER=0 variant was not run).
 - Injected failures are counted by the real `[dxl]` bookkeeping, so the counters are NOT bus-only numbers.
 - The full counting, latch and read rules are in the `C3_CTRL_WHEELS_TEST` comment block at the top of
   `main.cpp`; this section does not repeat them.
@@ -392,8 +417,7 @@ banner line with each result.
 
 ### 11.4 Lines to look for, per V01 item
 
-The line formats below are copied from the format strings in `main.cpp`. None has been observed. Every
-entry is expected from the source, not observed.
+The line formats below are copied from the format strings in `main.cpp`. The entries are source-derived expectations; items 1, 2, 4 and 5 were observed in section 10 rows (d) to (f) (item 3 for presets 2 and 3 only in the uncounted rows (g) and (h)); everything else is expected.
 
 #### Item 1: latch (preset 1)
 
@@ -407,7 +431,7 @@ runs the forced stop and latches.
 | `[dxl] stop id=1 vel=0 ok=1` and `[dxl] stop id=2 vel=0 ok=1` | Real zero writes, not injected. |
 | `[safe] torque off before bus latch id=1` and `... id=2` | Printed with no suffix when the torque-off is confirmed; the suffix ` (TORQUE OFF NOT CONFIRMED)` is added only when it is not. |
 | `[dxl] tx_ok=<n> tx_fail=<n> rd_ok1=<n> rd_fail1=<n> rd_ok2=<n> rd_fail2=<n> max_us=<n>` | The latch line. `tx_fail=6` (2 per failed tick, 3 ticks) if nothing else failed. |
-| `[safe] bus down (reset the board to retry)` | Terminal. After it, the 10 Hz line shows `pos1=NA dpos1=n/a pos2=NA dpos2=n/a bus=0`, and no more 1 Hz `[dxl]` lines are printed. |
+| `[safe] bus down (reset the board to retry)` | Terminal. After it, the 10 Hz line shows `pos1=NA dpos1=n/a pos2=NA dpos2=n/a gyroZ=.. bus=0`, and no more 1 Hz `[dxl]` lines are printed. |
 
 #### Item 2: state 2 (same run as item 1)
 
@@ -443,7 +467,7 @@ same one-shot and rebuild rules as section 11.2. Do not add the `C3_CTRL_WHEELS_
 | `[ttl_servo] FALL TEST: kp=2 kd=1 (expect FELL within ~6 s)` | Boot line, printed after the gyro calibration. |
 | `[ttl_servo] FELL id=1 theta=<n>` | `id=1` is expected: `W[0]` is checked first, and both plants get the same input and dt. `id=2` is not expected; it is reachable only if the plants diverged. |
 | `[dxl] stop id=1 vel=0 ok=1` and `[dxl] stop id=2 vel=0 ok=1` | Non-forced stop. No `[safe] torque off` line is expected when both zero writes succeed (torque stays on at zero velocity). |
-| WHL2 lines ending `,0,0,1*HH` | State 1 for about 1 s of `t_us`, with `model` 0.000000, `rawL` 0 and `rawR` 0. Judge the hold by `t_us`, not by line count; the sim may run slower (not measured; the section 10 row (b) capture gave about 31 WHL2 lines per second). |
+| WHL2 lines ending `,0,0,1*HH` | State 1 for about 1 s of `t_us`, with `model` 0.000000, `rawL` 0 and `rawR` 0. Judge the hold by `t_us`, not by line count; the simulator ran between 0.63 and 0.985 of host time across the five captured runs (table in section 10), so judge the hold by `t_us`. |
 | `[ttl_servo] restart` | After the 1 s hold. The state returns to 0. |
 
 #### Item 5: read ERR (preset 4)
@@ -454,7 +478,7 @@ time and about 10 reads.
 | Line to look for | Expected from the source |
 | --- | --- |
 | 10 Hz line with `pos2=ERR dpos2=n/a` | During the window. `pos1` stays numeric. |
-| 1 Hz `[dxl]` line | `rd_fail2` rises by about 10. `rd_fail1` stays unchanged (not observed). |
+| 1 Hz `[dxl]` line | `rd_fail2` rises by about 10. `rd_fail1` stays 0 (observed in row (e)). |
 | No `[safe]` lines and no `[dxl] write failed` lines | A read failure never latches and does not count as a write failure. |
 | First good 10 Hz line after the window | `dpos2=n/a` (the failed read cleared the last position), then a numeric `dpos2` on the next line. |
 
@@ -473,17 +497,17 @@ this section does not claim that the scenario drives any preset.
 
 ### 11.6 Capture guide (owner, VS Code Wokwi extension)
 
-Not run. Steps:
+Steps (used by the owner for the section 10 rows (d) to (h), 2026-11-05):
 
 1. The main session builds the preset ELF with the one-shot prefix (section 11.2).
 2. Start the simulator for `programs/c3_ctrl_wheels`. The RFC2217 port is 4002 (`wokwi.toml`).
 3. Start a small `python3 -I` pyserial script before (re)starting the sim, so the boot banner is captured.
    The script opens `rfc2217://localhost:4002`, retries until the port opens, prefixes each line with the
    host time, writes `cap_<item>.log`, and stops after about 25 s. pyserial is needed; not checked here.
-   Keep the script outside the repo.
-4. Paste back `grep -v '^WHL2' cap_<item>.log | head -80`, plus the WHL2 lines around the event.
-5. Restore the default build afterwards (section 11.2): rebuild without the flag and confirm the banner is
-   gone.
+   The capture script (`cap.py`) and the check script (`chk.py`) live outside this repo on the owner's machine and are not part of any PR.
+4. Paste back `grep -v 'WHL2,' cap_<item>.log | head -80`, plus the WHL2 lines around the event.
+5. Restore the default build afterwards (section 11.2): rebuild the default env without the flag and count the TEST INJECT strings in the ELF (`strings .pio/build/c3_ctrl_wheels-xiao_c3/firmware.elf | grep -c "TEST INJECT"`, expect 0; the owner reported 0). The boot-log check of section 11.2 (no banner line at boot) was not done.
+   The ELF count is the only check made for this step; the boot-log check was not run.
 
 Optional bring-up variant (not observed): in the VS Code diagram editor, delete `servo2` and its wires.
 Do not commit that change. Expected from the source, in order:

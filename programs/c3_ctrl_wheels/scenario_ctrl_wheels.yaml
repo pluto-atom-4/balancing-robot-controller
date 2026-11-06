@@ -7,9 +7,8 @@
 # rotationZ is in deg/s (30 deg/s = 0.524 rad/s). The steps total about 12 s after the banner. Boot before the banner
 # takes at least about 2 s from code alone (setup() delay(1000) plus the gyro calibration of 100 reads with delay(10)),
 # plus both bring-up sequences with an unmeasured library timeout per transaction. It is not known whether --timeout is
-# wall-clock or simulation time, and the sim ran slower than real time (about 31 WHL2 lines per second against 50
-# nominal; a rate computed from the 777 WHL2 lines in the 25 s capture, see docs/CTRL_WHEELS.md section 10 row b,
-# not a separate owner report). 40000 ms is a judgement chosen to leave room; it is not derived or measured.
+# wall-clock or simulation time. The simulator ran between 0.63 and 0.985 of host time in the five captured runs (see docs/CTRL_WHEELS.md section 10 note table), so it can run slower than real time, and the speed differs between runs.
+# 40000 ms is a judgement chosen to leave room; it is not derived or measured.
 # The run does not end by itself, so --timeout stops it (exit 42 is still expected).
 name: c3_ctrl_wheels gyro Z push
 version: 1
