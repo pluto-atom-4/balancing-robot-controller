@@ -156,7 +156,7 @@ path; the owner captures in section 10 cover the normal running path, the fall p
   hold: the plants are frozen and no writes go out. Then both plants restart and the failure streak
   resets. Observed in section 10 row (f) (no injection): 5 FELL, restarts and ok=1 stops. Not run with a real bus failure; the branch where a zero write fails and the bus latches was not run.
 - **After a latch.** No goal writes, and no stop is sent on a fall. The hold and restart still run,
-  and the state stays 2.
+  and the state stays 2. Not run in a simulator (source only): no capture shows a fall after a latch.
 - **No IMU at boot (`Failed to find MPU6050 chip`).** The firmware pings both IDs (the ping result is
   not printed), sends the forced stop to both IDs without a `bus_down` check, then halts in a loop. It
   does not call `latch_bus_down`. Not run in a simulator.
@@ -336,6 +336,8 @@ NOT RUN (a run that is recorded above as observed is not listed; presets 2 and 3
 - bring-up variant with servo2 deleted
 - a failed zero write or torque-off (not injected)
 - a bring-up failure at ID 2
+- a bring-up failure at ID 1
+- a fall hold after a latch (source only)
 - gyro-cal or no-IMU halt
 - RFC2217 with three listeners
 - a simulator restart mid-run and the firmware restart seq jump
