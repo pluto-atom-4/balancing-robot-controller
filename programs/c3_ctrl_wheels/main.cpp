@@ -46,9 +46,10 @@
 // outside 0..4 only; a non-numeric value counts as 0 (off). A result run counts as a preset run ONLY if the serial
 // log, captured from reset, shows the banner `[ttl_servo] TEST INJECT ON preset=N after=M ...`; a log without the
 // banner is not counted as a preset run and is not proof of default firmware (the banner is printed once at boot,
-// so a capture started later can miss it). Record the banner line with each result. The banner text says the macro must be removed before the firmware is uploaded to a physical board (HIL checklist gate G10). Tick M is C3_CTRL_WHEELS_TEST_AFTER (default 100;
+// so a capture started later can miss it). Record the banner line with each result. Tick M is C3_CTRL_WHEELS_TEST_AFTER (default 100;
 // #error if below 0). AFTER=0 means every live pass from tick 1: presets 1 and 2 fail on every such pass,
 // preset 3 fails only on the first (window [0, 2) over the 1-based counter).
+// The banner says to remove this macro before uploading to a physical board (HIL gate G10).
 // Presets: 1 both goal writes fail from tick M on; 2 goal writes of ID 2 fail from tick M on; 3 goal writes of
 // ID 2 fail for ticks [M, M+2) then recover; 4 the 10 Hz position read verdict for ID 2 fails for ticks [M, M+50).
 // test_tick counts live non-holding 20 ms passes (1-based). It is incremented only in the servo_ok non-holding

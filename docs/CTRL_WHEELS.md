@@ -424,7 +424,7 @@ A result counts as a preset run only if the serial log, captured from reset, sho
 
 The banner is printed once, in `setup()`, before the MPU6050 check. A capture started later can miss it.
 A log without the banner is not counted as a preset run and is not proof of default firmware. Record the
-banner line with each result. The banner text was changed on 2026-11-06 (owner decision, G10 option A): earlier captures, including rows (d), (e), (i) and (k) of section 10, show the old text "remove before any other use". The helper chk.py matches on the prefix "TEST INJECT ON preset=" and are not affected.
+banner line with each result. The banner text was changed on 2026-11-06 (owner decision, matching gate G10 in docs/HIL_CHECKLIST_balance.md): earlier captures, including rows (d), (e), (i) and (k) of section 10, show the old text "remove before any other use".
 
 ### 11.4 Lines to look for, per V01 item
 
