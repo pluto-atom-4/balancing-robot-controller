@@ -2,7 +2,8 @@
 
 > **Status: SIM-ONLY, simulation-only, not hardware-validated.** This is a RELAY, not a closed loop:
 > the firmware prints WHL2 lines and receives nothing back from Webots. No balance claim. The wheel
-> signs are UNVERIFIED. Latency is UNMEASURED. Dated 2026-11-05.
+> chip-side signs are UNCONFIRMED (the Webots-side +1/+1 is owner-observed OK, 2026-11-06, row (l)).
+> Latency is UNMEASURED. Dated 2026-11-05, Webots result added 2026-11-06.
 
 FW is freecad-workspace, the Python sim repo (Webots, bridge). BRC is this repo. The single-wheel
 sibling doc is [CTRL_WHEEL.md](CTRL_WHEEL.md). The host-side contract is in the FW repo:
@@ -125,7 +126,7 @@ Checksum: XOR of the body bytes, same routine as `lib/imu_frame` (reused through
 - The chip therefore receives `rawL = +raw` and `rawR = -raw`. The WHL2 line carries the signed values
   that were confirmed on each chip.
 - The model carries no sign. It is the left plant's own velocity.
-- There are three independent sign places, and none is confirmed: (1) the chip signs above;
+- There are three independent sign places. The Webots side (2) and (3) was observed by the owner (see below); the chip side (1) is not confirmed: (1) the chip signs above;
   (2) the bridge `--sign-left` and `--sign-right` flags, default +1 and +1, applied to the model before
   the clamp (the raw columns never reach the command); (3) the Webots controller constants
   `SIGN_LEFT = 1` and `SIGN_RIGHT = 1`. The flags are described in the
@@ -134,6 +135,10 @@ Checksum: XOR of the body bytes, same routine as `lib/imu_frame` (reused through
   the sign times the same raw. It can differ only after one wheel's write or torque-off has left its
   last-confirmed value out of step with the other's. It is not evidence of two independently behaving
   wheels.
+- Webots direction check (owner-observed in the Webots 3D view, 2026-11-06, sim only, row (l)): with the default
+  bridge signs +1/+1 a positive command turns both wheels about world +y in the same sense and they roll toward
+  +x. Viewed from each wheel's outside they look opposite; viewed from one side, same sense. This says nothing
+  about the chip signs (`rawL = +raw`, `rawR = -raw`), which stay UNCONFIRMED.
 
 ## 5. Stop and latch rules
 
@@ -270,7 +275,7 @@ make sim-c3_ctrl_wheels-xiao_c3 WOKWI_ARGS="--scenario scenario_ctrl_wheels.yaml
 - Not claimed:
   - a closed loop through Webots (the firmware reads nothing from Webots or the bridge);
   - any balance result or gain check;
-  - the wheel sign against Webots or against the servo;
+  - the chip-side wheel sign against Webots or against the servo (only the Webots-side +1/+1 direction is owner-observed, row (l));
   - latency, on the host or on a real bus;
   - independent per-wheel dynamics (both plants share the gyro input and the dt);
   - anything on hardware. Nothing here is hardware-validated.
@@ -298,7 +303,7 @@ Sim only. Rows (b) and (d) to (k) were captured by the owner with a host-side py
 | --- | --- | --- |
 | (a) VS Code Wokwi capture, 2026-11-05 | Build before #282 (single-ID reads) | 773 WHL2 lines parsed by the FW parser; no gaps; `rawL == -rawR`. |
 | (b) VS Code route, pyserial capture, 2026-11-05 (scenario not identified; section 7 says it is not stated whether the scenario was used) | After #282 / B13, 25 s | 777 WHL2 lines parsed; 0 parse failures; 0 seq gaps; `rawL == -rawR`; state 0 only; 155 sim lines with numeric `pos1` and `pos2` and no `ERR`. Last `[dxl]` line: `tx_ok=832 tx_fail=0 rd_ok1=152 rd_fail1=0 rd_ok2=152 rd_fail2=0 max_us=5814`. `max_us` is on the simulated clock and is one longest transaction, not a real-bus number. The last 1 Hz `[dxl]` line (rd_ok1=152) precedes the final 3 of the 155 sim lines in that capture. Tags seen: `[ctrl_wheel]`, `[dxl]`, `[ttl_servo]`. The t_us span of the WHL2 lines is 16.496 s (777 lines, about 47 per sim second); the 25 s host capture window began before the sim produced lines, so no host-time ratio is given for this run (see the table in the note below). |
-| (c) Webots plus bridge, 60 s | Bridge `--port rfc2217://localhost:4002`, owner run | Both wheels turned together; bridge exit code 0 (as the FW README states). Direction against sign is not settled. |
+| (c) Webots plus bridge, 60 s | Bridge `--port rfc2217://localhost:4002`, owner run | Both wheels turned together; bridge exit code 0 (as the FW README states). Direction against sign: see row (l). |
 | (d) preset 1 (counted run) | `-D C3_CTRL_WHEELS_TEST=1`, banner `[ttl_servo] TEST INJECT ON preset=1 after=100 (SIM-ONLY, remove before any other use)` seen in a capture from reset | 999 WHL2 lines (101 state 0, 898 state 2), 0 seq gaps. `[dxl] write failed id=1 raw=92 (n=1)` and `id=2 raw=92 (n=1)` once each; `[dxl] stop id=1 vel=0 ok=1` and `id=2 vel=0 ok=1`; `[safe] torque off before bus latch id=1` and `id=2` with no suffix; latch line `tx_ok=192 tx_fail=6 rd_ok1=20 rd_fail1=0 rd_ok2=20 rd_fail2=0 max_us=5814`; `[safe] bus down (reset the board to retry)`. WHL2 seq 99 and 100: state 0 with rawL 0 and rawR 0 (the two failing ticks, raws unknown); state 2 from seq 101 (the latch tick), 898 state-2 lines with rawL and rawR 0 and a nonzero changing model, seq contiguous across the latch. After the latch the 10 Hz line shows `cmd=NA pos1=NA dpos1=n/a pos2=NA dpos2=n/a gyroZ=.. bus=0` and only the three `[dxl] tx_ok` lines (two before, one latch) appear in the capture. |
 | (e) preset 4 (counted run) | `-D C3_CTRL_WHEELS_TEST=4`, banner `[ttl_servo] TEST INJECT ON preset=4 after=100 (SIM-ONLY, remove before any other use)` seen from reset | 622 WHL2 lines, all state 0, 0 seq gaps. 10 sim lines with `pos2=ERR dpos2=n/a` while `pos1` stayed numeric; last 1 Hz line `rd_fail1=0 rd_fail2=10 tx_fail=0`; no `[safe]` line and no write-failed line. First good line after the window: `pos2=2274 dpos2=n/a`; the next: `pos2=2374 dpos2=100`. |
 | (f) fall | `-D TTL_SERVO_FALL_TEST`, no injection (no banner expected) | 765 WHL2 lines (510 state 0, 255 state 1), 0 seq gaps. Boot line `[ttl_servo] FALL TEST: kp=2 kd=1 (expect FELL within ~6 s)`; 5 `[ttl_servo] FELL id=1 theta=...` lines (`\|theta\|` 0.785 to 0.832) and 5 `[ttl_servo] restart` lines; 10 stop lines, all `ok=1` (id=1 and id=2); no `[safe] torque off` line; no bus down. 5 state-1 holds of 51 WHL2 lines each, t_us span per hold 0.988, 0.988, 0.991, 0.991 and 1.002 s, model 0 and rawL and rawR 0 in all of them. |
@@ -307,6 +312,7 @@ Sim only. Rows (b) and (d) to (k) were captured by the owner with a host-side py
 | (i) preset 2, counted re-run | `-D C3_CTRL_WHEELS_TEST=2`; capture from reset (starts at the ESP-ROM boot lines), banner `[ttl_servo] TEST INJECT ON preset=2 after=100 (SIM-ONLY, remove before any other use)` present | 992 WHL2 lines (101 state 0, 891 state 2), seq 0 to 991, 0 gaps. One `[dxl] write failed id=2 raw=23 (n=1)` and no id=1 line; `[dxl] stop id=1 vel=0 ok=1` and `id=2 vel=0 ok=1`; `[safe] torque off before bus latch id=1` and `id=2` with no suffix; latch line `tx_ok=201 tx_fail=3 rd_ok1=20 rd_fail1=0 rd_ok2=20 rd_fail2=0 max_us=5814`; `[safe] bus down (reset the board to retry)`. WHL2 seq 99 and 100: state 0, rawL 23 and 37 (the healthy wheel is still written), rawR 0; state 2 from seq 101 with rawL and rawR 0 for all 891 lines and a changing model. |
 | (j) bring-up variant, servo2 deleted | default build (no injection flag, no banner in the log, expected); the owner deleted the `servo2` part and its four wires from `programs/c3_ctrl_wheels/diagram.json` in the working copy for the run only and restored the file afterwards (not committed); capture from reset | Boot lines in order: `[dxl] ping id=1 ok`, `torque_off id=1 ok=1`, `mode_velocity id=1 ok=1`, `goal0 id=1 ok=1`, `torque_on id=1 ok=1`, then `[dxl] ping id=2 FAILED`, `[dxl] bring-up id=2 failed`, `[dxl] bring-up failed, bus down, no Dynamixel calls` (printed before the forced stop), `[dxl] stop id=1 vel=0 ok=1`, `[dxl] stop id=2 vel=0 ok=0`, `[safe] torque off bring-up failed id=1`, `[safe] torque off bring-up failed id=2 (TORQUE OFF NOT CONFIRMED)`, latch line `[dxl] tx_ok=2 tx_fail=3 rd_ok1=0 rd_fail1=0 rd_ok2=0 rd_fail2=0 max_us=20019` (`max_us=20019` is the longest counted transaction since boot; which one it was is not shown; `tx_fail=3` fits the three tries of the zero write to ID 2 that the source makes, derived from the source and not shown in the log), `[safe] bus down (reset the board to retry)`. Then `[ttl_servo] gyro Z bias=...` and `Sim starts at 15 deg`; the 10 Hz lines show `cmd=NA pos1=NA ... pos2=NA ... bus=0`. 1052 WHL2 lines, seq 0 to 1051, 0 gaps, state 2 from the FIRST line (`WHL2,0,3002094,0.419200,0,0,2`), rawL and rawR 0 on all of them, the model changing. This is the first observation of the `(TORQUE OFF NOT CONFIRMED)` suffix; it was caused by the missing chip, not by an injected fault. |
 | (k) preset 3, counted re-run | `-D C3_CTRL_WHEELS_TEST=3`; capture from reset (starts at the ESP-ROM boot lines), banner `[ttl_servo] TEST INJECT ON preset=3 after=100 (SIM-ONLY, remove before any other use)` present | 708 WHL2 lines, all state 0, seq 0 to 707, 0 gaps. One `[dxl] write failed id=2 raw=-39 (n=1)` and no id=1 line; no stop line, no `[safe]` line, no bus down (no latch); last 1 Hz line `tx_ok=1160 tx_fail=2 rd_ok1=138 rd_fail1=0 rd_ok2=138 rd_fail2=0 max_us=5758`. WHL2 seq 99 and 100: state 0, rawL -39 and -27, rawR 0 (the two failing ticks); seq 101: rawL -18, rawR 18 (recovered). |
+| (l) Webots wheel direction, 2026-11-06 | Owner run of the FW bridge with Webots, default signs +1/+1, then `--sign-right -1`; observed in the Webots 3D view; CSVs owner-local, not committed | Positive command: both wheels turn about world +y in the same sense, rolling toward +x; sensor CSVs `sign_pos.csv` and `sign_neg.csv` show both wheel sensors +1.000/+1.000 and -1.000/-1.000, angle change about +9.45 and -9.47 rad over about 9.5 s of sim time. `--sign-right -1` (commands +1/-1): erratic wheel velocities up to about 20 rad/s, above the 3.5 rad/s motor limit; physics instability, cause not investigated, not a recommended setting. Chip-side signs not tested. |
 
 Notes on rows (d) to (k): after each test run the owner rebuilt the default env and counted `TEST INJECT` strings in the ELF (0). The section 11.2 boot-log check (no banner line at boot after the rebuild) was done once, for the row (j) bring-up capture on the modified diagram (servo2 deleted; no banner in the log); it was not done for a run on the unmodified diagram after a rebuild. In this document, "non-injected failure" means a failure that is not injected; row (j) is a non-injected failure (a missing chip at bring-up). The counters (`tx_fail`, `rd_fail`) in rows (d), (e), (g), (h), (i) and (k) include injected failures (row (j) has no injection; its failures come from the missing chip). The injection skips the bus call, so these runs do not exercise the library's real timeout or error code.
 
@@ -346,7 +352,7 @@ NOT RUN (a run that is recorded above as observed is not listed; presets 2 and 3
 - RFC2217 with three listeners
 - a simulator restart mid-run and the firmware restart seq jump
 - a long run and the seq/t_us wraps
-- Webots wheel direction vs sign
+- the chip-side wheel signs against Webots and against the servo (the Webots-side direction is row (l))
 - latency
 - real-bus read timing
 - hardware
