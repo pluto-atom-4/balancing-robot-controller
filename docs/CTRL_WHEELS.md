@@ -419,12 +419,12 @@ pio run -e c3_ctrl_wheels-xiao_c3
 A result counts as a preset run only if the serial log, captured from reset, shows this line:
 
 ```
-[ttl_servo] TEST INJECT ON preset=N after=M (SIM-ONLY, remove before any other use)
+[ttl_servo] TEST INJECT ON preset=N after=M (SIM-ONLY, remove before uploading to a physical board)
 ```
 
 The banner is printed once, in `setup()`, before the MPU6050 check. A capture started later can miss it.
 A log without the banner is not counted as a preset run and is not proof of default firmware. Record the
-banner line with each result.
+banner line with each result. The banner text was changed on 2026-11-06 (owner decision, G10 option A): earlier captures, including rows (d), (e), (i) and (k) of section 10, show the old text "remove before any other use". The helper chk.py matches on the prefix "TEST INJECT ON preset=" and are not affected.
 
 ### 11.4 Lines to look for, per V01 item
 
