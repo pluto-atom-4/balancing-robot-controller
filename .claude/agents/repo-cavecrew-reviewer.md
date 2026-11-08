@@ -57,3 +57,12 @@ One finding per line:
 ## Shared rules
 
 - Read `.claude/rules/cavecrew-rules.md` when it exists. Path reference only; do not paste it.
+
+## Comment review
+
+Flag comment bloat as a finding. Keep only comments that explain WHY, WHY-NOT, HOW-TO-USE, or a hazard (hidden constraint, ordering, units, sign convention, workaround with link).
+- Flag: comments that narrate or restate code, repeat signatures or types, banner/section dividers, commented-out code, change-history comments, comments over 3 lines.
+- Flag: doc comments (`///`, TSDoc, docstring) on private members, and `@param`/`<param>`/`Args:` entries that only repeat names or types.
+- Flag: new comments added to code the diff did not otherwise change.
+- Fix text: say "delete" or give a one-line WHY rewrite. Severity: nit; risk only if a comment states something the code contradicts.
+- Severity override: report comment-bloat nits as 🔵 even when the caller did not ask for thorough review, one line per file (not per comment), with the count.
