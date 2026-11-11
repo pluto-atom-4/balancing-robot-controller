@@ -2,7 +2,7 @@
 
 // SIM-ONLY, UNVERIFIED. Must stay C++11-valid (C3 firmware compiles with -std=gnu++11). Sync: freecad-workspace poc/ctrl-wheels/CONTRACT.md S1/S7.
 // Frame: WHL2,<seq>,<t_us>,<model>,<rawL>,<rawR>,<state>*HH\n  (model rad/s, raw int32; wheel signs unconfirmed).
-// state: 0 run, 1 hold after a fall, 2 bus down; the caller latches both wheels together.
+// state: 0 run, 1 hold after a fall, 2 bus down (caller latches both). HH: uppercase hex XOR of bytes from 'W' up to, not including, '*'.
 
 #include <imu_frame.h>
 #include <cmath>

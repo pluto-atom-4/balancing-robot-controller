@@ -1,6 +1,6 @@
 // c3_ctrl_wheels: sim-only twin of ttl_servo, ID 1 left (W[0]), ID 2 right (W[1], unconfirmed). UNVERIFIED, not hardware-validated.
 // A relay to Webots, not a closed loop. The wheel sign is applied in write_goal_raw only. Sim IMU I2C on GPIO8/9 is a sim-only wiring choice.
-// Log tags stay [ttl_servo], [dxl], [safe], [ctrl_wheel].
+// Log tags: [ttl_servo], [dxl], [safe], [ctrl_wheel].
 
 // WHL2 raws are the values last CONFIRMED on each chip; unknown and confirmed 0 both print 0, state 2 prints 0/0. State 0 does not mean the writes succeeded.
 // State 2 (bus_down latched) is the only latched (terminal) state (1 is hold after a fall); the boot-time halts print no WHL2 line.
@@ -9,8 +9,11 @@
 // -D C3_CTRL_WHEELS_TEST=1..4 (default OFF): SIM-ONLY, UNVERIFIED failure injection, not hardware-validated; remove before uploading to a board (G10, #309). Results: #304.
 // A run counts as a preset run only if the log from reset shows the `[ttl_servo] TEST INJECT ON preset=N after=M` banner; a log without it is not proof of default firmware.
 
-// Presets from test tick M (20 ms ticks): 1 both writes fail; 2 ID 2 writes fail; 3 ID 2 writes fail for [M, M+2); 4 ID 2 read verdict fails for [M, M+50).
-// Presets 3 and 4 do not latch; no stop path is injected; failed zero writes and torque-off failures are not covered. Counters include injected events.
+// Presets from test tick M (live non-holding 20 ms passes): 1 both writes fail; 2 ID 2 writes fail; 3 ID 2 for [M, M+2);
+// 4 ID 2 read verdict for [M, M+50) ticks (about 10 reads at 10 Hz, not 50; active through a hold).
+// Forced write failures bypass write-on-change (attempted even when the value equals last_raw) and skip setGoalVelocity; counters include injected events.
+
+// Presets 3 and 4 do not latch; no stop path is injected; failed zero writes and torque-off failures are not covered.
 #if defined(C3_CTRL_WHEELS_TEST) && ((C3_CTRL_WHEELS_TEST < 0) || (C3_CTRL_WHEELS_TEST > 4))
 #error "C3_CTRL_WHEELS_TEST must be 0 (off) or 1..4"
 #endif
@@ -69,7 +72,7 @@ struct WheelCtx {
   int8_t   sign;
   segway::SegwaySim sim;
   uint8_t  consec_fail;
-  int32_t  last_raw;       // INT32_MIN = chip state unknown
+  int32_t  last_raw;       // INT32_MIN = unknown, so the next write always goes out
   int32_t  last_pos;
   bool     have_last_pos;
   uint32_t rd_ok, rd_fail;
@@ -132,7 +135,7 @@ static int32_t whl2_raw(const WheelCtx& w) {
   return (w.last_raw == INT32_MIN) ? 0 : w.last_raw;
 }
 
-// The availableForWrite() guard is why this should not block (unverified on the C3 USB CDC); the loop's other prints are unguarded and can block.
+// Guarded by availableForWrite(); whether Serial.write blocks on the C3 USB CDC is unverified. Other prints are unguarded.
 static void whl_emit(float model_rad_s, int32_t rawL, int32_t rawR, uint8_t state) {
   uint32_t t0 = micros();
   size_t n = wheels_frame::format(whl_buf, sizeof whl_buf, whl_seq, (uint32_t)micros(),
@@ -173,7 +176,7 @@ static bool write_vel_zero_ctx(WheelCtx& w) {
 }
 
 // Do not multiply by .sign elsewhere; raw is already capped at +-segway::kWheelCapRaw, do not re-cap.
-// A failed write sets last_raw to INT32_MIN.
+// INT32_MIN = unknown: a timed-out write may have landed, so the next write always goes out.
 static bool write_goal_raw(WheelCtx& w, int32_t raw) {
   if (bus_down) return false;
   int32_t wire = (int32_t)w.sign * raw;
@@ -204,7 +207,7 @@ static bool write_goal_raw(WheelCtx& w, int32_t raw) {
 
 // Stops BOTH wheels, always attempting both. Not gated by bus_down: kill/torque-off path, must still try after a latch.
 // Force returns the torque-off result only (the stronger stop). Dead bus: up to 12 transactions before the latch (unmeasured, sim).
-// Every torque-off attempt sets last_raw = INT32_MIN so the next write goes out, including after torque is re-enabled.
+// last_raw = INT32_MIN is set once per wheel after its up to 3 torqueOff attempts, so the next write goes out even after torque is re-enabled.
 static bool stop_wheels_best_effort(const char* why, bool force_torque_off = false) {
   bool zok_all = true;
   for (uint8_t k = 0; k < 2; ++k) {
@@ -231,7 +234,7 @@ static void dxl_bus_begin() {
   dxl.setPortProtocolVersion(DXL_PROTO);
 }
 
-// Latch: no Dynamixel calls until reset.
+// Latch: write_goal_raw refuses and the loop's servo_ok paths skip chip I/O; stop_wheels_best_effort is not gated.
 static void latch_bus_down() {
   servo_ok = false;
   if (bus_down) return;
@@ -246,7 +249,6 @@ static void latch_bus_down() {
 }
 
 // Ping first: Dynamixel2Arduino resolves registers through the model number a ping fills in (library behaviour, unchecked).
-// Each step runs only if the previous one passed.
 static bool bring_up_wheel(WheelCtx& w) {
   bool ok = dxl.ping(w.id);
   Serial.printf("[dxl] ping id=%lu %s\n", (unsigned long)w.id, ok ? "ok" : "FAILED");
@@ -274,7 +276,7 @@ static bool bring_up_wheel(WheelCtx& w) {
   return ok;
 }
 
-// The FALL_TEST gains are applied at boot and on every restart (this runs in both).
+// The FALL_TEST gains are applied at boot and on every restart.
 static void reset_sims() {
   for (uint8_t k = 0; k < 2; ++k) {
     W[k].sim.reset(SIM_INIT_THETA_RAD);
@@ -307,7 +309,6 @@ void setup() {
   }
   mpu.setGyroRange(MPU6050_RANGE_250_DEG);
 
-  // Bring-up before the blocking calibration.
   bool all_ok = true;
   for (uint8_t k = 0; k < 2; ++k) {
     if (!bring_up_wheel(W[k])) {
@@ -354,7 +355,7 @@ void setup() {
   lastWhlPrintMs = lastLoopMs;
 }
 
-// Ticking two plants per loop: the soft-float cost is unmeasured (sim).
+// Two plants per loop: soft-float cost unmeasured (sim).
 void loop() {
   uint32_t now_ms = millis();
   uint32_t dt_ms = now_ms - lastLoopMs;
@@ -389,7 +390,8 @@ void loop() {
       uint8_t f = W[0].sim.has_fallen ? 0 : 1;
       Serial.printf("[ttl_servo] FELL id=%lu theta=%.3f\n",
                     (unsigned long)W[f].id, W[f].sim.theta_rad);
-      // Non-force stop: torque off only if a zero write failed. After a latch no stop is sent; state stays 2.
+      // Non-force stop: torque off only if a zero write failed; a stop where both zero writes succeed leaves torque ON at zero velocity.
+      // After a latch no stop is sent; state stays 2.
       if (servo_ok) {
         if (!stop_wheels_best_effort("after fall")) latch_bus_down();
       }
@@ -477,7 +479,7 @@ void loop() {
                   pos_s[0], dpos_s[0], pos_s[1], dpos_s[1], gyroZ_filtered_rad_s, servo_ok ? 1 : 0);
   }
 
-  // 80-byte USB room gate is a sizing choice, not measured.
+  // 80 bytes is a sizing choice, not measured.
   if (now_ms - lastWhlPrintMs >= 1000 && Serial.availableForWrite() >= 80) {
     Serial.printf("[ctrl_wheel] sent=%lu dropped=%lu max_emit_us=%lu\n",
                   (unsigned long)whl_sent, (unsigned long)whl_dropped,

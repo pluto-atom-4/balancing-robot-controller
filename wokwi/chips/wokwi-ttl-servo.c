@@ -93,7 +93,7 @@ typedef struct {
 #define HORN_TIP_OFF   0xFF000080u
 #define HORN_MAX_DIM 64
 #define BG_DIM 64
-// Horn geometry and ring radii are in half-pixel units (doubled coordinates).
+// HORN_L..HORN_HOLE_U2 are half-pixel (doubled) units; HORN_RADIUS is pixels, doubled in draw_horn.
 #define HORN_L 40
 #define HORN_W 6
 #define HORN_HUB 14
@@ -136,7 +136,7 @@ static uint32_t horn_pixel(int32_t u, int32_t v, uint32_t body, uint32_t tip) {
 static void draw_horn(chip_state_t *chip) {
   uint32_t w = chip->fb_w;
   uint32_t h = chip->fb_h;
-  // Handle 0 is valid in Wokwi; validity is judged from the dimensions framebuffer_init reports.
+  // Handle 0 is valid in Wokwi, so validity is judged by the reported dimensions; a 0x0 or oversize framebuffer draws nothing.
   if (w == 0 || h == 0 || w > HORN_MAX_DIM || h > HORN_MAX_DIM) {
     return;
   }
@@ -233,8 +233,7 @@ static void send_status_packet(chip_state_t *chip, uint8_t error, const uint8_t 
 
   uint64_t now = get_sim_nanos() / 1000;
   chip->transmitting = true;
-  // Fallback if write_done never fires (+2 ticks margin). write_done carries no reply id, so the fallback relies on a timing
-  // margin, not on construction. Sim-only (#81); re-measure if the traffic pattern changes.
+  // write_done has no reply id; the deadline is a timing fallback, not guaranteed by the protocol (sim-only, #81).
   chip->tx_deadline_us = now + (uint64_t)total_tx_size * 10 * 1000000 / 57600 + 2 * 20000;
   pin_mode(chip->tx_pin, OUTPUT_HIGH);
   uart_write(chip->uart, tx_buf, total_tx_size);
