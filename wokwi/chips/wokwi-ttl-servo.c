@@ -5,13 +5,13 @@
 #include "wokwi-ttl-servo.bg.h"
 #include "ttl_servo_slew.h"
 
-#define MODEL_NUMBER 1200 /* XL330-M288 */
+#define MODEL_NUMBER 1200
 #define FIRMWARE_VERSION 1
 #define MAX_PARAMS 64
 #define MAX_READ_LEN 64
 
 // Velocity unit 0.229 rpm per unit: ROBOTIS XL330-M077 e-Manual https://emanual.robotis.com/docs/en/dxl/x/xl330-m077/
-// Same constant as lib/dxl_units; MODEL_NUMBER 1200 is XL330-M288 (same unit).
+// Hand-copied from lib/dxl_units, keep in step; MODEL_NUMBER 1200 is XL330-M288 (same unit).
 #define TICKS_PER_REV 4096.0
 #define VEL_TICKS_PER_S_PER_UNIT (0.229 * TICKS_PER_REV / 60.0)
 
@@ -83,7 +83,7 @@ typedef struct {
 } chip_state_t;
 
 // Pixel format 0xAABBGGRR (red in low byte), confirmed in the Wokwi simulator by the repo owner.
-#define HORN_RADIUS 28 // Reference ring radius, pixels
+#define HORN_RADIUS 28 // pixels
 #define HORN_BG        0xFF202020u
 #define HORN_RING      0xFF404040u
 #define HORN_TICK      0xFF808080u
@@ -93,6 +93,7 @@ typedef struct {
 #define HORN_TIP_OFF   0xFF000080u
 #define HORN_MAX_DIM 64
 #define BG_DIM 64
+// Horn geometry and ring radii are in half-pixel units (doubled coordinates).
 #define HORN_L 40
 #define HORN_W 6
 #define HORN_HUB 14
@@ -111,6 +112,7 @@ static const int32_t SIN_1024[64] = {
  -1024,-1019,-1004, -980, -946, -903, -851, -792, -724, -650, -569, -483, -392, -297, -200, -100
 };
 
+// u along the arm, v across; returns 0 if not horn.
 static uint32_t horn_pixel(int32_t u, int32_t v, uint32_t body, uint32_t tip) {
   if (u * u + v * v <= HORN_BORE * HORN_BORE) {
     return HORN_BG;
@@ -231,15 +233,13 @@ static void send_status_packet(chip_state_t *chip, uint8_t error, const uint8_t 
 
   uint64_t now = get_sim_nanos() / 1000;
   chip->transmitting = true;
-  // Fallback if write_done never fires (+2 ticks margin: releases 40-60 ms after the reply ends). write_done carries no
-  // reply id, so a late one for an earlier reply is indistinguishable; this relies on the margin. Sim-only (#81): write_done
-  // always arrived over 800+ replies and the fallback never fired. Re-measure if the traffic pattern changes.
+  // Fallback if write_done never fires (+2 ticks margin). write_done carries no reply id, so the fallback relies on a timing
+  // margin, not on construction. Sim-only (#81); re-measure if the traffic pattern changes.
   chip->tx_deadline_us = now + (uint64_t)total_tx_size * 10 * 1000000 / 57600 + 2 * 20000;
   pin_mode(chip->tx_pin, OUTPUT_HIGH);
   uart_write(chip->uart, tx_buf, total_tx_size);
 }
 
-// Reply fully shifted out: release TX and stop dropping RX bytes.
 static void chip_uart_write_done(void *user_data) {
   chip_state_t *chip = (chip_state_t *)user_data;
   if (!chip->transmitting) {
@@ -391,7 +391,7 @@ static void chip_timer_callback(void *user_data) {
     pin_mode(chip->tx_pin, INPUT_PULLUP);
   }
 
-  // Goal Velocity is used only in velocity mode (Operating Mode 1); other modes ignore it, as on the real servo.
+  // Sim model: other modes ignore Goal Velocity.
   if (chip->torque_enable && chip->speed != 0 && chip->operating_mode == 1) {
     chip->pos_frac += chip->speed * VEL_TICKS_PER_S_PER_UNIT * delta_t;
     int32_t whole = (int32_t)chip->pos_frac;

@@ -1,14 +1,16 @@
 // c3_ctrl_wheels: sim-only twin of ttl_servo, ID 1 left (W[0]), ID 2 right (W[1], unconfirmed). UNVERIFIED, not hardware-validated.
 // A relay to Webots, not a closed loop. The wheel sign is applied in write_goal_raw only. Sim IMU I2C on GPIO8/9 is a sim-only wiring choice.
-// Log tags stay [ttl_servo], [dxl], [safe], [ctrl_wheel] from the single-wheel copy.
+// Log tags stay [ttl_servo], [dxl], [safe], [ctrl_wheel].
 
-// WHL2 raws are the values last CONFIRMED on each chip; unknown and confirmed 0 both print 0, and state 2 prints 0/0.
-// State 2 (bus_down latched) is the only fault signal; the boot-time halts (no IMU, gyro cal failure) print no WHL2 line.
+// WHL2 raws are the values last CONFIRMED on each chip; unknown and confirmed 0 both print 0, state 2 prints 0/0. State 0 does not mean the writes succeeded.
+// State 2 (bus_down latched) is the only latched (terminal) state (1 is hold after a fall); the boot-time halts print no WHL2 line.
 // A tick fails if either write fails; 3 failed ticks in a row force torque off on both ids, then latch (reset to retry).
 
-// -D C3_CTRL_WHEELS_TEST=1..4 (default OFF): SIM-ONLY, UNVERIFIED failure injection, not hardware-validated; remove before uploading to a board (G10, #309).
-// Counts as a preset run only if the log from reset shows the `[ttl_servo] TEST INJECT ON preset=N after=M` banner. Results: #304.
-// Presets from tick M: 1 both writes fail; 2 ID 2 writes fail; 3 ID 2 writes fail for [M, M+2); 4 ID 2 read verdict fails for [M, M+50). Counters include injected events.
+// -D C3_CTRL_WHEELS_TEST=1..4 (default OFF): SIM-ONLY, UNVERIFIED failure injection, not hardware-validated; remove before uploading to a board (G10, #309). Results: #304.
+// A run counts as a preset run only if the log from reset shows the `[ttl_servo] TEST INJECT ON preset=N after=M` banner; a log without it is not proof of default firmware.
+
+// Presets from test tick M (20 ms ticks): 1 both writes fail; 2 ID 2 writes fail; 3 ID 2 writes fail for [M, M+2); 4 ID 2 read verdict fails for [M, M+50).
+// Presets 3 and 4 do not latch; no stop path is injected; failed zero writes and torque-off failures are not covered. Counters include injected events.
 #if defined(C3_CTRL_WHEELS_TEST) && ((C3_CTRL_WHEELS_TEST < 0) || (C3_CTRL_WHEELS_TEST > 4))
 #error "C3_CTRL_WHEELS_TEST must be 0 (off) or 1..4"
 #endif
@@ -28,7 +30,7 @@ static constexpr uint8_t  I2C_SCL = 9;
 static constexpr uint8_t  MPU_ADDR = 0x68;
 static constexpr float    DXL_PROTO = 2.0f;
 static constexpr uint32_t DXL_BAUD = 57600;
-static constexpr int      DXL_DIR_PIN = -1;
+static constexpr int      DXL_DIR_PIN = -1;   // FE-URT-1 handles direction in hardware
 static constexpr int      DXL_RX = 20;
 static constexpr int      DXL_TX = 21;
 static constexpr uint32_t LOOP_PERIOD_MS = 20;
@@ -130,7 +132,7 @@ static int32_t whl2_raw(const WheelCtx& w) {
   return (w.last_raw == INT32_MIN) ? 0 : w.last_raw;
 }
 
-// Whether Serial.write can block on the C3 USB CDC is unverified; the loop's other prints are unguarded and can block if the host stalls.
+// The availableForWrite() guard is why this should not block (unverified on the C3 USB CDC); the loop's other prints are unguarded and can block.
 static void whl_emit(float model_rad_s, int32_t rawL, int32_t rawR, uint8_t state) {
   uint32_t t0 = micros();
   size_t n = wheels_frame::format(whl_buf, sizeof whl_buf, whl_seq, (uint32_t)micros(),
@@ -149,8 +151,6 @@ static void whl_emit(float model_rad_s, int32_t rawL, int32_t rawR, uint8_t stat
   if (el > whl_max_emit_us) whl_max_emit_us = el;
 }
 
-// Do not multiply by .sign outside write_goal_raw().
-// last_raw is the last value CONFIRMED on the chip; INT32_MIN means unknown, so the next write always goes out.
 
 // Not gated by bus_down: part of the kill/torque-off path, which must still try after a latch.
 static bool write_vel_zero_ctx(WheelCtx& w) {
@@ -172,8 +172,8 @@ static bool write_vel_zero_ctx(WheelCtx& w) {
   return false;
 }
 
-// raw is before the wheel sign and already capped at +-segway::kWheelCapRaw; do not re-cap. Wire value is w.sign * raw.
-// Refused after the bus latch. A failed write sets last_raw = INT32_MIN (a timed-out write may have landed). Does not latch.
+// Do not multiply by .sign elsewhere; raw is already capped at +-segway::kWheelCapRaw, do not re-cap.
+// A failed write sets last_raw to INT32_MIN.
 static bool write_goal_raw(WheelCtx& w, int32_t raw) {
   if (bus_down) return false;
   int32_t wire = (int32_t)w.sign * raw;
@@ -307,7 +307,7 @@ void setup() {
   }
   mpu.setGyroRange(MPU6050_RANGE_250_DEG);
 
-  // Bring-up before the blocking calibration; stops at the first failure, then the stop forces torque off on both ids and the bus latches.
+  // Bring-up before the blocking calibration.
   bool all_ok = true;
   for (uint8_t k = 0; k < 2; ++k) {
     if (!bring_up_wheel(W[k])) {
@@ -426,7 +426,7 @@ void loop() {
     }
   }
 
-  // model is the left wheel's lagged value, 0 while holding.
+  // model is the left wheel's lagged model value, not a measurement; 0 while holding.
   const float whl_model = holding ? 0.0f : W[0].sim.wheel_vel_rad_s;
   const uint8_t whl_state = bus_down ? 2 : (holding ? 1 : 0);
   const int32_t whl_rawL = (whl_state == 2) ? 0 : whl2_raw(W[0]);
@@ -439,7 +439,8 @@ void loop() {
     char dpos_s[2][12] = { "n/a", "n/a" };
     char cmd_s[12] = "NA";
     if (servo_ok) {
-      // Blocking reads on a dead or slow bus can stall the tick; the stall is unmeasured.
+      // [dxl] max_us excludes untimed calls (torque-off, ping, setOperatingMode, torqueOn, no-IMU ping), so it is not the worst call on the bus.
+      // Reads never count toward write_fail or tick_fail_streak and never latch; a blocking read on a dead bus can stall the tick (unmeasured).
       for (uint8_t k = 0; k < 2; ++k) {
         uint32_t t0 = micros();
         int32_t pos = dxl.getPresentPosition(W[k].id);
@@ -466,7 +467,6 @@ void loop() {
         }
       }
     }
-    // cmd = W[0].last_raw (NA when unknown); bus=1 means both wheels came up (servo_ok).
     // The wheel is shown as 0 during the post-fall hold whether or not the stop was confirmed.
     if (W[0].last_raw != INT32_MIN)
       snprintf(cmd_s, sizeof(cmd_s), "%ld", (long)W[0].last_raw);

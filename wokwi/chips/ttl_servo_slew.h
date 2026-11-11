@@ -1,4 +1,5 @@
 /* Sim-only XL330 position-mode slew. Profile Velocity unit and model UNVERIFIED against the e-Manual; not hardware-validated. */
+/* Pure C99 (also valid C++): no libm, no heap, no stdio. */
 #ifndef TTL_SERVO_SLEW_H
 #define TTL_SERVO_SLEW_H
 
