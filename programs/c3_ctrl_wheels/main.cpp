@@ -3,13 +3,15 @@
 // Log tags: [ttl_servo], [dxl], [safe], [ctrl_wheel].
 
 // WHL2 raws are the values last CONFIRMED on each chip; unknown and confirmed 0 both print 0, state 2 prints 0/0. State 0 does not mean the writes succeeded.
-// State 2 (bus_down latched) is the only latched (terminal) state (1 is hold after a fall); the boot-time halts print no WHL2 line.
+// State 2 (bus_down latched, terminal; 1 is hold after a fall) follows bring-up failure, a failed stop after a fall, or 3 failed ticks;
+// the no-IMU and gyro-cal halts in setup() print no WHL2 line.
+
 // A tick fails if either write fails; 3 failed ticks in a row force torque off on both ids, then latch (reset to retry).
 
 // -D C3_CTRL_WHEELS_TEST=1..4 (default OFF): SIM-ONLY, UNVERIFIED failure injection, not hardware-validated; remove before uploading to a board (G10, #309). Results: #304.
 // A run counts as a preset run only if the log from reset shows the `[ttl_servo] TEST INJECT ON preset=N after=M` banner; a log without it is not proof of default firmware.
 
-// Presets from test tick M (live non-holding 20 ms passes): 1 both writes fail; 2 ID 2 writes fail; 3 ID 2 for [M, M+2);
+// Presets from test tick M = C3_CTRL_WHEELS_TEST_AFTER (default 100; 0 fires from the first live pass; ticks are live non-holding 20 ms passes): 1 both writes fail; 2 ID 2 writes fail; 3 ID 2 for [M, M+2);
 // 4 ID 2 read verdict for [M, M+50) ticks (about 10 reads at 10 Hz, not 50; active through a hold).
 // Forced write failures bypass write-on-change (attempted even when the value equals last_raw) and skip setGoalVelocity; counters include injected events.
 
@@ -469,9 +471,9 @@ void loop() {
         }
       }
     }
-    // The wheel is shown as 0 during the post-fall hold whether or not the stop was confirmed.
     if (W[0].last_raw != INT32_MIN)
       snprintf(cmd_s, sizeof(cmd_s), "%ld", (long)W[0].last_raw);
+    // The wheel is shown as 0 during the post-fall hold whether or not the stop was confirmed.
     float wheel_shown = holding ? 0.0f : W[0].sim.wheel_vel_rad_s;
     Serial.printf("[ttl_servo] sim theta=%.3f rate=%.3f wheel=%.2f cmd=%s pos1=%s dpos1=%s pos2=%s dpos2=%s gyroZ=%.3f bus=%d\n",
                   W[0].sim.theta_rad, W[0].sim.theta_dot_rad_s,

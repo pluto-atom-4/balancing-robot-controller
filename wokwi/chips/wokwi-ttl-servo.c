@@ -102,7 +102,7 @@ typedef struct {
 #define HORN_HOLE_U1 24
 #define HORN_HOLE_U2 32
 
-static uint32_t pixels[HORN_MAX_DIM * HORN_MAX_DIM]; // Static storage, not stack
+static uint32_t pixels[HORN_MAX_DIM * HORN_MAX_DIM];
 
 // sin(i * 2pi / 64) * 1024, rounded. cos(i) = SIN_1024[(i + 16) & 63].
 static const int32_t SIN_1024[64] = {
@@ -136,7 +136,7 @@ static uint32_t horn_pixel(int32_t u, int32_t v, uint32_t body, uint32_t tip) {
 static void draw_horn(chip_state_t *chip) {
   uint32_t w = chip->fb_w;
   uint32_t h = chip->fb_h;
-  // Handle 0 is valid in Wokwi, so validity is judged by the reported dimensions; a 0x0 or oversize framebuffer draws nothing.
+  // Validity is judged by the dimensions framebuffer_init reports, not the handle (handle 0 valid in Wokwi: UNVERIFIED, original author's claim).
   if (w == 0 || h == 0 || w > HORN_MAX_DIM || h > HORN_MAX_DIM) {
     return;
   }
