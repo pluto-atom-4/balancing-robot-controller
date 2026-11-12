@@ -5,21 +5,21 @@
 #include "wokwi-ttl-servo.bg.h"
 #include "ttl_servo_slew.h"
 
-#define MODEL_NUMBER 1200 /* XL330-M288 */
+#define MODEL_NUMBER 1200
 #define FIRMWARE_VERSION 1
 #define MAX_PARAMS 64
 #define MAX_READ_LEN 64
 
 // Velocity unit 0.229 rpm per unit: ROBOTIS XL330-M077 e-Manual https://emanual.robotis.com/docs/en/dxl/x/xl330-m077/
-// Same constant as lib/dxl_units/dxl_units.h; this chip's MODEL_NUMBER 1200 is XL330-M288 (same unit), hand-copied here.
+// Hand-copied from lib/dxl_units, keep in step; MODEL_NUMBER 1200 is XL330-M288 (same unit).
 #define TICKS_PER_REV 4096.0
 #define VEL_TICKS_PER_S_PER_UNIT (0.229 * TICKS_PER_REV / 60.0)
 
 #define ADDR_OPERATING_MODE 11
 #define ADDR_TORQUE_ENABLE  64
 #define ADDR_GOAL_VELOCITY  104
-#define ADDR_PROFILE_ACCEL 108 // Profile Acceleration: stored only, not modelled (sim-only)
-#define ADDR_PROFILE_VEL   112 // Profile Velocity: unit 0.229 rpm assumed like velocity; UNVERIFIED for profile registers (sim-only)
+#define ADDR_PROFILE_ACCEL 108 // stored only, not modelled (sim-only)
+#define ADDR_PROFILE_VEL   112 // unit 0.229 rpm assumed; UNVERIFIED for profile registers (sim-only)
 #define ADDR_GOAL_POSITION  116
 #define ADDR_PRESENT_POSITION 132
 
@@ -47,36 +47,31 @@ typedef struct {
   pin_t data_pin;
   uint8_t servo_id;
   uint32_t current_position;
-  double pos_frac; // Sub-tick remainder of integrated position
+  double pos_frac;
   int32_t speed;
   uint64_t last_update_us;
 
-  // Half-duplex: TX pin is shared with RX on DATA, so our own reply echoes back
   pin_t tx_pin;
   bool transmitting;
   uint64_t tx_deadline_us;
 
-  // Custom attributes / Operating states
   uint8_t operating_mode;
   uint8_t torque_enable;
 
-  // Position mode: goal and profile registers (sim-only model, see chip_timer_callback)
   uint32_t goal_position;
   uint32_t profile_vel;
   uint32_t profile_acc;
-  uint32_t log_tick;          // Counts position-mode ticks for the rate-limited log
+  uint32_t log_tick;
   uint32_t last_logged_goal;
   uint32_t last_logged_pos;
 
-  // Display: framebuffer handle and dims reported by the host (never hardcoded)
   buffer_t fb;
   uint32_t fb_w;
   uint32_t fb_h;
   uint32_t last_pos_drawn; // 0xFFFFFFFF = never drawn
   uint8_t last_torque_drawn;
-  uint8_t draw_div;        // Toggles every timer tick; redraw on every 2nd tick
+  uint8_t draw_div;
 
-  // Parser variables
   parse_state_t state;
   uint16_t packet_length;
   uint8_t rx_id;
@@ -87,21 +82,18 @@ typedef struct {
   uint8_t tx_buf[96];
 } chip_state_t;
 
-// Horn display. Pixel format assumed RGBA32 as uint32 0xAABBGGRR (alpha 0xFF, red in low byte).
-// CONFIRMED in the Wokwi simulator by the repo owner.
-#define HORN_RADIUS 28 // Reference ring radius, pixels
+// Pixel format 0xAABBGGRR (red in low byte), confirmed in the Wokwi simulator by the repo owner.
+#define HORN_RADIUS 28 // pixels
 #define HORN_BG        0xFF202020u
 #define HORN_RING      0xFF404040u
 #define HORN_TICK      0xFF808080u
 #define HORN_BODY_ON   0xFFE0E0E0u
 #define HORN_BODY_OFF  0xFF707070u
-#define HORN_TIP_ON    0xFF0000FFu // Red (0xAABBGGRR, byte order confirmed in the Wokwi simulator)
+#define HORN_TIP_ON    0xFF0000FFu
 #define HORN_TIP_OFF   0xFF000080u
 #define HORN_MAX_DIM 64
-// Background is a baked 64x64 image generated from wokwi-ttl-servo.svg by wokwi/tools/svg_to_pixels.sh (`make wokwi-bg`).
-// Same 0xAABBGGRR pixel format as above, CONFIRMED in the Wokwi simulator by the repo owner.
 #define BG_DIM 64
-// Horn geometry in half-pixel units (doubled coordinates)
+// HORN_L..HORN_HOLE_U2 are half-pixel (doubled) units; HORN_RADIUS is pixels, doubled in draw_horn.
 #define HORN_L 40
 #define HORN_W 6
 #define HORN_HUB 14
@@ -110,7 +102,7 @@ typedef struct {
 #define HORN_HOLE_U1 24
 #define HORN_HOLE_U2 32
 
-static uint32_t pixels[HORN_MAX_DIM * HORN_MAX_DIM]; // Static storage, not stack
+static uint32_t pixels[HORN_MAX_DIM * HORN_MAX_DIM];
 
 // sin(i * 2pi / 64) * 1024, rounded. cos(i) = SIN_1024[(i + 16) & 63].
 static const int32_t SIN_1024[64] = {
@@ -120,7 +112,7 @@ static const int32_t SIN_1024[64] = {
  -1024,-1019,-1004, -980, -946, -903, -851, -792, -724, -650, -569, -483, -392, -297, -200, -100
 };
 
-// Arm-local coordinates (u along arm, v across). Returns 0 if not horn.
+// u along the arm, v across; returns 0 if not horn.
 static uint32_t horn_pixel(int32_t u, int32_t v, uint32_t body, uint32_t tip) {
   if (u * u + v * v <= HORN_BORE * HORN_BORE) {
     return HORN_BG;
@@ -140,11 +132,11 @@ static uint32_t horn_pixel(int32_t u, int32_t v, uint32_t body, uint32_t tip) {
   return 0;
 }
 
-// Background, reference ring, ticks, servo horn. Position 0 = arm up, clockwise.
+// Position 0 = arm up, clockwise.
 static void draw_horn(chip_state_t *chip) {
   uint32_t w = chip->fb_w;
   uint32_t h = chip->fb_h;
-  // Handle 0 is valid in Wokwi; validity is judged from the dimensions framebuffer_init reports.
+  // Validity is judged by the dimensions framebuffer_init reports, not the handle (handle 0 valid in Wokwi: UNVERIFIED).
   if (w == 0 || h == 0 || w > HORN_MAX_DIM || h > HORN_MAX_DIM) {
     return;
   }
@@ -152,12 +144,10 @@ static void draw_horn(chip_state_t *chip) {
   uint32_t body = chip->torque_enable ? HORN_BODY_ON : HORN_BODY_OFF;
   uint32_t tip = chip->torque_enable ? HORN_TIP_ON : HORN_TIP_OFF;
 
-  // 4096 ticks per turn -> 64 table steps
   uint32_t idx = (chip->current_position / 64) & 63;
   int32_t sn = SIN_1024[idx];
   int32_t cs = SIN_1024[(idx + 16) & 63];
 
-  // Ring: 2R in half-pixel units, squared, within (R-1)..(R+1)
   int32_t r_in2 = (2 * (HORN_RADIUS - 1)) * (2 * (HORN_RADIUS - 1));
   int32_t r_out2 = (2 * (HORN_RADIUS + 1)) * (2 * (HORN_RADIUS + 1));
 
@@ -200,7 +190,6 @@ static void draw_horn(chip_state_t *chip) {
   buffer_write(chip->fb, 0, pixels, w * h * 4);
 }
 
-// Dynamixel Protocol 2.0 CRC-16 (poly 0x8005, MSB first, init 0)
 static uint16_t calculate_crc(uint16_t crc, const uint8_t *data, uint16_t size) {
   for (uint16_t j = 0; j < size; j++) {
     crc ^= (uint16_t)data[j] << 8;
@@ -211,9 +200,8 @@ static uint16_t calculate_crc(uint16_t crc, const uint8_t *data, uint16_t size) 
   return crc;
 }
 
-// Transmits a complete Dynamixel Status Packet back to the host
 static void send_status_packet(chip_state_t *chip, uint8_t error, const uint8_t *data, uint16_t data_len) {
-  uint16_t packet_len = 4 + data_len; // Inst (1) + Error (1) + Data (N) + CRC (2)
+  uint16_t packet_len = 4 + data_len;
   uint16_t total_tx_size = 7 + packet_len;
   uint8_t *tx_buf = chip->tx_buf;
 
@@ -239,26 +227,18 @@ static void send_status_packet(chip_state_t *chip, uint8_t error, const uint8_t 
   tx_buf[total_tx_size - 2] = crc & 0xFF;
   tx_buf[total_tx_size - 1] = (crc >> 8) & 0xFF;
 
-  // Previous reply still on the wire: drop this one.
   if (chip->transmitting) {
     return;
   }
 
-  // Drive TX only while the reply is on the wire; release it (INPUT_PULLUP) otherwise.
   uint64_t now = get_sim_nanos() / 1000;
   chip->transmitting = true;
-  // Fallback if write_done never fires (+2 timer ticks of margin, so it releases 40-60 ms after the reply ends).
-  // write_done carries no reply id, so a late write_done for an earlier reply cannot be told apart from the
-  // current one; this path relies on that timing margin, not on construction. The race needs the fallback to
-  // fire first. In the simulator (issue #81, sim-only), over 800 replies in the wokwi_ttl_servo demo and the
-  // tilt_servo sim, write_done always arrived (longest observed delay about 2.6 ms, one 15-byte reply; replies
-  // can be up to about 13 ms) and the fallback never fired. Re-measure if the traffic pattern changes.
+  // write_done has no reply id; the deadline is a timing fallback, not guaranteed by the protocol (sim-only, #81).
   chip->tx_deadline_us = now + (uint64_t)total_tx_size * 10 * 1000000 / 57600 + 2 * 20000;
   pin_mode(chip->tx_pin, OUTPUT_HIGH);
   uart_write(chip->uart, tx_buf, total_tx_size);
 }
 
-// Reply fully shifted out: release TX and stop dropping RX bytes.
 static void chip_uart_write_done(void *user_data) {
   chip_state_t *chip = (chip_state_t *)user_data;
   if (!chip->transmitting) {
@@ -273,7 +253,7 @@ static void process_packet(chip_state_t *chip) {
     return;
   }
 
-  // Never answer a status packet (our own reply echoed back, or another servo's)
+  // Never answer a status packet (for example another servo's)
   if (chip->instruction == INST_STATUS) {
     return;
   }
@@ -316,7 +296,6 @@ static void process_packet(chip_state_t *chip) {
     } else if (target_address == ADDR_PROFILE_ACCEL && data_len >= 4) {
       memcpy(&chip->profile_acc, &chip->params[2], 4);
     }
-    // Return empty status packet acknowledging write success
     if (chip->rx_id != 0xFE) {
       send_status_packet(chip, 0, NULL, 0);
     }
@@ -345,7 +324,6 @@ static void process_packet(chip_state_t *chip) {
     } else if (target_address == ADDR_PROFILE_ACCEL && read_length == 4) {
       send_status_packet(chip, 0, (const uint8_t *)&chip->profile_acc, 4);
     } else {
-      // Fallback zeroed array response for unhandled register reads
       uint8_t empty[MAX_READ_LEN] = {0};
       send_status_packet(chip, 0, empty, read_length);
     }
@@ -406,14 +384,13 @@ static void chip_timer_callback(void *user_data) {
   double delta_t = (now - chip->last_update_us) / 1000000.0;
   chip->last_update_us = now;
 
-  // Fallback release if write_done never fired (timer ticks every 20 ms, so this is late by up to one tick)
+  // Fallback release if write_done never fired (up to one 20 ms tick late)
   if (chip->transmitting && now >= chip->tx_deadline_us) {
     chip->transmitting = false;
     pin_mode(chip->tx_pin, INPUT_PULLUP);
   }
 
-  // delta_t is in seconds (us / 1e6), so ticks = units * ticks-per-s-per-unit * seconds
-  // Goal Velocity is used only in velocity mode (Operating Mode 1); other modes ignore it, as on the real servo.
+  // Sim model: other modes ignore Goal Velocity.
   if (chip->torque_enable && chip->speed != 0 && chip->operating_mode == 1) {
     chip->pos_frac += chip->speed * VEL_TICKS_PER_S_PER_UNIT * delta_t;
     int32_t whole = (int32_t)chip->pos_frac;
@@ -424,7 +401,6 @@ static void chip_timer_callback(void *user_data) {
   if (chip->torque_enable && chip->operating_mode == 3) {
     chip->current_position = ttl_servo_slew_step(chip->current_position, chip->goal_position, chip->profile_vel, VEL_TICKS_PER_S_PER_UNIT, delta_t, &chip->pos_frac);
 
-    // Sim-only verification aid: rate-limited position-mode log (about 1 s)
     chip->log_tick++;
     if (chip->log_tick >= 50) {
       if (chip->goal_position != chip->last_logged_goal || chip->current_position != chip->last_logged_pos) {
@@ -436,7 +412,6 @@ static void chip_timer_callback(void *user_data) {
     }
   }
 
-  // Redraw only on position change, and only every 2nd tick (~25 Hz)
   chip->draw_div ^= 1;
   if (chip->draw_div == 0 &&
       (chip->current_position != chip->last_pos_drawn || chip->torque_enable != chip->last_torque_drawn)) {
@@ -448,7 +423,7 @@ static void chip_timer_callback(void *user_data) {
 
 void chip_init() {
   chip_state_t *chip = calloc(1, sizeof(chip_state_t));
-  // Dynamixel ID from the "servoId" attribute, set in diagram.json as "attrs": { "servoId": "2" } (a string). Not declared in chip.json: a controls entry for it (type number) was rejected by wokwi-cli, and the attribute is read from the diagram attrs without one. Default 1 keeps existing sims unchanged.
+  // servoId is read from diagram.json attrs (a string) with no chip.json controls entry: wokwi-cli rejected a number control. Default 1.
   uint32_t servo_id_attr = attr_read(attr_init("servoId", 1));
   chip->servo_id = servo_id_attr > 252 ? 1 : (uint8_t)servo_id_attr;
   if (servo_id_attr > 252) {
@@ -457,7 +432,7 @@ void chip_init() {
   chip->current_position = 2048;
   chip->speed = 0;
   chip->goal_position = 2048;
-  chip->operating_mode = 3; // Position mode default
+  chip->operating_mode = 3;
   chip->torque_enable = 0;
   chip->state = STATE_HEADER1;
   chip->param_count = 0;
@@ -465,7 +440,6 @@ void chip_init() {
   chip->last_pos_drawn = 0xFFFFFFFFu;
   chip->draw_div = 0;
 
-  // Full-duplex: separate RX and TX pins for clean bidirectional communication.
   pin_t rx_pin = pin_init("RX", INPUT_PULLUP);
   pin_t tx_pin = pin_init("TX", INPUT_PULLUP);
   chip->tx_pin = tx_pin;
@@ -482,7 +456,6 @@ void chip_init() {
   chip->uart = uart_init(&uart_config);
   pin_mode(tx_pin, INPUT_PULLUP); // uart_init may have driven TX high; release it until a reply
 
-  // Framebuffer: dims come from the host; draw_horn skips if they are 0 or > 64
   chip->fb = framebuffer_init(&chip->fb_w, &chip->fb_h);
   draw_horn(chip);
   if (chip->fb_w != 0 && chip->fb_h != 0) {

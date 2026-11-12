@@ -4,10 +4,10 @@
 #include <string.h>
 
 typedef struct {
-  pin_t txd;      // From ESP TX
-  pin_t rxd;      // To ESP RX
-  pin_t data;     // Half-duplex shared bus
-  bool txd_drive; // True when we are driving DATA low (waiting for echo)
+  pin_t txd;
+  pin_t rxd;
+  pin_t data;
+  bool txd_drive;
   uint32_t txd_edge_count;
   uint32_t data_edge_count;
   uint32_t rxd_write_count;
@@ -17,7 +17,6 @@ static void on_txd_change(void *user_data, pin_t pin, uint32_t value) {
   adapter_state_t *state = (adapter_state_t *)user_data;
   state->txd_edge_count++;
   
-  // When TXD goes low, drive DATA low (ESP sending). When TXD goes high, release DATA (idle).
   if (value == 0) {
     // Set txd_drive first: pin_mode fires on_data_change synchronously and must see it.
     state->txd_drive = true;
@@ -39,8 +38,7 @@ static void on_data_change(void *user_data, pin_t pin, uint32_t value) {
   adapter_state_t *state = (adapter_state_t *)user_data;
   state->data_edge_count++;
   
-  // Drive RXD to follow DATA, but not if we (the adapter) are currently driving DATA.
-  // This suppresses echo: the host's own TX transmissions don't loop back to RX.
+  // Skipped while we drive DATA: suppresses echo of the host's own TX.
   if (!state->txd_drive) {
     state->rxd_write_count++;
     if (value == 0) {
@@ -65,7 +63,7 @@ void chip_init(void) {
   adapter_state_t *state = calloc(1, sizeof(adapter_state_t));
   
   state->txd = pin_init("TXD", INPUT_PULLUP);
-  state->rxd = pin_init("RXD", OUTPUT_HIGH);  // Idle high
+  state->rxd = pin_init("RXD", OUTPUT_HIGH);
   state->data = pin_init("DATA", INPUT_PULLUP);
   state->txd_drive = false;
   state->txd_edge_count = 0;
@@ -74,7 +72,6 @@ void chip_init(void) {
   
   printf("[adapter] Initialized: TXD, RXD, DATA pins\n");
   
-  // Watch TXD: when ESP sends, drive DATA. When ESP idles, release DATA.
   pin_watch_config_t txd_watch = {
     .edge = BOTH,
     .pin_change = on_txd_change,
@@ -82,7 +79,6 @@ void chip_init(void) {
   };
   pin_watch(state->txd, &txd_watch);
   
-  // Watch DATA: when the servo responds, copy to RXD (unless we are sending).
   pin_watch_config_t data_watch = {
     .edge = BOTH,
     .pin_change = on_data_change,

@@ -1,12 +1,5 @@
-/*
- * ttl_servo_slew.h
- *
- * Sim-only model of XL330 position-mode motion (goal position slewed at a
- * Profile Velocity limit). The Profile Velocity unit and the whole model are
- * UNVERIFIED against the XL330 e-Manual. Simulation-only, not hardware-validated.
- *
- * Pure C99 (also valid C++). No libm, no heap, no stdio.
- */
+/* Sim-only XL330 position-mode slew. Profile Velocity unit and model UNVERIFIED against the e-Manual; not hardware-validated. */
+/* Pure C99 (also valid C++): no libm, no heap, no stdio. */
 #ifndef TTL_SERVO_SLEW_H
 #define TTL_SERVO_SLEW_H
 
@@ -18,13 +11,7 @@ static inline uint32_t ttl_servo_clamp_goal(uint32_t goal) {
   return goal > TTL_SERVO_POS_MAX ? TTL_SERVO_POS_MAX : goal;
 }
 
-/* One timer tick of position-mode motion toward goal.
-   profile_vel == 0 means no velocity limit: jump to the goal.
-   Otherwise step = profile_vel * ticks_per_s_per_unit * delta_t (ticks, may be fractional).
-   *frac carries the sub-tick remainder between calls (signed). Never overshoots the goal.
-   The goal is clamped with ttl_servo_clamp_goal first. Raw difference, no wrap-around.
-   If the motion direction reverses, the stale remainder in *frac (sign opposite to the
-   new direction) is dropped (*frac = 0) before the new step is accumulated. */
+/* profile_vel == 0 means no limit (jump to goal). *frac is the signed sub-tick remainder; it is dropped on direction reversal. No wrap-around. */
 static inline uint32_t ttl_servo_slew_step(uint32_t pos, uint32_t goal, uint32_t profile_vel,
                                            double ticks_per_s_per_unit, double delta_t, double *frac) {
   goal = ttl_servo_clamp_goal(goal);
@@ -47,7 +34,7 @@ static inline uint32_t ttl_servo_slew_step(uint32_t pos, uint32_t goal, uint32_t
     *frac = 0.0;
   }
   *frac += (rem > 0 ? step : -step);
-  int32_t whole = (int32_t)*frac; /* truncates toward zero */
+  int32_t whole = (int32_t)*frac;
   *frac -= (double)whole;
   int32_t newpos = (int32_t)pos + whole;
   if ((rem > 0 && newpos > (int32_t)goal) || (rem < 0 && newpos < (int32_t)goal)) {
@@ -63,4 +50,4 @@ static inline uint32_t ttl_servo_slew_step(uint32_t pos, uint32_t goal, uint32_t
   return (uint32_t)newpos;
 }
 
-#endif /* TTL_SERVO_SLEW_H */
+#endif
