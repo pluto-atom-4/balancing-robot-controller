@@ -86,7 +86,6 @@ static WheelCtx W[2] = { WheelCtx(SERVO_ID_LEFT, WHEEL_SIGN_LEFT),
                          WheelCtx(SERVO_ID_RIGHT, WHEEL_SIGN_RIGHT) };
 
 #if defined(C3_CTRL_WHEELS_TEST) && (C3_CTRL_WHEELS_TEST > 0)
-// SIM-ONLY failure injection; test_tick is 1-based.
 #ifndef C3_CTRL_WHEELS_TEST_AFTER
 #define C3_CTRL_WHEELS_TEST_AFTER 100
 #endif
@@ -124,7 +123,6 @@ static float ema_update(float prev, float raw, uint32_t dt_ms) {
   return prev * (1.0f - alpha) + raw * alpha;
 }
 
-// Clamped so a stall cannot blow up the integrator.
 static float clamp_dt_s(uint32_t dt_ms) {
   float dt = (float)dt_ms / 1000.0f;
   if (dt < 0.005f) dt = 0.005f;
@@ -183,7 +181,6 @@ static bool write_goal_raw(WheelCtx& w, int32_t raw) {
   if (bus_down) return false;
   int32_t wire = (int32_t)w.sign * raw;
 #if defined(C3_CTRL_WHEELS_TEST) && (C3_CTRL_WHEELS_TEST > 0)
-  // SIM-ONLY failure injection: a forced failure skips the bus call and counts as a failed write.
   bool force_fail = test_fail_write(w);
   if (!force_fail && wire == w.last_raw) return true;
   uint32_t t0 = micros();
@@ -357,7 +354,7 @@ void setup() {
   lastWhlPrintMs = lastLoopMs;
 }
 
-// Two plants per loop: soft-float cost unmeasured (sim).
+// Soft-float cost unmeasured (sim).
 void loop() {
   uint32_t now_ms = millis();
   uint32_t dt_ms = now_ms - lastLoopMs;
@@ -400,7 +397,7 @@ void loop() {
       hold_until_ms = millis() + 1000;
       holding = true;
     } else if (servo_ok) {
-      // A failed wheel keeps last_raw = INT32_MIN so it retries every tick; a tick with no bus call resets the streak.
+      // A failed wheel keeps last_raw = INT32_MIN so it retries every tick; the streak resets on a tick with no bus call or where both writes succeed.
       int32_t raw0 = segway::wheel_cmd_to_raw(W[0].sim.wheel_vel_rad_s);
       int32_t raw1 = segway::wheel_cmd_to_raw(W[1].sim.wheel_vel_rad_s);
 #if defined(C3_CTRL_WHEELS_TEST) && (C3_CTRL_WHEELS_TEST > 0)
@@ -473,7 +470,7 @@ void loop() {
     }
     if (W[0].last_raw != INT32_MIN)
       snprintf(cmd_s, sizeof(cmd_s), "%ld", (long)W[0].last_raw);
-    // The wheel is shown as 0 during the post-fall hold whether or not the stop was confirmed.
+    // 0 is shown during the hold whether or not the stop was confirmed.
     float wheel_shown = holding ? 0.0f : W[0].sim.wheel_vel_rad_s;
     Serial.printf("[ttl_servo] sim theta=%.3f rate=%.3f wheel=%.2f cmd=%s pos1=%s dpos1=%s pos2=%s dpos2=%s gyroZ=%.3f bus=%d\n",
                   W[0].sim.theta_rad, W[0].sim.theta_dot_rad_s,

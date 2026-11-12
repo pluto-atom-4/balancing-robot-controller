@@ -136,7 +136,7 @@ static uint32_t horn_pixel(int32_t u, int32_t v, uint32_t body, uint32_t tip) {
 static void draw_horn(chip_state_t *chip) {
   uint32_t w = chip->fb_w;
   uint32_t h = chip->fb_h;
-  // Validity is judged by the dimensions framebuffer_init reports, not the handle (handle 0 valid in Wokwi: UNVERIFIED, original author's claim).
+  // Validity is judged by the dimensions framebuffer_init reports, not the handle (handle 0 valid in Wokwi: UNVERIFIED).
   if (w == 0 || h == 0 || w > HORN_MAX_DIM || h > HORN_MAX_DIM) {
     return;
   }
@@ -253,7 +253,7 @@ static void process_packet(chip_state_t *chip) {
     return;
   }
 
-  // Never answer a status packet (our own reply echoed back, or another servo's)
+  // Never answer a status packet (for example another servo's)
   if (chip->instruction == INST_STATUS) {
     return;
   }
